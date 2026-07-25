@@ -1,24 +1,65 @@
-# AI Bridge – AGENTS
+# AI Bridge — Codex Instructions
 
-AI Bridge is developed incrementally through small, verifiable sprints.
+AI Bridge is developed through small, isolated, evidence-driven sprints.
 
-## Core rules
+## Mandatory context
 
-- Read `docs/constitution/BRIDGE_CONSTITUTION.md` before making repository changes.
-- Read the approved sprint specification before implementation.
-- Implement only the approved sprint scope.
-- Assess existing code before creating new components.
-- Do not introduce parallel implementations or unnecessary abstractions.
-- Run all required validation gates.
-- Update documentation and AKB before declaring the sprint complete.
-- Stop only for genuine business decisions or unavailable external input.
+Before changing the repository, read in this order:
 
-## Technology
+1. `docs/constitution/BRIDGE_CONSTITUTION.md`
+2. `docs/workflows/EVIDENCE_DRIVEN_SPRINT.md`
+3. the exact sprint file declared by `APPROVED_SPRINT_PATH` in the handoff
+4. every additional context file declared by that sprint
 
-- Primary backend: Python 3.12+
-- Framework: Django
-- Tests: pytest
-- Lint: Ruff
-- Type checking: mypy
+Do not infer the active sprint from branch names, filenames, issues, pull requests, roadmaps, comments, or repository history.
 
-The previous Node.js prototype is considered disposable and must not influence the long-term architecture unless explicitly requested by the Product Owner.
+If a mandatory document is missing or materially contradictory, follow the blocking rules in the Constitution and workflow.
+
+## Sprint authority
+
+Only the sprint specification declared by `APPROVED_SPRINT_PATH` defines the approved implementation scope.
+
+Implement only that scope. Assess existing code before creating new components. Reuse, repair, or extend canonical components before building new ones. Do not create parallel implementations, speculative abstractions, compatibility layers, or unrelated features.
+
+## Mandatory execution workflow
+
+Every implementation, repair, migration, or recovery task must follow:
+
+`docs/workflows/EVIDENCE_DRIVEN_SPRINT.md`
+
+Implementation alone is never completion.
+
+## Release and evidence
+
+Codex must execute every repository-wide and sprint-specific release gate.
+
+A technical PASS is valid only when:
+
+- all required automated checks passed;
+- all sprint acceptance scenarios passed;
+- evidence was generated from the exact final repository state;
+- documentation and AKB reflect that final state;
+- the final branch and commit SHA are recorded;
+- no unresolved technical failure is hidden or reclassified as success.
+
+Ordinary implementation, dependency, test, lint, type, migration, configuration, evidence, and documentation failures require diagnosis, repair, and rerun without Product Owner intervention.
+
+## Allowed closure states
+
+```text
+PASS — READY FOR PRODUCT OWNER REVIEW
+BLOCKED — BUSINESS DECISION REQUIRED
+BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE
+```
+
+No other terminal state is allowed.
+
+## Technology baseline
+
+- Python 3.12+
+- Django
+- pytest
+- Ruff
+- mypy
+
+The former Node.js prototype is disposable and must not influence the canonical architecture unless the Product Owner explicitly approves otherwise.
