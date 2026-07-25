@@ -1,6 +1,6 @@
 # Architecture Review — Sprint 002: Project Context
 
-**Status:** BLOCKED — BUSINESS DECISION REQUIRED
+**Status:** CLOSED — SUPERSEDED BY SPRINT 003
 
 **Reviewed branch:** `main`
 
@@ -132,7 +132,7 @@ branch. It is stale relative to this checkout, but that is an expected
 `INCOMPLETE` AKB input for Sprint 002 to assess and later publish; it is not a
 reason to alter it during this preflight.
 
-## Remaining required decision
+## Historical remaining required decision
 
 The merged accepted Sprint 001 commit does not contain the Registry/onboarding
 implementation that the Product Owner decision expects it to provide. The only
@@ -148,10 +148,28 @@ After the required accepted baseline is available, issue a validated
 implementing a registry or an ad-hoc onboarding model inside Sprint 002 would
 violate the approved Sprint scope and the Constitution's contract-first rules.
 
-## Decision
+## Original decision
 
 Sprint 002 implementation has not started. The baseline merge and contract
 policy documentation are complete, but the review remains blocked because the
 required reusable Registry/onboarding implementation is still absent. No Sprint
 002 Django application code, models, migrations, dependencies, Node.js prototype
 files, or future-roadmap features were changed.
+
+## Closure and supersession
+
+This review is closed as `CLOSED — SUPERSEDED BY SPRINT 003`.
+
+- The branch and baseline blocker ended when the accepted Sprint 001 baseline
+  and Sprint 002 preparation were consolidated onto `main`.
+- The explicit `BOOTSTRAP` Execution Contract mode resolved the circular
+  prerequisite between issuing a Contract and having a first valid Project
+  Context. `STANDARD` still requires a valid Project Context for later work.
+- The review correctly established that the supposed completed Project Registry
+  and onboarding foundation did not exist. That assumption in the former Sprint
+  002 specification was incorrect.
+- Sprint 002 Project Context implementation never began; no implementation
+  success is claimed by this review or its historical findings.
+- `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md` now
+  explicitly creates the minimum Registry, onboarding, and first Project
+  Context prerequisites in one approved foundation scope.

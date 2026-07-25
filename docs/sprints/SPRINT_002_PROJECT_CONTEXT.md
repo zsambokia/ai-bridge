@@ -1,6 +1,9 @@
 # Sprint 002 — Project Context and AKB State Management
 
-**Status:** APPROVED FOR CODEX EXECUTION  
+Status: SUPERSEDED — NOT EXECUTED
+
+> This specification is retained as a historical and audit record. Its implementation never began. Repository consolidation removed its branch-baseline problem, but the specification incorrectly assumed an already implemented Project Registry and onboarding base. Sprint 003 replaces this task with a clean foundation scope; this document must not be read as a successfully completed Sprint.
+
 **Project:** resolved from `.bridge/project.yaml` and Project Registry  
 **Repository:** resolved from Project definition  
 **Target branch:** resolved by the Execution Contract  

@@ -83,6 +83,8 @@ Until that Sprint is completed, capability flags in `.bridge/project.yaml` are d
 
 ## Milestone 1 — Project Bootstrap and Onboarding
 
+**Approved foundation specification:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
+
 **Goal:** make both new and existing repositories registerable as governed Projects.
 
 Required outcomes:
@@ -101,7 +103,9 @@ This milestone must establish the prerequisites consumed by all later capabiliti
 
 ## Milestone 2 — Project Context and AKB State Management
 
-**Current approved specification:** `docs/sprints/SPRINT_002_PROJECT_CONTEXT.md`
+**Superseded, not executed specification:** `docs/sprints/SPRINT_002_PROJECT_CONTEXT.md`
+
+**Current approved foundation specification:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
 
 **Goal:** allow the platform to determine and prove where a registered Project currently stands.
 
@@ -114,10 +118,13 @@ Required outcomes:
 - validation and drift detection;
 - explicit conflict reporting;
 - immutable context snapshots;
-- explicit branch-and-PR-based AKB publication;
+- explicit, gate-protected main-only AKB publication;
 - multi-Project isolation.
 
-This milestone must also preserve the static configuration / dynamic state boundary described in this roadmap.
+Sprint 003 establishes only the minimum Registry and first validated Project
+Context prerequisite. It does not claim completion of the wider AKB state
+management outcomes above. This milestone must preserve the static
+configuration / dynamic state boundary described in this roadmap.
 
 ## Milestone 3 — Operational Capability State
 
@@ -241,9 +248,9 @@ These may remain part of the long-term product vision, but they must not distrac
 
 ## 6. Immediate next actions
 
-1. complete and validate the Project Bootstrap / Onboarding specification;
+1. execute Sprint 003 to create and validate the Project Registry, onboarding readiness, and first Project Context foundation;
 2. keep `.bridge/project.yaml` as the static Project definition;
-3. execute Sprint 002 for Project Context and AKB state management only after onboarding prerequisites are proven;
+3. use `STANDARD` Execution Contracts only after Sprint 003 has produced a valid Project Context;
 4. prepare the dedicated Operational Capability State Sprint;
 5. implement the generic Handoff Generator only after Project Registry and Project Context are accepted;
 6. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop.

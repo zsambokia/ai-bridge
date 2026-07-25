@@ -262,7 +262,7 @@ After all code, tests, documentation, and evidence are final, Codex must perform
 - reviewing the final diff for accidental, unrelated, generated, secret, or out-of-scope changes;
 - confirming no unresolved merge or rebase state exists;
 - confirming the working tree is clean after the final evidence commit, or documenting the exact reproducible state when the execution environment cannot commit;
-- confirming the sprint branch is ready for Product Owner review.
+- confirming the final `main` commit is ready for Product Owner review.
 
 Any relevant change after this final gate invalidates the affected evidence and requires rerun.
 
