@@ -345,7 +345,7 @@ An issued contract becomes stale or invalid when a binding input changes materia
 - Constitution or workflow changes;
 - target repository HEAD violates the baseline rule;
 - active Project changes;
-- Project Context becomes `STALE`, `CONFLICTED`, `INCOMPLETE`, or `UNAVAILABLE`;
+- Project Context is no longer `VALID` (for example, it is `STALE` or `INVALID`);
 - target branch or integration target changes;
 - required Release Gates change;
 - evidence paths collide;
