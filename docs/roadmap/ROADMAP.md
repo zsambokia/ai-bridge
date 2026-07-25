@@ -189,7 +189,7 @@ Required outcomes:
 - preservation of unrelated work;
 - explicit architecture and AKB conflict handling;
 - repository-native tests and Release Gates;
-- reversible branch / pull-request workflow;
+- reversible main-only workflow using new revert or repair commits;
 - evidence-backed Product Owner handoff.
 
 A production-critical repository must not be selected as the first safety proof.

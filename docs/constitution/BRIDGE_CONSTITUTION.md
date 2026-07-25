@@ -1,4 +1,4 @@
-# Bridge Constitution v1.0
+# Bridge Constitution v1.1
 
 **Status:** CANONICAL DRAFT  
 **Owner:** Product Owner  
@@ -210,30 +210,34 @@ The Product Owner is not technical support for Codex.
 
 ---
 
-# Article VIII — Isolated Sprint and Repository Governance
+# Article VIII — Main-only Sprint and Repository Governance
 
-Every implementation sprint is an isolated, self-closing execution cycle.
+Every implementation sprint is an isolated, self-closing execution cycle with one approved scope and one recorded baseline.
 
-Unless the Product Owner explicitly authorizes an emergency exception, routine implementation must not occur directly on the protected integration branch.
-
-The default protected integration branch is:
+Until the Product Owner explicitly ends this development and pre-production policy, all execution occurs directly on the canonical integration branch:
 
 ```text
 main
 ```
 
+In this main-only mode:
+
+- implementation, repair, documentation, and evidence commits are made on `main`;
+- a sprint, feature, or selected local branch is not an execution prerequisite;
+- a pull request is optional and does not replace the required Release Gates;
+- branch preflight must verify that the current branch is `main`;
+- direct commits and pushes to `main` are permitted after the required gates pass;
+- evidence must bind the final `main` commit SHA; and
+- a correction is made by a new revert or repair commit, never by rewriting shared history.
+
+This is a Product Owner-approved exception to the default isolated-branch practice. It remains in force until the Product Owner explicitly authorizes a production or multi-agent branching policy.
+
 Every active implementation sprint must have:
 
 ```text
 ONE APPROVED SPRINT SCOPE
-+ ONE DEDICATED BRANCH
-+ ONE DEDICATED WRITABLE WORKSPACE
 + ONE RECORDED BASELINE COMMIT
 ```
-
-A branch alone is insufficient when concurrent executors share the same writable checkout.
-
-An isolated workspace alone is insufficient when multiple active sprints write to the same branch.
 
 Before implementation, Codex must inspect and report:
 
@@ -480,6 +484,14 @@ Each amendment must record:
 Existing sprint evidence remains governed by the Constitution version declared for that execution.
 
 New executions must use the latest approved canonical Constitution unless the Product Owner explicitly binds another version.
+
+## Amendment 1 - Main-only development mode
+
+- **Changed article:** Article VIII.
+- **Reason and evidence:** Product Owner consolidation decision following the accepted Sprint 001 and Sprint 002 preparation work.
+- **Compatibility effect:** During development and pre-production, the canonical integration and execution branch is `main`; branch- and pull-request-only rules are superseded for new executions.
+- **Approval:** Product Owner.
+- **Effective baseline:** `6647c9f757b5085c393eba87efae3d0af74183a5`.
 
 ---
 

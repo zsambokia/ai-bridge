@@ -22,9 +22,10 @@ repository:
   integration_branch: "main"
   primary: true
   branch_policy:
-    direct_write_to_integration_branch: false
-    isolated_worktree_required: true
-    pull_request_required: true
+    development_mode: "main_only"
+    direct_write_to_integration_branch: true
+    isolated_worktree_required: false
+    pull_request_required: false
 
 paths:
   agents: "AGENTS.md"
@@ -84,7 +85,7 @@ akb:
   enabled: true
   primary_current_state_path: "docs/akb/CURRENT_STATE.md"
   accepted_state_only: true
-  publish_mode: "branch_and_pull_request"
+  publish_mode: "direct_main_after_gates"
   automatic_publish_on_refresh: false
   required_fields:
     - "project_identity"
@@ -121,7 +122,7 @@ execution:
     infer_active_project: false
     infer_active_sprint: false
     scope_expansion: false
-    direct_write_to_integration_branch: false
+    direct_write_to_integration_branch: true
 
 capabilities:
   project_registry: true

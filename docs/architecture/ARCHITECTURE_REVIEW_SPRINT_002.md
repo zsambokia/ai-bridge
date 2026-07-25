@@ -2,14 +2,15 @@
 
 **Status:** BLOCKED — BUSINESS DECISION REQUIRED
 
-**Reviewed branch:** `sprint/002-project-context`
+**Reviewed branch:** `main`
 
-**Reviewed baseline:** `c4e7525bcc74ee37e85f07ab29e29e587e012451`
+**Reviewed baseline:** `6647c9f757b5085c393eba87efae3d0af74183a5`
 
 ## Review scope
 
 This review replaces the earlier, untracked review made on the Sprint 001
-checkout. Its conclusions are based only on the canonical Sprint 002 branch.
+checkout. Its conclusions are based on the canonical `main` branch after the
+Product Owner-approved consolidation.
 
 The following sources were reviewed together:
 
@@ -20,7 +21,7 @@ The following sources were reviewed together:
 - `docs/roadmap/ROADMAP.md`
 - `docs/sprints/SPRINT_002_PROJECT_CONTEXT.md`
 - `docs/akb/CURRENT_STATE.md`
-- `docs/workflow/EVIDENCE_DRIVEN_SPRINT.md`
+- `docs/workflows/EVIDENCE_DRIVEN_SPRINT.md`
 
 ## Baseline integration record
 
@@ -48,6 +49,28 @@ they are required by the Sprint 002 governance documents.
 `BOOTSTRAP` and `STANDARD` contract modes. `BOOTSTRAP` is limited to the
 first-Project-Context execution and does not permit Registry or onboarding
 creation in Sprint 002.
+
+## Main-only consolidation record
+
+**Product Owner decision:** accepted Sprint 001 implementation and all Sprint
+002 preparation documents are consolidated on `main`; development and
+pre-production execution is main-only until explicitly changed by the Product
+Owner.
+
+**Target before consolidation:**
+`6a8096309037e4590c666464d66c760d10f19cae` (`origin/main`).
+
+**Prepared source tip:**
+`4cfd02d5d8da924e23089c13875581b63265a7c1`
+(`sprint/002-project-context`, including the accepted Sprint 001 baseline).
+
+**Consolidation result:** merge commit
+`6647c9f757b5085c393eba87efae3d0af74183a5` on `main`.
+
+The earlier branch-baseline concern is resolved: the accepted Sprint 001
+baseline and Sprint 002 preparation history are now reachable from the only
+execution branch, `main`. This resolution does not claim that the separately
+required Registry/onboarding runtime implementation exists.
 
 ## Consistent findings
 

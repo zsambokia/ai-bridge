@@ -17,6 +17,10 @@ Do not infer the active Project, repository, sprint, target branch, baseline, wo
 
 If a mandatory document is missing or materially contradictory, follow the blocking rules in the Constitution and execution workflow.
 
+## Main-only development policy
+
+During the Product Owner-approved development and pre-production main-only mode, execute on `main`. Before mutation, verify that the current branch is `main`, record the baseline SHA, preserve unrelated work, and run the required Release Gates before a direct commit or push. A pull request is optional. Correct shared history with a new revert or repair commit; do not rewrite it.
+
 ## Sprint authority
 
 Only the sprint specification declared by `APPROVED_SPRINT_PATH` defines the approved implementation scope.

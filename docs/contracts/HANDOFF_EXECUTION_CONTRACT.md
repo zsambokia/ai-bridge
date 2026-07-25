@@ -41,6 +41,15 @@ Codex must never infer the active Project, repository, Sprint, execution baselin
 
 Every governed run must begin from one validated and issued Execution Contract.
 
+### 3.2 Main-only development execution
+
+While the Product Owner-approved main-only development policy is active, the
+contract must resolve both `target_branch` and `integration_target` to `main`.
+The executor may commit and push directly only after all required Release Gates
+pass. A pull request is optional; the final evidence must record the resulting
+`main` commit SHA. A failed or superseded change is corrected by a new revert or
+repair commit, not shared-history rewriting.
+
 ### 3.1 Contract modes
 
 Every contract has exactly one mode:
@@ -106,7 +115,6 @@ The Handoff Generator must not:
 - silently repair Project Registry, Project Context, AKB, Sprint, or repository conflicts;
 - execute Release Gates;
 - merge pull requests;
-- write directly to an integration branch;
 - create Product Owner decisions;
 - replace Project Context;
 - replace the execution workflow;
@@ -203,7 +211,7 @@ execution:
   integration_target: "resolved integration branch"
   baseline_commit: "full commit SHA"
   baseline_rule: "EXACT | DESCENDANT_OF"
-  worktree_policy: "ISOLATED_REQUIRED"
+  worktree_policy: "MAIN_ONLY"
 
 binding_documents:
   agents_path: "resolved path"
@@ -242,7 +250,7 @@ allowed_terminal_states:
 
 constraints:
   preserve_unrelated_work: true
-  direct_write_to_integration_target: false
+  direct_write_to_integration_target: true
   infer_active_project: false
   infer_active_sprint: false
   roadmap_authorizes_execution: false

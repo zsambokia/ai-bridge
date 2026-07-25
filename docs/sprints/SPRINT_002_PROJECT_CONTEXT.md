@@ -42,7 +42,7 @@ For any registered Project, the system must be able to:
 - validate whether database state, repository state, and accepted AKB state agree;
 - identify stale, incomplete, conflicted, or unavailable context;
 - create immutable evidence snapshots;
-- explicitly publish accepted durable state back to the repository through a branch / pull-request boundary;
+- explicitly publish accepted durable state back to the repository on `main` after the required gates;
 - return a structured next-action recommendation derived from explicit rules.
 
 ## 3. Binding context
@@ -347,7 +347,7 @@ Minimum rules:
 
 - onboarding is not ready → onboarding required;
 - no active Sprint and no open pull request after an accepted milestone → ready for Sprint planning;
-- active Sprint branch and open pull request → implementation or review in progress;
+- active Sprint or optional open pull request → implementation or review in progress;
 - stale context → refresh required;
 - conflicted context → explicit resolution required;
 - repository unavailable → required external input unavailable;
@@ -441,10 +441,9 @@ Publishing must:
 1. require context status `VALID` unless an explicit internal override is documented and tested;
 2. render the configured current-state document from structured context;
 3. target the canonical AKB path declared by the Project definition;
-4. use a dedicated branch and pull-request-oriented repository operation;
-5. never write directly to the integration target;
-6. return branch, commit, changed path, and pull-request metadata;
-7. record `CONTEXT_PUBLISHED` only after the repository boundary reports success.
+4. use the configured `main` execution and integration branch after the required gates;
+5. return branch, commit, changed path, and optional pull-request metadata;
+6. record `CONTEXT_PUBLISHED` only after the repository boundary reports success.
 
 Rendering and orchestration must be fully tested.
 
@@ -469,7 +468,6 @@ Do not implement:
 - repository-provider OAuth or App setup;
 - deployment infrastructure;
 - semantic search, embeddings, or vector database;
-- automatic merge or direct writes to an integration branch;
 - database-level Git emulation;
 - speculative provider implementations beyond the replaceable boundary;
 - Handoff Generator implementation.
@@ -499,7 +497,7 @@ test_create_immutable_context_snapshot
 test_compare_snapshot_with_current_context
 test_publish_requires_valid_context
 test_publish_renders_configured_current_state
-test_publish_uses_branch_and_pull_request_boundary
+test_publish_uses_main_only_repository_boundary
 test_project_state_events_are_recorded
 test_same_services_support_multiple_project_definitions
 ```
@@ -614,8 +612,8 @@ Expected:
 
 - rendered content reflects structured context;
 - target path comes from Project definition;
-- a dedicated branch is requested;
-- pull-request-oriented metadata is returned;
+- the configured `main` branch is requested after the required gates;
+- optional pull-request metadata is returned when available;
 - `CONTEXT_PUBLISHED` is recorded only after success.
 
 ### Scenario J — Multi-Project isolation
