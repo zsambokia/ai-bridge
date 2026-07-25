@@ -25,7 +25,7 @@ Before mutation, read in this order:
 3. this sprint document
 4. existing repository files required to assess and remove the disposable prototype
 
-If the Constitution is not present on the sprint branch, copy the approved canonical document from `docs/bridge-constitution-v1` without changing its meaning, then continue.
+If the Constitution is not present on the sprint branch, copy the approved canonical document from `origin/docs/bridge-constitution-v1` to `docs/constitution/BRIDGE_CONSTITUTION.md` without changing its meaning, then continue.
 
 ## 3. Mandatory assessment
 

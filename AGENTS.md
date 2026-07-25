@@ -4,7 +4,7 @@ AI Bridge is developed incrementally through small, verifiable sprints.
 
 ## Core rules
 
-- Read the Bridge Constitution before making repository changes.
+- Read `docs/constitution/BRIDGE_CONSTITUTION.md` before making repository changes.
 - Read the approved sprint specification before implementation.
 - Implement only the approved sprint scope.
 - Assess existing code before creating new components.
