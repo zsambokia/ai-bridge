@@ -93,5 +93,7 @@ bootstrap lifecycle.
 ## Release gates and final binding
 
 The repository Release Gate was rerun after the documented correction. Its
-command and final result are recorded in the closing commit and report, which
-bind the evidence to the final `main` state.
+command and final result are recorded in the closing commit and report. The
+validated implementation-and-evidence commit is
+`0c4f5d587f6144b479b9101f8ffd0eac1a446644`; it binds this acceptance run to
+the published `main` state.
