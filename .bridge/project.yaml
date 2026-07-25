@@ -1,0 +1,142 @@
+schema_version: "1.0"
+
+project:
+  id: "ai-bridge"
+  slug: "ai-bridge"
+  name: "AI Bridge"
+  description: "AI-driven software factory platform for governed, evidence-based software development."
+  status: "active"
+  onboarding_status: "ready"
+  project_type: "platform"
+
+registry:
+  source: "repository"
+  definition_path: ".bridge/project.yaml"
+  database_record_required: true
+  drift_policy: "conflict"
+
+repository:
+  provider: "github"
+  full_name: "zsambokia/ai-bridge"
+  default_branch: "main"
+  integration_branch: "main"
+  primary: true
+  branch_policy:
+    direct_write_to_integration_branch: false
+    isolated_worktree_required: true
+    pull_request_required: true
+
+paths:
+  agents: "AGENTS.md"
+  constitution: "docs/constitution/BRIDGE_CONSTITUTION.md"
+  execution_workflow: "docs/workflows/EVIDENCE_DRIVEN_SPRINT.md"
+  handoff_contract: "docs/contracts/HANDOFF_EXECUTION_CONTRACT.md"
+  roadmap: "docs/roadmap/ROADMAP.md"
+  sprint_root: "docs/sprints"
+  architecture_root: "docs/architecture"
+  akb_root: "docs/akb"
+  primary_current_state: "docs/akb/CURRENT_STATE.md"
+  evidence_root: "docs/evidence"
+
+sprints:
+  approval_mode: "explicit_path"
+  active_sprint_inference: false
+  filename_pattern: "SPRINT_<number>_<name>.md"
+  required_status_for_execution: "APPROVED FOR CODEX EXECUTION"
+
+technology:
+  language_runtime:
+    - "Python 3.12+"
+  backend:
+    framework: "Django"
+  testing:
+    framework: "pytest"
+  quality:
+    lint: "Ruff"
+    type_check: "mypy"
+  legacy:
+    node_prototype_status: "disposable"
+    may_influence_canonical_architecture: false
+
+release_gates:
+  repository_wide:
+    - id: "backend-tests"
+      command: "pytest"
+      required: true
+    - id: "lint"
+      command: "ruff check ."
+      required: true
+    - id: "type-check"
+      command: "mypy ."
+      required: true
+  composed_command: null
+  sprint_specific_required: true
+  ordinary_technical_failure_is_blocker: false
+
+evidence:
+  repository_versioned: true
+  require_final_commit_binding: true
+  closure_report_filename: "CLOSURE_REPORT.md"
+  machine_results_filename: "acceptance-results.json"
+  path_template: "docs/evidence/{sprint_slug}"
+
+akb:
+  enabled: true
+  primary_current_state_path: "docs/akb/CURRENT_STATE.md"
+  accepted_state_only: true
+  publish_mode: "branch_and_pull_request"
+  automatic_publish_on_refresh: false
+  required_fields:
+    - "project_identity"
+    - "current_phase"
+    - "last_accepted_milestone"
+    - "next_approved_action"
+  optional_fields:
+    - "current_sprint"
+    - "active_branch"
+    - "active_pull_request"
+    - "known_blockers"
+    - "accepted_state_timestamp"
+    - "accepted_commit"
+
+roadmap:
+  enabled: true
+  path: "docs/roadmap/ROADMAP.md"
+  authorizes_execution: false
+  purpose:
+    - "project direction"
+    - "milestone sequencing"
+    - "dependency visibility"
+
+execution:
+  contract_required: true
+  project_context_required: true
+  valid_context_status_required: "VALID"
+  allowed_terminal_states:
+    - "PASS — READY FOR PRODUCT OWNER REVIEW"
+    - "BLOCKED — BUSINESS DECISION REQUIRED"
+    - "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+  constraints:
+    preserve_unrelated_work: true
+    infer_active_project: false
+    infer_active_sprint: false
+    scope_expansion: false
+    direct_write_to_integration_branch: false
+
+capabilities:
+  project_registry: true
+  project_context: false
+  akb_state_management: false
+  handoff_generator: false
+  release_gate_engine: "partial"
+  evidence_engine: "partial"
+  github_adapter: "partial"
+
+metadata:
+  owner: "Product Owner"
+  configuration_classification: "project-specific"
+  secrets_allowed: false
+  notes:
+    - "This file configures AI Bridge as one Project managed by the generic Bridge platform."
+    - "Platform rules must remain outside this file."
+    - "Capability flags describe accepted current state and must be updated only through governed evidence-backed changes."
