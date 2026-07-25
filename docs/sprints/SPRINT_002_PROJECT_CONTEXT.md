@@ -61,6 +61,12 @@ At minimum, the Contract must resolve:
 - repository-wide and Sprint-specific Release Gates;
 - evidence output paths.
 
+For this first Project Context creation only, the issued Contract may use
+`BOOTSTRAP` mode as defined by
+`docs/contracts/HANDOFF_EXECUTION_CONTRACT.md`. That mode must be bound to this
+Sprint, may be used only when no valid Project Context exists, and does not
+authorize Bootstrap, onboarding, or Project Registry creation.
+
 The Sprint must not hard-code a Project name, repository name, branch, technology stack, Release Gate command, or AKB path.
 
 ## 4. Dependencies and preconditions
@@ -73,7 +79,10 @@ Sprint 002 may begin only when all are true:
 - repository identity is unambiguous;
 - the Project definition declares the canonical AKB / current-state location;
 - the Project definition declares repository-wide Release Gates;
-- the issued Execution Contract passes integrity validation.
+- the issued Execution Contract passes integrity validation in either:
+  - `BOOTSTRAP` mode, only for this first Project Context creation and only
+    when its first-context eligibility rules pass; or
+  - `STANDARD` mode, with Project Context status `VALID`.
 
 If any precondition is missing, Sprint 002 must stop with the appropriate governed blocking state. It must not silently perform Bootstrap / Onboarding work.
 

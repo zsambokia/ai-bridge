@@ -28,10 +28,12 @@ Every project-specific value must be resolved from:
 
 1. the selected Project Registry record;
 2. its canonical project definition;
-3. a validated Project Context snapshot;
+3. for `STANDARD`, a validated Project Context snapshot; or, for `BOOTSTRAP`,
+   the approved first-Project-Context execution eligibility;
 4. the explicitly approved Sprint.
 
-No valid Project definition, no valid Project Context, or no approved Sprint means no implementation start.
+No valid Project definition or approved Sprint means no implementation start. The
+Project Context requirement is mode-specific as defined in section 3.1.
 
 ## 3. Core execution rule
 
@@ -39,14 +41,46 @@ Codex must never infer the active Project, repository, Sprint, execution baselin
 
 Every governed run must begin from one validated and issued Execution Contract.
 
+### 3.1 Contract modes
+
+Every contract has exactly one mode:
+
+```text
+BOOTSTRAP
+STANDARD
+```
+
+`STANDARD` is required for ordinary and all subsequent governed executions. It
+requires Project Context status `VALID` and an immutable snapshot belonging to
+the selected Project.
+
+`BOOTSTRAP` is a narrow, one-time mode for the approved execution whose sole
+purpose is creation of that Project's first Project Context. It may be issued
+only when all of the following are true:
+
+- the Project Registry record exists;
+- the Project definition is valid and consistent with that record;
+- onboarding status is ready;
+- repository identity and execution branch are unambiguous;
+- the approved Sprint specification is available and explicitly targets the
+  first Project Context;
+- no valid Project Context exists for the selected Project; and
+- the execution intent is limited to creating that first Project Context.
+
+`BOOTSTRAP` does not require a pre-existing `VALID` Project Context or context
+snapshot. It must not be used to bypass prerequisites for a later Sprint,
+repair an invalid Context, or perform ordinary execution. Once a valid Project
+Context exists, only `STANDARD` may be issued for that Project.
+
 ## 4. Responsibilities
 
 The Handoff Generator must:
 
 1. resolve the active Project from the Project Registry;
 2. load and validate the Project definition;
-3. load and validate Project Context;
-4. create or resolve an immutable Project Context snapshot;
+3. for `STANDARD`, load and validate Project Context;
+4. for `STANDARD`, create or resolve an immutable Project Context snapshot;
+   for `BOOTSTRAP`, prove and record first-Project-Context eligibility;
 5. resolve the exact target repository and integration branch;
 6. resolve the exact approved Sprint path;
 7. resolve the Constitution and execution workflow declared by the Project;
@@ -146,6 +180,7 @@ The generated contract must contain at least:
 ```yaml
 contract_version: "1.0"
 handoff_identifier: "bridge:<project-slug>:<sprint-id>:<unique-run-id>"
+contract_mode: "BOOTSTRAP | STANDARD"
 generated_at: "ISO-8601 timestamp"
 generated_by: "canonical handoff generator"
 requested_by: "product owner or authorized caller"
@@ -157,8 +192,8 @@ project:
   definition_source: ".bridge/project.yaml or registry source"
   definition_version: "content hash or registry version"
   onboarding_status: "NOT_STARTED | IN_PROGRESS | READY"
-  context_status: "VALID"
-  context_snapshot_id: "immutable snapshot identifier"
+  context_status: "VALID | NOT_CREATED"
+  context_snapshot_id: "immutable snapshot identifier or null only for BOOTSTRAP"
 
 execution:
   task_type: "resolved task type"
@@ -225,15 +260,13 @@ Exact field names may follow implementation conventions, but all responsibilitie
 
 ## 10. Contract invariants
 
-A contract is valid only when all are true:
+A contract is valid only when all common invariants are true:
 
 - the selected Project is unambiguous;
 - the Project is registered;
 - the Project definition is valid;
 - the Project definition and Registry record do not materially conflict;
-- Project Context status is `VALID`;
-- the context snapshot belongs to the selected Project;
-- repository identity matches both Project definition and Project Context;
+- repository identity matches the Project definition;
 - target branch and integration target are explicit;
 - the baseline commit exists in the target repository;
 - the approved Sprint document exists;
@@ -247,6 +280,16 @@ A contract is valid only when all are true:
 - roadmap direction does not contradict the approved Sprint;
 - no material contradiction exists between Project definition, Project Context, AKB, Sprint, and repository state;
 - the normalized contract hash can be reproduced.
+
+In addition, mode-specific invariants apply:
+
+- `STANDARD` requires Project Context status `VALID` and a context snapshot
+  belonging to the selected Project, and repository identity matching that
+  Project Context;
+- `BOOTSTRAP` requires every condition in section 3.1, records
+  `context_status: NOT_CREATED`, has no context snapshot, and binds only the
+  approved first-Project-Context execution; its repository identity must match
+  the selected Project Registry record and Project definition.
 
 ## 11. Roadmap rule
 
@@ -307,9 +350,9 @@ RESOLVE REQUEST
 → RESOLVE PROJECT REGISTRY RECORD
 → LOAD PROJECT DEFINITION
 → VALIDATE REGISTRY / DEFINITION CONSISTENCY
-→ LOAD PROJECT CONTEXT
-→ REQUIRE VALID CONTEXT
-→ CREATE OR RESOLVE CONTEXT SNAPSHOT
+→ RESOLVE CONTRACT MODE
+→ [STANDARD: LOAD / REQUIRE VALID CONTEXT / CREATE OR RESOLVE SNAPSHOT]
+→ [BOOTSTRAP: VERIFY FIRST-CONTEXT ELIGIBILITY / RECORD NOT_CREATED]
 → RESOLVE REPOSITORY AND BASELINE
 → RESOLVE APPROVED SPRINT
 → RESOLVE GOVERNANCE DOCUMENTS
@@ -335,6 +378,7 @@ CODEX EXECUTION CONTRACT
 HANDOFF_IDENTIFIER: <resolved identifier>
 PROJECT: <resolved Project name and slug>
 TASK_TYPE: <resolved task type>
+CONTRACT_MODE: <BOOTSTRAP | STANDARD>
 TARGET_REPOSITORY: <resolved repository identity>
 TARGET_BRANCH: <resolved target branch>
 INTEGRATION_TARGET: <resolved integration branch>
@@ -488,7 +532,11 @@ A future implementation Sprint must prove at least:
 - failure for missing or invalid Project definition;
 - detection of Registry and repository definition drift;
 - failure for absent active Project;
-- failure for every non-`VALID` Project Context state;
+- `STANDARD` failure for every non-`VALID` Project Context state;
+- `BOOTSTRAP` issuance only for an onboarded registered Project with no valid
+  Context and an approved first-Project-Context Sprint;
+- `BOOTSTRAP` rejection when a valid Context already exists or the requested
+  execution is not the first-Project-Context creation;
 - failure for missing or unapproved Sprint without Sprint inference;
 - exact repository baseline binding;
 - document and Project-definition hash binding;
