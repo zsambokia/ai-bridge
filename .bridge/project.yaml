@@ -5,8 +5,6 @@ project:
   slug: "ai-bridge"
   name: "AI Bridge"
   description: "AI-driven software factory platform for governed, evidence-based software development."
-  status: "active"
-  onboarding_status: "ready"
   project_type: "platform"
 
 registry:
@@ -124,15 +122,6 @@ execution:
     scope_expansion: false
     direct_write_to_integration_branch: true
 
-capabilities:
-  project_registry: true
-  project_context: false
-  akb_state_management: false
-  handoff_generator: false
-  release_gate_engine: "partial"
-  evidence_engine: "partial"
-  github_adapter: "partial"
-
 metadata:
   owner: "Product Owner"
   configuration_classification: "project-specific"
@@ -140,4 +129,4 @@ metadata:
   notes:
     - "This file configures AI Bridge as one Project managed by the generic Bridge platform."
     - "Platform rules must remain outside this file."
-    - "Capability flags describe accepted current state and must be updated only through governed evidence-backed changes."
+    - "Runtime lifecycle, onboarding, context, and capability state are maintained by the canonical runtime domains, never in this static definition."

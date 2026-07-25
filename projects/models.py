@@ -1,0 +1,68 @@
+"""Canonical runtime models for registered Projects and their Contexts."""
+
+from __future__ import annotations
+
+from django.db import models
+
+
+class Project(models.Model):
+    """The one canonical runtime Project Registry record."""
+
+    class Lifecycle(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        INACTIVE = "INACTIVE", "Inactive"
+
+    class OnboardingStatus(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        READY = "READY", "Ready"
+        INVALID = "INVALID", "Invalid"
+
+    project_id = models.CharField(max_length=128, unique=True)
+    display_name = models.CharField(max_length=255)
+    repository_full_name = models.CharField(max_length=255, unique=True)
+    definition_path = models.CharField(max_length=255)
+    lifecycle = models.CharField(
+        max_length=16, choices=Lifecycle.choices, default=Lifecycle.ACTIVE
+    )
+    onboarding_status = models.CharField(
+        max_length=16,
+        choices=OnboardingStatus.choices,
+        default=OnboardingStatus.PENDING,
+    )
+    onboarding_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["project_id"]
+
+    def __str__(self) -> str:
+        return self.project_id
+
+
+class ProjectContext(models.Model):
+    """A deterministic runtime snapshot of a ready registered Project."""
+
+    class ValidationStatus(models.TextChoices):
+        VALID = "VALID", "Valid"
+        INVALID = "INVALID", "Invalid"
+        STALE = "STALE", "Stale"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="contexts"
+    )
+    repository_full_name = models.CharField(max_length=255)
+    constitution_path = models.CharField(max_length=255)
+    roadmap_path = models.CharField(max_length=255)
+    sprint_path = models.CharField(max_length=255)
+    current_state_path = models.CharField(max_length=255)
+    release_gate_configuration = models.JSONField(default=list)
+    validation_status = models.CharField(
+        max_length=16, choices=ValidationStatus.choices
+    )
+    validation_reason = models.TextField(blank=True)
+    source_commit_sha = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]

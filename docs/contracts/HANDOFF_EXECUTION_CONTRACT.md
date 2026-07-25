@@ -143,10 +143,12 @@ The Project definition may declare:
 - Sprint, architecture, roadmap, AKB, and evidence roots;
 - technology profile;
 - repository-wide Release Gate commands;
-- onboarding status;
-- optional repository capabilities.
+- static supported-feature configuration and policies.
 
-These are configuration values, not separate platform rules.
+Lifecycle, onboarding, Project Context validation, and accepted capability state
+are runtime values. They belong in the canonical Registry, Project Context, or
+a future operational-state domain; they must not be written into the static
+Project Definition.
 
 ## 7. Required request input
 
@@ -199,8 +201,8 @@ project:
   name: "project name"
   definition_source: ".bridge/project.yaml or registry source"
   definition_version: "content hash or registry version"
-  onboarding_status: "NOT_STARTED | IN_PROGRESS | READY"
-  context_status: "VALID | NOT_CREATED"
+  onboarding_status: "PENDING | READY | INVALID"
+  context_status: "VALID | INVALID | STALE | NOT_CREATED"
   context_snapshot_id: "immutable snapshot identifier or null only for BOOTSTRAP"
 
 execution:

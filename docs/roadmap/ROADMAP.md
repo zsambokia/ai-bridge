@@ -44,7 +44,7 @@ This file contains relatively stable Project-specific configuration, including:
 - Sprint, architecture, roadmap, AKB, and evidence roots;
 - technology profile;
 - repository-wide Release Gates;
-- repository capabilities and policies.
+- repository policies and static supported-feature configuration.
 
 It must not become a live status store.
 
@@ -64,26 +64,15 @@ Frequently changing state belongs in the operational database and Project Contex
 
 A separate repository-local status file may be introduced only if a later approved Sprint proves a concrete need for a durable, reviewable status projection. It must be generated from structured state, never edited as a competing source of truth.
 
-### 3.3 Roadmap item: remove live capability state from `project.yaml`
-
-The current `.bridge/project.yaml` includes capability indicators as an initial bootstrap convenience.
-
-A dedicated future Sprint must:
-
-- define the authoritative operational capability-state model;
-- move mutable capability status out of `.bridge/project.yaml`;
-- keep only static capability declarations or supported-feature configuration in the Project definition;
-- migrate existing values safely;
-- define how accepted capability state is projected into AKB / current-state documentation;
-- detect and prevent configuration-versus-state drift.
-
-Until that Sprint is completed, capability flags in `.bridge/project.yaml` are descriptive bootstrap metadata only and must not independently authorize execution or claim technical completion.
+Sprint 003 establishes this boundary for Project lifecycle, onboarding, and
+Context state. A later operational-capability Sprint may add a structured
+capability-state model; it must remain separate from the static definition.
 
 ## 4. Milestone sequence
 
 ## Milestone 1 — Project Bootstrap and Onboarding
 
-**Approved foundation specification:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
+**Implemented foundation awaiting Product Owner review:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
 
 **Goal:** make both new and existing repositories registerable as governed Projects.
 
@@ -105,7 +94,7 @@ This milestone must establish the prerequisites consumed by all later capabiliti
 
 **Superseded, not executed specification:** `docs/sprints/SPRINT_002_PROJECT_CONTEXT.md`
 
-**Current approved foundation specification:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
+**Implemented foundation awaiting Product Owner review:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
 
 **Goal:** allow the platform to determine and prove where a registered Project currently stands.
 
@@ -135,7 +124,6 @@ Required outcomes:
 - authoritative capability-state model in the operational database;
 - lifecycle states for planned, in-progress, implemented, proven, accepted, deprecated, and unavailable capabilities;
 - evidence and final-commit binding;
-- migration of mutable capability flags out of `.bridge/project.yaml`;
 - generated AKB / current-state projection;
 - drift detection between accepted evidence and projected status;
 - Project-level capability queries usable by later planning and handoff services.

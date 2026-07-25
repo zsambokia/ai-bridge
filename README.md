@@ -37,6 +37,12 @@ python -m venv .venv
 
 ## Architecture
 
-`bridge` is the Django project package; its settings are split into `base`, `local`, and `test` modules. `core` contains the only current application and the health endpoint. SQLite is the local database configuration, although this foundation intentionally contains no domain models or migrations. `scripts` contains the repeatable release gate.
+`bridge` is the Django project package; its settings are split into `base`, `local`, and `test` modules. `core` contains the health endpoint. `projects` contains the canonical runtime Project Registry, onboarding readiness, Project Definition loader, `bootstrap_project` command, and Project Context domain. SQLite is the local database configuration and includes the `projects` migration. `scripts` contains the repeatable release gate.
+
+To bootstrap a repository from its static Project Definition, supply the exact approved Sprint path:
+
+```powershell
+.\.venv\Scripts\python manage.py bootstrap_project --definition .bridge/project.yaml --sprint-path docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md --settings=bridge.settings.local
+```
 
 The canonical governance document is [`docs/constitution/BRIDGE_CONSTITUTION.md`](docs/constitution/BRIDGE_CONSTITUTION.md). Current verified repository state is recorded in [`docs/akb/CURRENT_STATE.md`](docs/akb/CURRENT_STATE.md).

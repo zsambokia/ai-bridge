@@ -1,0 +1,27 @@
+{
+  "sprint": "SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION",
+  "assessment": {
+    "reused": ["Django Foundation settings", "core health service", "release gate script"],
+    "new": ["canonical Project Registry", "Project Context", "definition loader", "bootstrap command", "onboarding readiness", "migration"]
+  },
+  "acceptance_scenarios": {
+    "valid_definition": "PASS",
+    "invalid_definition": "PASS",
+    "bootstrap_first_registry_and_context": "PASS",
+    "repeat_bootstrap_idempotent": "PASS",
+    "duplicate_repository_rejected": "PASS",
+    "ready_after_prerequisites": "PASS",
+    "context_requires_ready_project": "PASS",
+    "required_context_sources": "PASS",
+    "valid_context": "PASS",
+    "stale_context": "PASS",
+    "invalid_context_source": "PASS"
+  },
+  "self_bootstrap": {
+    "project_id": "ai-bridge",
+    "onboarding_status": "READY",
+    "context_status": "VALID",
+    "fixture_or_seed": false
+  },
+  "test_result": "9 passed"
+}

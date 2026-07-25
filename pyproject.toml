@@ -8,10 +8,10 @@ version = "0.1.0"
 description = "Minimal Django foundation for AI Bridge"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["Django>=5.2,<5.3"]
+dependencies = ["Django>=5.2,<5.3", "PyYAML>=6.0,<7.0"]
 
 [tool.setuptools]
-packages = ["bridge", "bridge.settings", "core", "core.tests", "scripts"]
+packages = ["bridge", "bridge.settings", "core", "core.tests", "projects", "projects.management", "projects.management.commands", "projects.migrations", "projects.tests", "scripts"]
 
 [project.optional-dependencies]
 dev = ["django-stubs[compatible-mypy]>=5.2,<5.3", "mypy>=1.13,<2.0", "pytest>=8.3,<9.0", "pytest-django>=4.9,<5.0", "ruff>=0.8,<1.0"]
@@ -19,7 +19,7 @@ dev = ["django-stubs[compatible-mypy]>=5.2,<5.3", "mypy>=1.13,<2.0", "pytest>=8.
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "bridge.settings.test"
 python_files = ["test_*.py", "*_tests.py"]
-testpaths = ["core/tests"]
+testpaths = ["core/tests", "projects/tests"]
 
 [tool.ruff]
 target-version = "py312"
