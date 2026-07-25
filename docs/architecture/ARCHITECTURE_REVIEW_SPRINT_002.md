@@ -112,23 +112,18 @@ reason to alter it during this preflight.
 ## Remaining required decision
 
 The merged accepted Sprint 001 commit does not contain the Registry/onboarding
-implementation that the Product Owner decision expects it to provide. The
-Product Owner must identify the actual accepted source commit or authorize a
-scope change in a separately approved Sprint; Sprint 002 cannot repair this
-missing prerequisite itself.
+implementation that the Product Owner decision expects it to provide. The only
+scope-compliant resolution is to provide the actual accepted source commit or
+branch containing the Project Bootstrap/onboarding/Project Registry
+implementation, its migrations, tests, and evidence, so it can be merged into
+this baseline. If no such accepted source exists, the Product Owner must
+explicitly revise the current constraints before implementation can continue;
+Sprint 002 cannot create this missing foundation.
 
-The available compliant options are:
-
-1. Provide the commit or branch containing the already accepted Project
-   Bootstrap/onboarding/Project Registry implementation, its migrations, tests,
-   and evidence, so it can be merged into this baseline; or
-2. Approve a separate, preceding Sprint that creates those prerequisites and
-   then update the Sprint sequencing accordingly.
-
-After that decision, issue a validated `BOOTSTRAP` Execution Contract for the
-resolved baseline and rerun this review. Until then, implementing a registry or
-an ad-hoc onboarding model inside Sprint 002 would violate the approved Sprint
-scope and the Constitution's contract-first rules.
+After the required accepted baseline is available, issue a validated
+`BOOTSTRAP` Execution Contract for it and rerun this review. Until then,
+implementing a registry or an ad-hoc onboarding model inside Sprint 002 would
+violate the approved Sprint scope and the Constitution's contract-first rules.
 
 ## Decision
 
