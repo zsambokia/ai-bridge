@@ -25,6 +25,14 @@ It created the canonical `ai-bridge` Registry record with onboarding `READY`
 and a first `VALID` Project Context. The result is runtime data in the local
 Django database, not a fixture or seed.
 
+The same canonical bootstrap was also proven against the persistent, independent
+`zsambokia/bridge-demo` repository. Its `bridge-demo` Registry record remains
+`READY`; its current Context is `VALID`, and its earlier source revision is
+preserved as `STALE`. The local development database therefore contains exactly
+the `ai-bridge` and `bridge-demo` Registry records. Django Admin exposes both
+runtime models as read-only operational views; it cannot create, change, or
+delete them outside the canonical bootstrap lifecycle.
+
 ## Completed implementation awaiting Product Owner review
 
 `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`

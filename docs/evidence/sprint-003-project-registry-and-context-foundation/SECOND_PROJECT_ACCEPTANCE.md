@@ -113,3 +113,13 @@ A helyi `db.sqlite3` fejlesztői, nem verziókezelt futtatási adat. A teszt vé
 ## Következtetés
 
 A `Project` Registry, a statikus Project Definition loader, az onboarding értékelés, a `bootstrap_project` szolgáltatás/parancs és a `ProjectContext` létrehozás egyazon kanonikus folyamatban második, független projekttel is determinisztikusan működött. Nem történt közvetlen adatbázis-rekordlétrehozás, fixture/seed használat vagy AI Bridge-specifikus elágazás.
+
+# ISOLATED BOOTSTRAP ACCEPTANCE — PASS
+
+> **Scope correction (2026-07-25):** This is historical isolated-bootstrap
+> evidence only. Its temporary local Git repository used
+> `zsambokia/bridge-demo` merely as a validation identity. That run did not
+> create or verify a GitHub repository, and its test database records and
+> temporary repository were deleted afterwards. It proves the generic
+> canonical bootstrap path, but it is not evidence of persistent second-project
+> integration. See `PERSISTENT_SECOND_PROJECT_ACCEPTANCE.md` for that evidence.
