@@ -1,8 +1,7 @@
 # Sprint 003 — Persistent Second-Project Acceptance
 
 **Date:** 2026-07-25  
-**Result:** Persistent integration acceptance in progress; final release-gate
-result is recorded below.
+**Result:** PERSISTENT SECOND-PROJECT INTEGRATION — PASS
 
 ## Real repository and isolated project context
 
