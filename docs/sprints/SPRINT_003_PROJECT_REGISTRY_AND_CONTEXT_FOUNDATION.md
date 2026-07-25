@@ -18,6 +18,12 @@ létrehozása úgy, hogy a repository statikus Project Definitionje
 összekapcsolódjon a runtime Project Registryvel, majd ebből determinisztikusan
 létrejöhessen az első validált Project Context.
 
+The first real project registered by this capability is AI Bridge itself. The
+Sprint must prove that Bridge can self-bootstrap from its own canonical
+`.bridge/project.yaml`, create or update its own Registry record, derive
+`READY` onboarding state, and create its first `VALID` Project Context without
+hard-coded project-specific platform logic.
+
 This Sprint replaces the unexecuted Sprint 002 Project Context specification.
 It establishes the minimum prerequisite that Sprint 002 incorrectly assumed to
 already exist; it does not revive or claim completion of that scope.
@@ -28,6 +34,9 @@ already exist; it does not revive or claim completion of that scope.
   `.bridge/project.yaml` Project Definition and its matching Registry record.
 - Platform logic remains project-independent. Project-name, slug, repository,
   or technology-specific branches in platform code are forbidden.
+- AI Bridge is the first bootstrap subject and acceptance proof, not a
+  hard-coded special case. The same canonical operation must later be usable
+  for another valid Project Definition.
 - Reuse and extend existing Django Foundation components where they are
   canonical. Create a new responsibility only when the assessment proves it is
   absent.
@@ -103,6 +112,22 @@ Provide one canonical management command or application-service operation that:
 4. derives onboarding readiness; and
 5. returns an understandable, structured result for success and failure.
 
+The command or service must support an explicit definition path, equivalent in
+intent to:
+
+```text
+python manage.py bootstrap_project --definition .bridge/project.yaml
+```
+
+The exact command name and option syntax may follow repository conventions,
+but the operation must be explicit, repeatable, testable, and usable without
+manual database editing.
+
+For this Sprint's end-to-end proof, running the operation against the
+repository's own `.bridge/project.yaml` must register `zsambokia/ai-bridge` as
+the first canonical project. This is a data-driven self-bootstrap, not a
+fixture or hard-coded AI Bridge seed.
+
 Repeated execution with the same valid definition must be idempotent: it may
 update the same Registry record but must not create duplicates. Conflicting or
 ambiguous repository identity must be rejected rather than silently creating a
@@ -129,6 +154,10 @@ It is not necessary to copy full stable documents when a stable reference and
 the relevant SHA provide the required deterministic provenance. Project Context
 is runtime data, not static YAML configuration.
 
+The Sprint's first Context must belong to the AI Bridge Registry record created
+from the repository's own Project Definition. Its source commit SHA and source
+references must be observable in implementation evidence.
+
 ### F. Project Context validation and freshness
 
 Project Context validation statuses are exactly:
@@ -150,8 +179,9 @@ This Sprint is the first use of `BOOTSTRAP`. No prior Project Context exists.
 The operation is permitted only after the Registry exists, the Definition is
 valid, onboarding is `READY`, repository and execution branch are unambiguous,
 and this approved Sprint is available. By Sprint completion there must be a
-`READY` Registry record and a `VALID` first Project Context. The next execution
-must use `STANDARD`; `BOOTSTRAP` is not a reusable bypass.
+`READY` Registry record for AI Bridge and a `VALID` first Project Context for
+that same project. The next execution must use `STANDARD`; `BOOTSTRAP` is not a
+reusable bypass.
 
 ## 4. Explicit exclusions
 
@@ -176,18 +206,27 @@ The implementation must provide executable evidence for each scenario:
 
 1. A valid Project Definition loads and validates.
 2. An invalid Project Definition is rejected with an understandable result.
-3. BOOTSTRAP creates the first canonical Registry record and Project Context.
-4. Repeating the bootstrap operation is idempotent.
-5. Duplicate or ambiguous repository identity cannot create duplicate Registry
+3. Running the canonical bootstrap against the repository's own
+   `.bridge/project.yaml` creates the AI Bridge Registry record and its first
+   Project Context.
+4. The created AI Bridge Registry record has repository identity
+   `zsambokia/ai-bridge` and reaches onboarding state `READY` only after every
+   required validation passes.
+5. The first AI Bridge Project Context is `VALID`, records the source commit
+   SHA, and exposes the required source references.
+6. Repeating the bootstrap operation is idempotent and updates or reuses the
+   same AI Bridge Registry record rather than creating a duplicate.
+7. Duplicate or ambiguous repository identity cannot create duplicate Registry
    records.
-6. Onboarding becomes `READY` only after every required validation condition
-   passes.
-7. A Project Context can be created only for a `READY` Project.
-8. The Context contains every required source reference/value listed in this
+8. A Project Context can be created only for a `READY` Project.
+9. The Context contains every required source reference/value listed in this
    specification.
-9. A Context with all valid available sources is `VALID`.
-10. A differing current canonical commit makes the Context `STALE`.
-11. An invalid or unavailable required source makes the Context `INVALID`.
+10. A Context with all valid available sources is `VALID`.
+11. A differing current canonical commit makes the Context `STALE`.
+12. An invalid or unavailable required source makes the Context `INVALID`.
+13. The bootstrap implementation contains no hard-coded AI Bridge-only branch;
+    a second valid test Project Definition can pass through the same canonical
+    loader and bootstrap service.
 
 ## 6. Required implementation evidence
 
@@ -197,7 +236,12 @@ The closure report must prove, with commands and results bound to the final
 - the data model and migration;
 - the bootstrap command or canonical application service;
 - Project Definition validation;
-- created Registry record and first Project Context;
+- the exact self-bootstrap command used for `.bridge/project.yaml`;
+- the created AI Bridge Registry record, including stable identifier,
+  repository identity, and `READY` onboarding state;
+- the created first AI Bridge Project Context, including `VALID` status, source
+  commit SHA, and required source references;
+- proof that a repeated bootstrap did not create a duplicate Registry record;
 - all required tests and acceptance scenarios; and
 - the complete repository Release Gate.
 
@@ -224,5 +268,6 @@ final `main` commit SHA.
 Sprint 003 is ready for Product Owner review only when the canonical Registry,
 onboarding readiness, Project Definition integration, and first validated
 Project Context are implemented and proven according to every acceptance
-scenario and Release Gate above. No excluded capability may be represented as
-implemented.
+scenario and Release Gate above. The proof must show that AI Bridge was
+successfully self-bootstrapped from its own `.bridge/project.yaml`. No excluded
+capability may be represented as implemented.
