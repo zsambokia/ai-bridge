@@ -1,75 +1,42 @@
 # AI Bridge
 
-AI Bridge is a deliberately small [MCP](https://modelcontextprotocol.io/) server. It lets ChatGPT commit a sprint Markdown document to GitHub and then start the Codex CLI with that sprint and the repository's required Markdown context.
+AI Bridge is a minimal Django foundation. It currently exposes one service-health endpoint and establishes the repository conventions needed for the next approved sprint.
 
-It implements only two tools:
+## Requirements and installation
 
-- `write_sprint` creates or updates one Markdown sprint file through GitHub's Contents API. Its inputs are `owner`, `repository`, `branch`, `sprint_file_path`, `markdown`, and `commit_message`; its result includes the repository, branch, file path, and commit SHA.
-- `start_codex` verifies context files in GitHub and starts `codex exec` in a fresh temporary clone. Its inputs are `owner`, `repository`, `ref` (a branch or commit SHA), `sprint_file_path`, optional `context_files`, and `implementation_instruction`.
+Use Python 3.12 or later. Create an isolated environment and install the declared development dependencies:
 
-## Requirements and configuration
-
-- Node.js 20 or newer.
-- Git installed and available on `PATH` (used to clone the requested repository revision).
-- The `codex` CLI installed and authenticated on the machine that runs the MCP server.
-- `GITHUB_TOKEN` set to a token that can read the target repository and write sprint files. The token is also used for the temporary clone created for Codex.
-- An existing target branch.
-
-For default context resolution, copy `.ai-bridge.json.example` to `.ai-bridge.json` **in the target GitHub repository** and keep only its `context_files` array. Every listed path must be an existing UTF-8 Markdown file. Instead, ChatGPT may pass `context_files` explicitly. In either case, the sprint file is appended as the final required context file and every file is checked in GitHub before Codex starts.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install --upgrade pip
+.\.venv\Scripts\python -m pip install -e ".[dev]"
+```
 
 ## Run locally
 
-```bash
-export GITHUB_TOKEN=github_pat_...
-npm start
+```powershell
+.\.venv\Scripts\python manage.py runserver --settings=bridge.settings.local
 ```
 
-The exact MCP server command is `npm start`. The server uses stdio and writes JSON-RPC responses only to stdout.
-
-## Connect to ChatGPT
-
-Add this local MCP server in a ChatGPT client that supports local stdio MCP servers, using the command below and providing `GITHUB_TOKEN` in that client's environment:
+`GET /health/` returns:
 
 ```json
-{
-  "mcpServers": {
-    "ai-bridge": {
-      "command": "npm",
-      "args": ["start"],
-      "cwd": "/path/to/ai-bridge"
-    }
-  }
-}
+{"status":"ok","service":"ai-bridge"}
 ```
 
-After connecting, tool discovery (`tools/list`) returns exactly `write_sprint` and `start_codex`.
+## Verification
 
-## End-to-end example
-
-First ask ChatGPT to call `write_sprint`:
-
-```json
-{
-  "owner": "acme",
-  "repository": "example-app",
-  "branch": "main",
-  "sprint_file_path": "sprints/sprint-001.md",
-  "markdown": "# Sprint 001\n\nImplement the requested change.",
-  "commit_message": "docs: add Sprint 001"
-}
+```powershell
+.\.venv\Scripts\python manage.py check --settings=bridge.settings.local
+.\.venv\Scripts\python -m pytest
+.\.venv\Scripts\python -m ruff check .
+.\.venv\Scripts\python -m ruff format --check .
+.\.venv\Scripts\python -m mypy .
+.\.venv\Scripts\python -m scripts.release_gate
 ```
 
-Then ask it to call `start_codex` with the returned branch and sprint path:
+## Architecture
 
-```json
-{
-  "owner": "acme",
-  "repository": "example-app",
-  "ref": "main",
-  "sprint_file_path": "sprints/sprint-001.md",
-  "context_files": ["AGENTS.md", "docs/architecture.md"],
-  "implementation_instruction": "Implement Sprint 001 completely."
-}
-```
+`bridge` is the Django project package; its settings are split into `base`, `local`, and `test` modules. `core` contains the only current application and the health endpoint. SQLite is the local database configuration, although this foundation intentionally contains no domain models or migrations. `scripts` contains the repeatable release gate.
 
-`start_codex` validates the three ordered files (`AGENTS.md`, `docs/architecture.md`, and the sprint), generates an instruction that requires Codex to read them before changing code, clones the requested GitHub revision into a temporary directory, and returns its process ID with initial status `started`.
+The canonical governance document is [`docs/constitution/BRIDGE_CONSTITUTION.md`](docs/constitution/BRIDGE_CONSTITUTION.md). Current verified repository state is recorded in [`docs/akb/CURRENT_STATE.md`](docs/akb/CURRENT_STATE.md).
