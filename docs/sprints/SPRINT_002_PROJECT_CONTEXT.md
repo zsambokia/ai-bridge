@@ -1,143 +1,186 @@
-# Sprint 002 — Project Context
+# Sprint 002 — Project Context and AKB State Management
 
 **Status:** APPROVED FOR CODEX EXECUTION  
-**Project:** AI Bridge  
-**Repository:** `zsambokia/ai-bridge`  
-**Target branch:** `sprint/002-project-context`  
-**Integration target:** `main`  
+**Project:** resolved from `.bridge/project.yaml` and Project Registry  
+**Repository:** resolved from Project definition  
+**Target branch:** resolved by the Execution Contract  
+**Integration target:** resolved by the Execution Contract  
 **Task type:** FEATURE  
-**Constitution mode:** FOUNDATION  
-**Execution workflow:** `docs/workflows/EVIDENCE_DRIVEN_SPRINT.md`  
-**Evidence path:** `docs/evidence/sprint-002-project-context/CLOSURE_REPORT.md`
+**Execution workflow:** resolved from Project definition  
+**Evidence path:** resolved from Project definition and Sprint identifier
 
 ## 1. Purpose
 
-Implement the smallest reliable Project Context capability that allows AI Bridge to know which Project is selected, load its current operational state, refresh that state from GitHub, detect stale or conflicting context, create evidence snapshots, and publish accepted durable context back to the repository.
+Implement the smallest reliable Project Context and AKB state-management capability for a Project that has already completed Bootstrap / Onboarding.
 
-This sprint establishes Project Context as Bridge's working memory for one selected Project. It is not a project-management platform, workflow engine, dashboard, organization model, or generic knowledge system.
+Sprint 001 is assumed to have established:
 
-The sprint is complete only when Codex implements the capability, executes all mandatory acceptance scenarios, records real outputs, and passes the complete evidence-driven Release Gate.
+- a registered Project;
+- a canonical Project definition;
+- repository identity and integration settings;
+- governance and workflow document paths;
+- a valid onboarding state;
+- the minimum repository structure required for governed execution.
 
-## 2. Binding context
+Sprint 002 must build on that foundation. It must not recreate onboarding, bootstrap, repository registration, or Project-definition discovery.
 
-Read the mandatory context defined by `AGENTS.md` and the execution workflow.
+The outcome is a generic platform capability that can manage the current operational state of any registered Project without project-specific branches in the implementation.
 
-In addition, inspect and use:
+## 2. Business outcome
 
-- `docs/architecture/DJANGO_FOUNDATION.md`;
-- `docs/akb/CURRENT_STATE.md`;
-- the existing Django project, models, settings, commands, tests, and Release Gate implementation;
-- repository conventions established by Sprint 001.
+After this Sprint, the platform must be able to answer reliably:
 
-If any listed file does not exist, assess the repository and use the canonical equivalent without inventing a parallel structure. Record the resolution in the closure report.
+> What Project is selected, where does it currently stand, which repository facts support that answer, does the AKB agree with those facts, and what is the next safe action?
 
-## 3. Business outcome
+For any registered Project, the system must be able to:
 
-After this sprint, Bridge must be able to support this interaction reliably:
+- resolve the selected Project from the Project Registry;
+- load its canonical Project definition;
+- load stored operational context;
+- refresh repository facts through a replaceable repository boundary;
+- read canonical current-state / AKB documents declared by the Project definition;
+- validate whether database state, repository state, and accepted AKB state agree;
+- identify stale, incomplete, conflicted, or unavailable context;
+- create immutable evidence snapshots;
+- explicitly publish accepted durable state back to the repository through a branch / pull-request boundary;
+- return a structured next-action recommendation derived from explicit rules.
 
-```text
-User: Continue the AI Bridge project. Where are we?
+## 3. Binding context
 
-Bridge:
-- resolves the selected Project;
-- loads its stored operational context;
-- refreshes relevant repository facts from GitHub;
-- validates whether stored and repository context agree;
-- returns the current branch, repository state, sprint state, open PR state,
-  last accepted milestone, and next actionable step;
-- records evidence of the resolved state.
-```
+Read the mandatory context defined by `AGENTS.md` and the issued Execution Contract.
 
-The capability must be usable by application services and future MCP or API layers, but this sprint must not implement MCP, external chat orchestration, or a frontend.
+At minimum, the Contract must resolve:
 
-## 4. Architectural decision
+- Project definition path;
+- Constitution path;
+- execution workflow path;
+- approved Sprint path;
+- roadmap path when present;
+- AKB / current-state paths;
+- architecture context paths;
+- repository-wide and Sprint-specific Release Gates;
+- evidence output paths.
+
+The Sprint must not hard-code a Project name, repository name, branch, technology stack, Release Gate command, or AKB path.
+
+## 4. Dependencies and preconditions
+
+Sprint 002 may begin only when all are true:
+
+- the Project exists in the Project Registry;
+- the Project definition is valid;
+- the Project onboarding status is `READY` or equivalent;
+- repository identity is unambiguous;
+- the Project definition declares the canonical AKB / current-state location;
+- the Project definition declares repository-wide Release Gates;
+- the issued Execution Contract passes integrity validation.
+
+If any precondition is missing, Sprint 002 must stop with the appropriate governed blocking state. It must not silently perform Bootstrap / Onboarding work.
+
+## 5. Architectural decision
 
 Use a hybrid persistence model.
 
-### 4.1 Database responsibility
+### 5.1 Operational database responsibility
 
 The database is the operational source of truth for live, structured, frequently changing state, including:
 
-- Project identity and status;
-- repository association;
+- Project Registry identity reference;
 - selected or active Project;
+- repository observations;
 - current branch and commit observations;
-- current sprint and pull request observations;
+- current Sprint and pull-request observations;
 - validation status;
 - refresh timestamps;
-- snapshots and state events.
+- immutable context snapshots;
+- append-only state events;
+- execution-facing structured context.
 
-### 4.2 GitHub responsibility
+### 5.2 Repository responsibility
 
-The repository is the durable, human-readable, reviewable source of truth for accepted knowledge, including:
+The repository is the durable, human-readable, reviewable source of truth for accepted Project knowledge, including:
 
-- Constitution;
-- approved sprint specifications;
+- Constitution and governance documents;
+- approved Sprint specifications;
 - architecture and ADRs;
-- accepted current state;
+- Project roadmap;
+- accepted current-state / AKB documents;
 - closure evidence;
 - material Product Owner decisions.
 
-### 4.3 Prohibited duplication
+### 5.3 Prohibited duplication
 
 Do not build a Git-like version-control system in the database.
 
-Do not create a GitHub commit for every operational context refresh.
+Do not create a repository commit for every operational refresh.
 
-Publishing to GitHub occurs only through an explicit publish operation for accepted durable context.
+Do not store a second independently edited Project definition in Project Context.
 
-## 5. Approved domain model
+Publishing accepted durable context must be explicit.
 
-Implement the smallest coherent model set that satisfies the required behaviour. Expected responsibilities are listed below; exact class names may vary only when repository conventions require it.
+## 6. Project Registry and Project Definition integration
 
-### 5.1 Project
+Project Context must be generic and Project Registry driven.
 
-Required data:
+It must resolve Project-specific values from the Project definition, including:
 
-- stable primary key;
-- unique `slug`;
-- human-readable `name`;
-- optional description;
-- status with at least active and archived states;
-- created and updated timestamps.
+- canonical repository identity;
+- default and integration branches;
+- AKB / current-state paths;
+- roadmap path;
+- architecture roots;
+- Sprint root;
+- evidence root;
+- repository-wide Release Gate commands;
+- repository provider capabilities.
 
-Rules:
+The implementation must not contain code paths such as:
 
-- project slug is unique;
-- archived Projects remain queryable;
-- normal deletion is not part of the public application contract;
-- create and upsert operations must not create duplicates.
+```python
+if project.slug == "some-project":
+    ...
+```
 
-### 5.2 ProjectRepository
+Behaviour differences must come from declared configuration and repository capabilities.
 
-Required data:
+## 7. Approved domain model
 
-- owning Project;
-- repository provider, initially GitHub;
-- repository owner and name, or a canonical full-name representation;
-- default branch;
-- primary-repository marker;
-- created and updated timestamps.
+Implement the smallest coherent model set required by this Sprint. Existing Bootstrap / Onboarding models must be reused rather than duplicated.
 
-Rules:
+### 7.1 Project reference
 
-- one Project may support multiple repositories in the future;
-- this sprint requires exactly one canonical primary repository per Project;
-- the same GitHub repository must not be attached as the primary repository of multiple active Projects without an explicit documented reason;
-- repository identity must be normalized before comparison.
+Use the canonical Project Registry model created by Sprint 001.
 
-### 5.3 ProjectContext
+Sprint 002 must not create a parallel `Project` identity model.
 
-Stores the current operational context for a Project.
+### 7.2 ActiveProjectSelection
+
+Stores the selected Project for the current platform execution scope.
+
+Required responsibilities:
+
+- reference one registered Project;
+- preserve selection timestamp;
+- record selecting actor or execution identity when available;
+- reject Projects that are archived, disabled, or not onboarding-ready.
+
+Use the simplest repository-consistent scope. Do not introduce users, teams, organizations, or tenancy.
+
+### 7.3 ProjectContext
+
+Stores the current operational context for one registered Project.
 
 Required data or equivalent structured representation:
 
 - Project reference;
-- observed current or default branch;
+- Project-definition version or content hash;
+- observed repository identity;
+- observed branch;
 - observed HEAD commit SHA;
-- observed open pull request identifier when applicable;
-- current sprint identifier or path when known;
-- last completed sprint or accepted milestone when known;
+- observed open pull-request identifier when applicable;
+- current Sprint identifier or path when known;
+- last completed Sprint or accepted milestone when known;
+- canonical AKB source paths used;
 - validation status;
 - last refresh timestamp;
 - last validation timestamp;
@@ -153,7 +196,7 @@ CONFLICTED
 UNAVAILABLE
 ```
 
-### 5.4 ProjectContextSnapshot
+### 7.4 ProjectContextSnapshot
 
 Immutable evidence-oriented snapshot of resolved context.
 
@@ -161,27 +204,25 @@ Required data:
 
 - Project reference;
 - capture timestamp;
+- Project-definition version;
 - repository identity;
 - branch;
 - commit SHA;
-- sprint and PR observations;
+- Sprint and pull-request observations;
+- AKB observations;
 - validation status;
 - normalized context payload;
 - source hashes or equivalent source identifiers where practical.
 
 Snapshots must not change after creation.
 
-### 5.5 ProjectStateEvent
+### 7.5 ProjectStateEvent
 
 Append-only audit event for material context operations.
 
 Required event types must include at least:
 
 ```text
-PROJECT_CREATED
-PROJECT_UPDATED
-PROJECT_ARCHIVED
-REPOSITORY_ATTACHED
 ACTIVE_PROJECT_SELECTED
 CONTEXT_REFRESHED
 CONTEXT_VALIDATED
@@ -189,498 +230,498 @@ CONTEXT_SNAPSHOT_CREATED
 CONTEXT_PUBLISHED
 ```
 
-Events must record timestamp, Project, event type, and structured metadata sufficient to understand the change.
+Reuse existing onboarding / registry event infrastructure when available.
 
-## 6. Active Project scope
-
-Bridge must support selecting one active Project for a caller or execution context.
-
-Use the simplest repository-consistent persistence mechanism. In this sprint, an active Project may be stored globally or through a small singleton/application setting model if no authenticated user/session model exists yet.
-
-Do not introduce authentication, multi-user ownership, tenancy, teams, organizations, or permission systems.
-
-The implementation must isolate Projects. Selecting or loading one Project must never merge context from another Project.
-
-## 7. Required application operations
+## 8. Required application operations
 
 Implement these operations as explicit application services. Public names may follow repository conventions, but responsibilities must remain distinct and testable.
 
-### 7.1 Project operations
-
-- `create_project`
-- `get_project`
-- `list_projects`
-- `update_project`
-- `upsert_project`
-- `archive_project`
-
-Required behaviour:
-
-- create rejects conflicting unique identity;
-- upsert resolves by canonical slug or repository identity and never duplicates the same Project;
-- update modifies only declared fields;
-- archive preserves history and removes the Project from default active listings;
-- list supports at least active and archived filtering.
-
-### 7.2 Active Project operations
+### 8.1 Active Project operations
 
 - `select_active_project`
 - `get_active_project`
 
 Required behaviour:
 
-- selecting an archived Project is rejected unless explicitly allowed by an internal administrative option;
+- selection resolves through Project Registry;
+- archived, disabled, or onboarding-incomplete Projects are rejected;
 - selecting a Project records `ACTIVE_PROJECT_SELECTED`;
-- loading context without a resolvable active Project returns a clear domain error rather than silently choosing one.
+- loading context without a resolvable active Project returns a clear domain error;
+- switching Projects must never leak context from the previous Project.
 
-### 7.3 Context operations
+### 8.2 Context operations
 
 - `load_project_context`
 - `refresh_project_context`
 - `validate_project_context`
 - `create_context_snapshot`
+- `compare_context_snapshot`
 - `publish_project_context`
 
 Internal supporting operations may include:
 
-- repository context import;
+- Project-definition loading and validation;
+- repository-context import;
+- AKB parsing;
 - drift detection;
 - event recording;
-- source parsing and normalization.
+- source normalization;
+- next-action resolution.
 
-Do not expose internal persistence helpers as public application operations unless necessary.
+## 9. Repository integration boundary
 
-## 8. GitHub integration boundary
+Implement a replaceable repository-context interface.
 
-This sprint must define and implement a replaceable GitHub repository-context interface.
+The domain and application layers must not depend directly on one provider's HTTP client throughout the codebase.
 
-The domain/application layer must not depend directly on a concrete HTTP client throughout the codebase.
-
-The integration must be capable of resolving at least:
+The boundary must be capable of resolving at least:
 
 - repository availability;
+- canonical repository identity;
 - default branch;
-- branch HEAD SHA;
+- selected branch HEAD SHA;
 - open pull requests relevant to the Project;
-- canonical context files when present;
-- latest relevant merge or accepted state indicators needed by this sprint.
+- canonical AKB / current-state documents declared by Project configuration;
+- approved Sprint documents when required for validation;
+- latest accepted merge or milestone indicators required by this Sprint.
 
-Tests must use deterministic fakes or mocks at the integration boundary. Acceptance scenarios must exercise the real application logic through the same canonical service path.
+GitHub may be the first provider implementation, but the Project Context domain must remain provider-neutral.
 
-Real network access is not required for automated tests. The implementation must not require GitHub credentials to run the local Release Gate.
+Tests must use deterministic fakes or mocks at the integration boundary. Local tests and Release Gates must not require live credentials.
 
-Do not implement OAuth, webhook ingestion, background synchronization, polling infrastructure, GitHub App installation flows, or MCP tools.
+Do not implement OAuth, webhook ingestion, polling, background synchronization, GitHub App installation, MCP tools, or generic connector orchestration.
 
-## 9. Repository context sources
+## 10. AKB and current-state contract
 
-When present, context refresh and validation must inspect the canonical repository documents relevant to current state, including:
+The Project definition must declare one or more canonical AKB / current-state paths.
 
-- `docs/constitution/BRIDGE_CONSTITUTION.md`;
-- `docs/akb/CURRENT_STATE.md`;
-- the active sprint path when known;
-- repository branch, commit, and PR metadata.
+Sprint 002 must support at least one primary current-state document.
 
-The parser must tolerate absent optional files and classify the context honestly as `INCOMPLETE` rather than fabricating values.
+The AKB reader must extract, when present:
 
-The implementation must not use hidden model memory as a source.
+- Project identity;
+- current lifecycle phase;
+- current or next Sprint;
+- last accepted Sprint or milestone;
+- active branch or pull request when documented;
+- known blockers;
+- next approved action;
+- last accepted state timestamp or commit reference.
 
-## 10. Context loading contract
+The parser must tolerate absent optional fields and classify the result honestly as `INCOMPLETE` rather than inventing values.
 
-`load_project_context` must return a structured result that includes at least:
+AKB content must never be treated as automatically superior to repository facts or operational state. Conflicts must be reported explicitly.
+
+## 11. Context loading contract
+
+`load_project_context` must return a structured result containing at least:
 
 ```text
-project identity
+Project identity
+Project-definition version
 repository identity
 active or observed branch
 observed commit SHA
-current sprint when known
-last completed sprint or accepted milestone when known
+current Sprint when known
+last completed Sprint or accepted milestone when known
 open pull request when applicable
+AKB source summary
 validation status
 last refresh time
 source summary
 recommended next action or reason it cannot be derived
 ```
 
-The recommended next action must be derived from explicit state rules, not free-form speculation.
+The next action must come from explicit rules, not free-form speculation.
 
-Examples:
+Minimum rules:
 
-- no active sprint and no open PR after an accepted sprint → ready for sprint planning;
-- active sprint branch and open PR → sprint implementation or review in progress;
-- stale or conflicted context → refresh or Product Owner resolution required;
-- repository unavailable → external input unavailable.
+- onboarding is not ready → onboarding required;
+- no active Sprint and no open pull request after an accepted milestone → ready for Sprint planning;
+- active Sprint branch and open pull request → implementation or review in progress;
+- stale context → refresh required;
+- conflicted context → explicit resolution required;
+- repository unavailable → required external input unavailable;
+- AKB missing required accepted-state fields → AKB update required.
 
-Keep the rule set small and documented.
-
-## 11. Refresh contract
+## 12. Refresh contract
 
 `refresh_project_context` must:
 
-1. resolve the Project and primary repository;
-2. retrieve repository facts through the canonical integration boundary;
-3. parse available canonical context documents;
-4. normalize the observed state;
-5. update the current `ProjectContext` atomically;
-6. record source metadata and refresh time;
-7. record `CONTEXT_REFRESHED`;
-8. return the refreshed structured context.
+1. resolve the registered Project;
+2. load and validate its Project definition;
+3. resolve the primary repository;
+4. retrieve repository facts through the canonical integration boundary;
+5. read configured AKB / current-state documents;
+6. normalize observed state;
+7. update `ProjectContext` atomically;
+8. record source metadata and refresh time;
+9. record `CONTEXT_REFRESHED`;
+10. return the refreshed structured context.
 
 A refresh must not:
 
-- create a GitHub commit;
-- publish documentation;
+- create a repository commit;
+- publish AKB documentation;
 - silently resolve material conflicts;
 - create a snapshot unless explicitly requested;
+- modify Project Registry configuration;
 - modify another Project.
 
-## 12. Validation and drift contract
+## 13. Validation and drift contract
 
-`validate_project_context` must compare stored operational state with currently observed repository state and canonical documents.
+`validate_project_context` must compare:
+
+- Project Registry identity;
+- Project-definition values;
+- stored operational context;
+- currently observed repository facts;
+- canonical AKB / current-state documents.
 
 At minimum, detect:
 
 - stored commit differs from repository branch HEAD → `STALE`;
+- Project definition missing required AKB path → `INCOMPLETE`;
 - required repository or primary repository missing → `INCOMPLETE`;
 - repository cannot be accessed → `UNAVAILABLE`;
-- database current sprint materially disagrees with `CURRENT_STATE.md` → `CONFLICTED`;
+- Project-definition repository identity conflicts with Registry identity → `CONFLICTED`;
+- database current Sprint materially disagrees with AKB → `CONFLICTED`;
+- AKB branch or PR materially disagrees with repository facts → `CONFLICTED`;
 - all required observations agree → `VALID`.
 
 Conflict precedence must be explicit:
 
-- do not silently overwrite one authoritative source with another;
-- return the conflicting fields and values;
-- preserve the last known data;
-- require explicit refresh, publish, or Product Owner decision as appropriate.
+- no source is silently discarded;
+- conflicting fields, values, and sources are returned;
+- last known state is preserved;
+- resolution requires explicit refresh, publish, configuration correction, or Product Owner decision.
 
 Record `CONTEXT_VALIDATED` for every completed validation.
 
-## 13. Snapshot contract
+## 14. Snapshot contract
 
 `create_context_snapshot` must:
 
 - require a resolvable ProjectContext;
 - capture the exact current normalized context;
+- include Project-definition version and AKB source identifiers;
 - store an immutable snapshot;
 - record `CONTEXT_SNAPSHOT_CREATED`;
 - return the snapshot identifier and material captured values.
 
-Provide an application-level comparison helper or equivalent tested behaviour that can identify material differences between a snapshot and current context, including branch, commit, PR, sprint, and validation status changes.
+`compare_context_snapshot` must identify material differences including:
+
+- Project-definition version;
+- repository identity;
+- branch;
+- commit;
+- open pull request;
+- current Sprint;
+- last accepted milestone;
+- AKB state;
+- validation status.
 
 Do not build a generic visual diff system.
 
-## 14. Publish contract
+## 15. Publish contract
 
-`publish_project_context` represents an explicit request to publish accepted durable state to GitHub.
-
-For this sprint, implement the publishing boundary and deterministic behaviour without requiring live GitHub credentials in tests.
+`publish_project_context` represents an explicit request to publish accepted durable state to the configured AKB / current-state path.
 
 Publishing must:
 
 1. require context status `VALID` unless an explicit internal override is documented and tested;
-2. render an approved current-state document from structured context;
-3. target the canonical current-state path, normally `docs/akb/CURRENT_STATE.md`;
-4. use a dedicated branch and pull-request-oriented repository operation rather than writing directly to `main`;
-5. return the planned or completed branch, commit, changed path, and pull request metadata;
-6. record `CONTEXT_PUBLISHED` only after the publishing boundary reports success.
+2. render the configured current-state document from structured context;
+3. target the canonical AKB path declared by the Project definition;
+4. use a dedicated branch and pull-request-oriented repository operation;
+5. never write directly to the integration target;
+6. return branch, commit, changed path, and pull-request metadata;
+7. record `CONTEXT_PUBLISHED` only after the repository boundary reports success.
 
-The rendering logic and application orchestration must be fully tested.
+Rendering and orchestration must be fully tested.
 
-A real GitHub write is not required by the local Release Gate, but the integration contract must be concrete enough for the next GitHub service sprint to implement without changing Project Context domain behaviour.
+Live repository writes are not required by local Release Gates, but the publishing contract must be concrete and replaceable.
 
-## 15. Explicit exclusions
+## 16. Explicit exclusions
 
 Do not implement:
 
+- Project Bootstrap / Onboarding;
+- Project Registry creation or repository registration;
+- creation of `.bridge/project.yaml`;
 - frontend or dashboard;
-- REST API or GraphQL API unless a minimal internal endpoint already exists and is necessary for repository conventions;
+- public REST or GraphQL API unless required by established repository conventions;
 - MCP server or MCP tools;
 - ChatGPT conversation memory;
-- authentication, authorization, users, teams, organizations, or tenancy;
+- authentication, authorization, teams, organizations, or tenancy;
 - workflow engine;
-- task, issue, backlog, roadmap, goal, or sprint-management domain;
-- background jobs, Celery, schedulers, or polling;
+- task, issue, backlog, goal, or roadmap-management domain;
+- background jobs, schedulers, or polling;
 - webhook processing;
-- GitHub OAuth or GitHub App setup;
-- generic connector framework;
+- repository-provider OAuth or App setup;
 - deployment infrastructure;
 - semantic search, embeddings, or vector database;
-- automatic merge or direct writes to `main`;
+- automatic merge or direct writes to an integration branch;
 - database-level Git emulation;
-- deletion of Projects with history;
-- speculative multi-provider support beyond a small provider field and replaceable interface.
+- speculative provider implementations beyond the replaceable boundary;
+- Handoff Generator implementation.
 
-## 16. Required automated tests
+## 17. Required automated tests
 
 Codex must create comprehensive tests covering at least:
 
 ```text
-test_create_project
-test_project_slug_is_unique
-test_upsert_project_creates_when_missing
-test_upsert_project_updates_without_duplicate
-test_archive_project_preserves_history
-test_select_active_project
-test_archived_project_cannot_be_selected
+test_select_active_registered_project
+test_onboarding_incomplete_project_cannot_be_selected
 test_get_active_project_without_selection_fails_clearly
 test_project_context_isolated_between_projects
-test_refresh_context_from_github_boundary
+test_project_definition_is_loaded_from_registry_configuration
+test_refresh_context_from_repository_boundary
+test_refresh_reads_configured_akb_path
 test_refresh_does_not_publish_or_snapshot
 test_validate_valid_context
 test_detect_stale_commit
-test_detect_incomplete_context
+test_detect_incomplete_project_definition
 test_detect_unavailable_repository
-test_detect_database_github_sprint_conflict
+test_detect_registry_definition_repository_conflict
+test_detect_database_akb_sprint_conflict
+test_detect_repository_akb_branch_conflict
 test_conflict_is_not_silently_resolved
 test_create_immutable_context_snapshot
 test_compare_snapshot_with_current_context
 test_publish_requires_valid_context
-test_publish_renders_current_state
+test_publish_renders_configured_current_state
 test_publish_uses_branch_and_pull_request_boundary
 test_project_state_events_are_recorded
+test_same_services_support_multiple_project_definitions
 ```
 
 Test names may differ, but every behaviour must be proven.
 
-Tests must verify persisted state, returned contracts, event records, and absence of prohibited side effects.
+## 18. Mandatory acceptance scenarios
 
-## 17. Mandatory acceptance scenarios
+Codex must implement a repository-native executable acceptance suite or management command that runs these scenarios through canonical services.
 
-Codex must implement a repository-native executable acceptance suite or management command that runs the following scenarios through canonical application services.
+### Scenario A — Select an onboarded Project
 
-The suite must create isolated test data, execute each scenario, print or persist structured actual outputs, and fail with a non-zero exit code when any scenario fails.
+Given a registered Project with onboarding status ready and a valid Project definition:
 
-### Scenario A — Create Project and attach repository
+Expected:
 
-Input:
+- the Project can be selected;
+- selection is recorded;
+- the Project definition is resolved;
+- no Project-specific code path is used.
+
+### Scenario B — Reject incomplete onboarding
+
+Given a registered Project whose onboarding is incomplete:
+
+Expected:
+
+- active selection or context refresh is rejected;
+- the error identifies onboarding as the missing prerequisite;
+- Sprint 002 does not create missing onboarding artifacts.
+
+### Scenario C — Load refreshed context
+
+Use deterministic repository observations representing:
 
 ```text
-name: AI Bridge
-slug: ai-bridge
-repository: zsambokia/ai-bridge
-default branch: main
-```
-
-Expected:
-
-- one active Project exists;
-- one primary repository is attached;
-- expected creation and attachment events exist;
-- returned identity is canonical.
-
-### Scenario B — Repeated upsert does not duplicate
-
-Execute the same repository upsert twice.
-
-Expected:
-
-- still exactly one Project;
-- still exactly one primary repository;
-- declared mutable fields are updated;
-- no duplicate identity exists.
-
-### Scenario C — Select and resolve active Project
-
-Select AI Bridge and retrieve the active Project without passing its identifier again.
-
-Expected:
-
-- active Project is AI Bridge;
-- selection event exists;
-- no unrelated Project is selected.
-
-### Scenario D — Load refreshed context
-
-Use deterministic GitHub observations representing:
-
-```text
-repository: zsambokia/ai-bridge
-branch: main
-open PR: none
-last completed sprint: Sprint 001
-current sprint: none
 repository available: true
+branch: integration branch
+open pull request: none
+last accepted Sprint: previous Sprint
+current Sprint: none
+AKB agrees with repository facts
 ```
 
 Expected:
 
-- context refresh persists the observations;
+- refresh persists observations;
 - validation is `VALID`;
-- load returns the expected structured state;
-- recommended next action is ready for Sprint 002 planning or equivalent documented rule.
+- load returns structured state;
+- next action indicates Sprint planning or equivalent explicit rule.
 
-### Scenario E — Detect stale context and repair by refresh
+### Scenario D — Detect stale commit and repair
 
-Persist an older commit SHA, then return a newer GitHub branch HEAD.
+Persist an older commit SHA, then return a newer repository HEAD.
 
 Expected:
 
 - validation becomes `STALE`;
 - mismatch includes stored and observed SHAs;
-- refresh updates the stored SHA;
+- refresh updates stored state;
 - revalidation becomes `VALID`.
 
-### Scenario F — Detect DB and repository conflict
+### Scenario E — Detect Registry / Project-definition conflict
 
-Represent database current sprint as Sprint 002 and `CURRENT_STATE.md` as Sprint 003.
+Represent different repository identities in Registry and Project definition.
+
+Expected:
+
+- validation becomes `CONFLICTED`;
+- both identities and sources are returned;
+- neither source is silently overwritten.
+
+### Scenario F — Detect database / AKB Sprint conflict
+
+Represent one current Sprint in operational state and a different Sprint in AKB.
 
 Expected:
 
 - validation becomes `CONFLICTED`;
 - both values and sources are returned;
-- neither value is silently discarded or overwritten;
 - a clear resolution-required result is produced.
 
-### Scenario G — Snapshot and compare
+### Scenario G — Detect repository / AKB branch conflict
 
-Create a snapshot on `main` with no open PR. Then refresh current context to a sprint branch with an open PR.
+Represent one branch and pull-request state in repository facts and another in AKB.
+
+Expected:
+
+- validation becomes `CONFLICTED`;
+- actual repository observations remain available;
+- AKB is not silently rewritten.
+
+### Scenario H — Snapshot and compare
+
+Create a snapshot with no active Sprint or pull request. Then refresh to a Sprint branch with an open pull request.
 
 Expected comparison includes:
 
 ```text
-branch: main -> sprint/002-project-context
+branch: previous -> current
 open PR: none -> present
-current sprint: none -> Sprint 002
+current Sprint: none -> active Sprint
 ```
 
 The original snapshot remains unchanged.
 
-### Scenario H — Publish accepted context
+### Scenario I — Publish accepted AKB state
 
-Use a `VALID` context and execute publish through a deterministic fake repository publisher.
+Use a `VALID` context and a deterministic fake repository publisher.
 
 Expected:
 
-- rendered `CURRENT_STATE.md` content reflects structured context;
-- target path is canonical;
+- rendered content reflects structured context;
+- target path comes from Project definition;
 - a dedicated branch is requested;
 - pull-request-oriented metadata is returned;
-- `CONTEXT_PUBLISHED` is recorded only after reported success.
+- `CONTEXT_PUBLISHED` is recorded only after success.
 
-### Scenario I — Project isolation
+### Scenario J — Multi-Project isolation
 
-Create AI Bridge and SuperBI with different repositories and context.
-
-Switch active Project between them.
+Create two registered Projects with different Project definitions, repositories, AKB paths, and context.
 
 Expected:
 
-- each load returns only the selected Project's repository, branch, sprint, PR, and snapshot data;
-- no state leaks between Projects.
+- the same generic services handle both;
+- each load returns only the selected Project's data;
+- no state or configuration leaks between Projects;
+- no Project-specific conditional implementation exists.
 
-### Scenario J — Archive behaviour
+## 19. Acceptance evidence
 
-Archive SuperBI.
-
-Expected:
-
-- it remains queryable through archived filtering;
-- it disappears from the default active list;
-- it cannot be selected as active;
-- its events and snapshots remain intact.
-
-## 18. Acceptance evidence format
-
-The acceptance suite must generate a machine-readable report under:
-
-```text
-docs/evidence/sprint-002-project-context/acceptance-results.json
-```
-
-or generate it into a temporary build directory and copy the final deterministic report to that path during sprint closure.
+The acceptance suite must generate machine-readable evidence under the Sprint-specific evidence root resolved from the Project definition.
 
 The report must include for every scenario:
 
 - scenario identifier;
-- execution timestamp or deterministic run identifier;
+- run identifier;
 - relevant inputs;
 - expected outcome summary;
 - actual outcome summary;
 - PASS or FAIL;
 - relevant created record identifiers or normalized values.
 
-Do not store credentials, tokens, secrets, or volatile environment-specific absolute paths.
+Do not store credentials, tokens, secrets, or environment-specific absolute paths.
 
-## 19. Sprint-specific Release Gate additions
+## 20. Sprint-specific Release Gate additions
 
-In addition to the repository-wide Release Gate and the minimum contract in `EVIDENCE_DRIVEN_SPRINT.md`, Sprint 002 must prove:
+In addition to repository-wide Release Gates, Sprint 002 must prove:
 
 ```text
-Project domain migrations                           PASS
-Project operation tests                             PASS
-Active Project tests                                PASS
-GitHub boundary tests                               PASS
+Project Registry integration tests                  PASS
+Active Project selection tests                      PASS
+Project-definition loading and drift tests          PASS
+Repository boundary tests                           PASS
+AKB parsing and normalization tests                  PASS
 Context refresh and load tests                      PASS
-Validation and drift tests                          PASS
-Snapshot immutability and comparison tests          PASS
-Publish orchestration and rendering tests           PASS
-Project isolation tests                             PASS
-Executable acceptance scenarios A-J                 PASS
-Acceptance results JSON generated                   PASS
-Closure report generated                            PASS
-Evidence paths and final state consistent            PASS
+Validation and conflict tests                        PASS
+Snapshot immutability and comparison tests           PASS
+Publish orchestration and rendering tests            PASS
+Multi-Project isolation tests                        PASS
+Executable acceptance scenarios A-J                  PASS
+Machine-readable acceptance evidence generated       PASS
+Closure report generated                             PASS
+Evidence paths and final state consistent             PASS
 ```
 
-The canonical complete backend Release Gate command must execute the full test suite and the Sprint 002 acceptance suite in one reproducible invocation, directly or through a composed repository-native command.
+Codex must repair and rerun until the complete Release Gate passes.
 
-Codex must repair and rerun until the complete command passes.
-
-## 20. Required documentation
+## 21. Required documentation
 
 Create or update as required by the implementation:
 
-- `README.md` — commands for migrations, tests, acceptance suite, and complete Release Gate;
-- `docs/architecture/PROJECT_CONTEXT.md` — hybrid persistence decision, domain responsibilities, service boundaries, validation states, and explicit exclusions;
-- `docs/akb/CURRENT_STATE.md` — exact state after Sprint 002 implementation;
-- `docs/evidence/sprint-002-project-context/CLOSURE_REPORT.md`;
-- acceptance evidence at the required path;
+- repository README with commands for tests, acceptance suite, and complete Release Gate;
+- Project Context architecture documentation;
+- AKB / current-state schema and publishing rules;
+- canonical current-state document declared by the Project definition;
+- Sprint closure report;
+- machine-readable acceptance evidence;
 - any existing Release Gate documentation affected by the change.
 
-Documentation must not describe MCP, frontend, live GitHub publishing, or other excluded capabilities as implemented.
+Documentation must not describe Bootstrap / Onboarding, Handoff Generator, MCP, frontend, live repository publishing, or other excluded capabilities as implemented.
 
-## 21. Required closure report content
+## 22. Required closure report content
 
-The closure report required by the execution workflow must additionally include:
+The closure report must include:
 
 - final model and migration summary;
-- public application operation inventory;
-- GitHub integration boundary description;
-- context state and precedence rules;
-- output for every acceptance scenario A-J;
-- path and integrity summary for `acceptance-results.json`;
+- reused Sprint 001 / onboarding components;
+- public operation inventory;
+- Project Registry and Project-definition integration description;
+- repository boundary description;
+- AKB parsing, validation, and publishing rules;
+- context-state and precedence rules;
+- output for every acceptance scenario;
 - exact complete Release Gate command and result;
-- proof that Project isolation passed;
+- proof that two differently configured Projects use the same services;
 - proof that refresh did not publish automatically;
 - proof that conflicts were not silently resolved;
 - final branch and commit SHA.
 
-## 22. Acceptance criteria
+## 23. Acceptance criteria
 
 Sprint 002 is technically ready only when all are true:
 
-- the approved domain models and migrations exist and are minimal;
-- all required application operations work through one canonical path;
-- active Project selection works without introducing users or tenancy;
-- Project data and context are isolated;
-- context can be refreshed through a replaceable GitHub boundary;
-- context can be loaded as a structured result;
+- Sprint 001 onboarding components are reused;
+- no parallel Project Registry or Project identity model is introduced;
+- all Project-specific values are resolved from configuration and Execution Contract;
+- Project selection works without introducing users or tenancy;
+- multiple Projects remain isolated;
+- context can be refreshed through a replaceable repository boundary;
+- configured AKB paths are read and normalized;
+- structured context can be loaded;
 - `VALID`, `STALE`, `INCOMPLETE`, `CONFLICTED`, and `UNAVAILABLE` are correctly produced;
 - stale state can be repaired through refresh;
-- material conflicts are reported and never silently resolved;
+- Registry, Project definition, repository facts, and AKB conflicts are explicit;
+- conflicts are never silently resolved;
 - immutable snapshots can be created and compared;
-- explicit publishing renders accepted current state and uses a branch/PR boundary;
-- operational refresh never writes to GitHub;
+- explicit publishing renders accepted current state to the configured AKB path;
+- operational refresh never writes to the repository;
 - all required state events are recorded;
+- the same implementation handles at least two differently configured Projects;
 - all automated tests pass;
-- acceptance scenarios A-J execute and pass;
-- acceptance evidence is repository-versioned;
-- the complete backend Release Gate passes on the exact final state;
-- architecture, README, AKB, and evidence match the implementation;
+- all acceptance scenarios pass;
+- evidence is repository-versioned at the resolved path;
+- the complete Release Gate passes on the exact final state;
+- documentation and AKB match the implementation;
 - no excluded feature or speculative abstraction was added;
 - final evidence is bound to the final branch and commit.
 
-## 23. Allowed terminal states
+## 24. Allowed terminal states
 
-Use only the terminal states declared by `AGENTS.md` and `docs/workflows/EVIDENCE_DRIVEN_SPRINT.md`.
+Use only the terminal states declared by `AGENTS.md` and the execution workflow.
 
 Ordinary technical failures are repair work and are not valid blockers.
