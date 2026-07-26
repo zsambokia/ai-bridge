@@ -1,4 +1,4 @@
-# Bridge Constitution v1.1
+# Bridge Constitution v1.2
 
 **Status:** CANONICAL DRAFT  
 **Owner:** Product Owner  
@@ -208,6 +208,32 @@ When multiple technically valid solutions exist and none changes product meaning
 
 The Product Owner is not technical support for Codex.
 
+## 7.1 Product Owner intervention protocol
+
+A request for Product Owner intervention is valid only when Codex records all of the following:
+
+1. the exact unresolved decision or unavailable external input;
+2. why it is outside Codex's technical authority;
+3. which constitutional reserved-decision category applies;
+4. what repository assessment, diagnosis, repairs, alternatives, and reruns were already attempted;
+5. the smallest concrete Product Owner response or external action required;
+6. the exact safe continuation point after that response is supplied.
+
+Codex must not ask the Product Owner:
+
+- how to fix a failing test, migration, build, lint, type, dependency, configuration, browser, deployment script, or evidence generator;
+- which technically equivalent implementation to choose when product behaviour is unchanged;
+- to run a command merely because Codex did not yet diagnose the failure, when the command is available within Codex's authorized environment;
+- to approve routine repair work already authorized by the active Sprint and Execution Contract;
+- to interpret logs or produce technical debugging instructions;
+- to manually edit canonical lifecycle or evidence records to bypass an implementation defect.
+
+When a failure appears external, Codex must first prove the boundary. A generic error message, missing local environment variable, or unverified assumption is not sufficient evidence of an external blocker.
+
+Where an external operator action is genuinely required, Codex must provide an exact, minimal, safe runbook and then continue automatically from the resulting state without requesting the Product Owner to repeat prior technical analysis.
+
+Product Owner silence is never authorization for destructive, production-risk, legal, financial, privacy, contractual, or brand-impacting action.
+
 ---
 
 # Article VIII — Main-only Sprint and Repository Governance
@@ -395,122 +421,60 @@ IMPLEMENT OR REPAIR
 At the end of every task, Codex must assess whether the task changed:
 
 - architecture;
-- domain model;
-- APIs or contracts;
+- public interfaces;
 - workflows;
 - configuration;
-- operational behaviour;
-- support or deployment procedures;
-- business or technical decisions;
-- known limitations;
-- tests and release gates;
-- developer instructions;
-- current project state.
+- operations;
+- deployment;
+- release gates;
+- current state;
+- accepted capabilities;
+- next safe action.
 
-All affected canonical documents must be updated automatically within the approved scope.
-
-The AKB update must record at minimum:
-
-- what changed;
-- why it changed;
-- the current canonical behaviour;
-- affected components and contracts;
-- relevant decisions and limitations;
-- validation and evidence references;
-- any exact next action that remains.
-
-A task must not be reported READY while code, architecture, AKB, or operational documentation contradict one another.
-
-Every terminal sprint state must produce a real documentation commit when publication is authorized. When publication is genuinely blocked, Codex must prepare a complete commit-ready package and identify the exact blocker. It must never claim a commit that did not occur.
+Every affected canonical document must be updated in the same sprint.
 
 ---
 
-# Article XIV — Honest Terminal States
+# Article XIV — No Fake Success
 
-Every sprint must end with one honest class of result.
+Bridge and Codex must not report success merely because:
 
-## Technical readiness
+- code was written;
+- a commit exists;
+- a push succeeded;
+- a pull request exists;
+- a local subset of tests passed;
+- a UI displays the expected state;
+- a tool is discoverable but cannot execute;
+- a migration file exists but is not applied where runtime acceptance requires it;
+- a planned external validation has not actually run.
 
-```text
-PASS — READY FOR PRODUCT OWNER REVIEW
-```
-
-This requires:
-
-- approved scope completed;
-- all required release gates executed and passed on the exact final state;
-- AKB and documentation synchronized;
-- evidence preserved;
-- repository and publication status reported truthfully.
-
-## Legitimate block
-
-```text
-BLOCKED — BUSINESS DECISION REQUIRED
-```
-
-or:
-
-```text
-BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE
-```
-
-A blocked result must state:
-
-- the exact blocked boundary;
-- the decision or input required;
-- why Codex cannot resolve it lawfully or technically;
-- available options and consequences;
-- the recommended default;
-- evidence and work safely completed so far;
-- the exact next lawful action.
-
-A progress summary, partial implementation, unexecuted gate list, stale documentation, or known technical failure is not a valid closure result.
+Every closure statement must distinguish implementation, deployment, runtime validation, technical PASS, and Product Owner acceptance.
 
 ---
 
-# Article XV — Additive Constitutional Evolution
+# Article XV — Additive Recovery and Lifecycle Integrity
 
-This Constitution changes only through an explicit, versioned amendment approved by the Product Owner.
+Completed, revoked, superseded, failed, or blocked execution records are historical facts.
 
-Each amendment must record:
+They must not be reopened, silently rewritten, or manually changed to create a later PASS.
 
-- changed articles or clauses;
-- reason and originating evidence;
-- compatibility and migration effect;
-- approval;
-- effective repository baseline or date.
+A later repair or recovery must:
 
-Existing sprint evidence remains governed by the Constitution version declared for that execution.
+- use a new authorized execution record or lifecycle amendment supported by the canonical model;
+- reference the original Sprint, contract, evidence, and terminal state;
+- preserve the earlier result;
+- create fresh evidence from the repaired final state;
+- close independently through the canonical lifecycle.
 
-New executions must use the latest approved canonical Constitution unless the Product Owner explicitly binds another version.
-
-## Amendment 1 - Main-only development mode
-
-- **Changed article:** Article VIII.
-- **Reason and evidence:** Product Owner consolidation decision following the accepted Sprint 001 and Sprint 002 preparation work.
-- **Compatibility effect:** During development and pre-production, the canonical integration and execution branch is `main`; branch- and pull-request-only rules are superseded for new executions.
-- **Approval:** Product Owner.
-- **Effective baseline:** `6647c9f757b5085c393eba87efae3d0af74183a5`.
+Direct database edits that bypass lifecycle services are forbidden except under an explicitly approved disaster-recovery procedure with separate immutable evidence.
 
 ---
 
-# Article XVI — Primary Success Criterion
+# Article XVI — Constitutional Change
 
-Bridge succeeds when it can repeatedly execute a complete real-world loop for a selected Project:
+This Constitution may be changed only by an explicit Product Owner decision committed to the canonical repository.
 
-```text
-CUSTOMER OR OWNER REQUEST
-→ CORRECT PROJECT AND CONTEXT
-→ ASSESSMENT
-→ APPROVED SPRINT
-→ CODEX IMPLEMENTATION
-→ SELF-HEALING TECHNICAL EXECUTION
-→ BACKEND AND FRONTEND RELEASE GATES
-→ AKB AND DOCUMENTATION UPDATE
-→ REAL EVIDENCE
-→ PASS — READY FOR PRODUCT OWNER REVIEW
-→ RELEASE / DEPLOYMENT / CUSTOMER RESPONSE
-```
+A Sprint may propose a constitutional amendment, but Codex may not weaken constitutional rules on its own.
 
-The first credible proof must be a real Project lifecycle completed without parallel implementations, fabricated evidence, hidden manual technical rescue, or stale project knowledge.
+Every amendment must preserve the historical repository record and state why the change was necessary.
