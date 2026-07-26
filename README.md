@@ -1,7 +1,7 @@
 # AI Bridge
 
 AI Bridge is a minimal Django foundation with a health endpoint and a lightweight
-MCP execution-context transport.
+MCP execution-context and immutable execution-contract transport.
 
 ## Requirements and installation
 
@@ -26,7 +26,8 @@ python -m venv .venv
 ```
 
 `POST /mcp/` accepts a JSON object with `operation` and `payload`. It exposes
-registered Project resolution and Execution Context operations; see
+registered Project resolution, Execution Context, and Execution Contract
+operations; see
 [`docs/architecture/MCP_EXECUTION_CONTEXT.md`](docs/architecture/MCP_EXECUTION_CONTEXT.md).
 
 ## Verification
@@ -42,7 +43,7 @@ registered Project resolution and Execution Context operations; see
 
 ## Architecture
 
-`bridge` is the Django project package; its settings are split into `base`, `local`, and `test` modules. `core` contains the health endpoint. `projects` contains the canonical runtime Project Registry, onboarding readiness, Project Definition loader, `bootstrap_project` command, Project Context domain, durable resolution continuations, and the Execution Context generator. SQLite is the local database configuration and includes the `projects` migrations. `scripts` contains the repeatable release gate.
+`bridge` is the Django project package; its settings are split into `base`, `local`, and `test` modules. `core` contains the health endpoint. `projects` contains the canonical runtime Project Registry, onboarding readiness, Project Definition loader, `bootstrap_project` command, Project Context domain, durable resolution continuations, Execution Context builder, and immutable Execution Contract generator. SQLite is the local database configuration and includes the `projects` migrations. `scripts` contains the repeatable release gate.
 
 To bootstrap a repository from its static Project Definition, supply the exact approved Sprint path:
 

@@ -31,6 +31,10 @@ def contract_project(
     monkeypatch.setattr("projects.services._head_sha", lambda root: "a" * 40)
     monkeypatch.setattr("projects.contracts._head_sha", lambda root: "a" * 40)
     monkeypatch.setattr(
+        "projects.contracts._repository_identity",
+        lambda root: "example/generic-project",
+    )
+    monkeypatch.setattr(
         "projects.contracts._baseline_exists", lambda root, baseline: True
     )
     assert bootstrap_project(definition, "docs/sprints/SPRINT_003.md", tmp_path).success
@@ -81,6 +85,28 @@ def test_contract_rejects_missing_or_unapproved_sprint(
         generate_execution_contract(
             project, "docs/sprints/unapproved.md", "BUGFIX", "x", root
         )
+
+
+@pytest.mark.django_db
+def test_contract_rejects_repository_mismatch_and_missing_baseline(
+    contract_project: tuple[Path, Project], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, project = contract_project
+    monkeypatch.setattr(
+        "projects.contracts._repository_identity", lambda root: "other/repository"
+    )
+    with pytest.raises(ValueError, match="REPOSITORY_IDENTITY_MISMATCH"):
+        _draft(root, project)
+
+    monkeypatch.setattr(
+        "projects.contracts._repository_identity",
+        lambda root: "example/generic-project",
+    )
+    monkeypatch.setattr(
+        "projects.contracts._baseline_exists", lambda root, baseline: False
+    )
+    with pytest.raises(ValueError, match="BASELINE_COMMIT_NOT_FOUND"):
+        _draft(root, project)
 
 
 @pytest.mark.django_db

@@ -15,8 +15,11 @@ Project Registry + Project Context + .bridge/project.yaml + approved Sprint
 ```
 
 `POST /mcp/` is the small JSON transport adapter. `list_operations` exposes
-the registered operations; the current operation names are `resolve_project`,
-`continue_project_resolution`, and `generate_execution_context`.
+the registered operations. Alongside Project resolution and
+`generate_execution_context`, it exposes the contract lifecycle operations
+`generate_execution_contract`, `validate_execution_contract`,
+`issue_execution_contract`, `get_execution_contract`, and
+`render_execution_handoff`.
 
 `resolve_project` only searches active, ready Registry records. A single match
 returns `PROJECT_RESOLVED`; multiple matches return `USER_INPUT_REQUIRED` with
@@ -33,3 +36,9 @@ and branch, Context source commit as the exact baseline, binding governance
 paths, release gates, deterministic evidence root, allowed terminal states,
 and an execution ID. No value comes from chat memory or an inferred active
 project/sprint.
+
+`ExecutionContract` is the durable canonical handoff record. Generation resolves
+the current repository baseline, bindings and hashes; validation re-resolves
+those inputs; issuance makes the payload immutable and rejects evidence-root
+collisions. Human-readable handoff Markdown is rendered only from that stored
+payload, so it cannot drift from the issued contract.

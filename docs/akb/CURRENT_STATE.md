@@ -48,11 +48,17 @@ unique execution identifier. It is the source for the MCP response and Codex
 execution package; Markdown contracts are representations rather than the
 canonical object.
 
+Sprint 005 adds the canonical `ExecutionContract` persistence model and the
+generate, validate, issue, retrieve and render lifecycle through the same MCP
+surface. Issued payloads are immutable, have reproducible SHA-256 hashes, bind
+their governance documents and baseline commit, and render human handoffs only
+from stored data. The generator successfully issued the required Sprint 004
+contract from baseline `14ce5ff7f1c6e5739d7aa83044529e9d6d55b1e7`.
+
 The scope intentionally does not add AKB indexing, vector search, Discovery,
 autonomous planning, or a large user interface.
 
 ## Next approved action
 
-Use the Execution Context Generator as the basis for future contract rendering,
-durable audit records, and agent-specific views after an explicitly approved
-sprint.
+Use the canonical Execution Contract Generator to issue the approved contract
+for the next sprint before its execution begins.

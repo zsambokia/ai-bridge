@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from .execution_context import build_execution_context
 from .models import ExecutionContract, Project
-from .services import _head_sha
+from .services import _head_sha, _repository_identity
 
 
 def _normalized_hash(payload: dict[str, Any]) -> str:
@@ -86,6 +86,8 @@ def _payload_for(
 ) -> dict[str, Any]:
     if not task_type.strip() or not intent.strip():
         raise ValueError("TASK_TYPE_AND_INTENT_REQUIRED")
+    if _repository_identity(repository_root) != project.repository_full_name:
+        raise ValueError("REPOSITORY_IDENTITY_MISMATCH")
     context = build_execution_context(project, approved_sprint_path, repository_root)
     sprint_document = (repository_root / approved_sprint_path).read_text(
         encoding="utf-8"
