@@ -111,5 +111,8 @@ rejected as new authority.
 
 Approved, published scopes generate schema `2.0` execution contracts issued by
 AI Bridge. A provider must consume the exact hash under its identity, cannot
-self-issue or self-authorize, and completion records gates, evidence manifest,
-changed files, result and failure classification.
+self-issue or self-authorize, and receives a durable consumption receipt. The
+Bridge rechecks approval, scope state and exact publication at validation,
+issue, consume and start. Completion accepts only a matching terminal run at
+the checked-out final commit with non-empty gates and evidence manifest;
+Markdown is never an authorization input.

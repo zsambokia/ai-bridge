@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from .models import Project, ProjectContext
-from .scopes import parse_scope_document
+from .models import ExecutableScope, Project, ProjectContext
+from .scopes import approved_scope
 from .services import load_project_definition
 
 
@@ -60,23 +59,13 @@ def build_execution_context(
         or context.repository_full_name != project.repository_full_name
     ):
         raise ValueError("PROJECT_REGISTRY_DEFINITION_CONFLICT")
-    sprint_document = repository_root / approved_sprint_path
-    if not sprint_document.is_file():
-        raise ValueError("SPRINT_NOT_FOUND")
-    sprint_text = sprint_document.read_text(encoding="utf-8")
-    # Canonical front matter is the authority.  The legacy branch is retained
-    # solely to read immutable pre-Sprint-010 repository history.
-    if sprint_text.startswith("---"):
-        record = parse_scope_document(sprint_text, project)
-        if (
-            record["status"] != "APPROVED"
-            or record["execution_authorization"] != "APPROVED_PROVIDER_EXECUTION"
-        ):
-            raise ValueError("SCOPE_NOT_APPROVED")
-    elif not re.search(
-        r"(?:\*\*)?Status:(?:\*\*)?\s*APPROVED FOR CODEX EXECUTION", sprint_text
-    ):
-        raise ValueError("SPRINT_NOT_APPROVED")
+    try:
+        scope = ExecutableScope.objects.get(
+            project=project, published_path=approved_sprint_path
+        )
+    except ExecutableScope.DoesNotExist as exc:
+        raise ValueError("SCOPE_NOT_CANONICAL") from exc
+    approved_scope(scope)
 
     evidence_root = definition.evidence_path_template.format(
         sprint_slug=_sprint_slug(approved_sprint_path)

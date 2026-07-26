@@ -2,12 +2,25 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ai-bridge-work-item/v1",
   "type": "object",
-  "required": ["schema", "scope_kind", "identifier", "project_id", "title", "status", "execution_authorization", "execution_level", "task_type", "intent", "policy", "created_by"],
+  "required": ["schema", "schema_version", "scope_kind", "identifier", "project_id", "title", "status", "execution_authorization", "execution_level", "task_type", "intent", "risk_modifiers", "policy", "approval_reference", "created_by", "created_at", "updated_at", "content_hash"],
   "properties": {
     "schema": {"const": "ai-bridge-work-item/v1"},
     "scope_kind": {"const": "WORK_ITEM"},
     "status": {"enum": ["DRAFT", "PROPOSED", "APPROVED", "ACTIVE", "COMPLETED", "CANCELLED", "SUPERSEDED"]},
     "execution_authorization": {"enum": ["NONE", "APPROVED_PROVIDER_EXECUTION"]},
-    "created_by": {"const": "AI_BRIDGE"}
+    "created_by": {"const": "AI_BRIDGE"},
+    "schema_version": {"const": "1"},
+    "execution_level": {"type": "string", "enum": ["HOTFIX", "BUGFIX", "TASK"]},
+    "identifier": {"type": "string", "pattern": "^bridge:.+:work-item:.+$"},
+    "project_id": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1, "maxLength": 160},
+    "intent": {"type": "string", "minLength": 1},
+    "task_type": {"type": "string", "enum": ["FEATURE", "BUGFIX", "MIGRATION", "RECOVERY", "DOCUMENTATION", "RELEASE", "SELF_DEVELOPMENT", "ONBOARDING", "SECURITY", "CONFIGURATION"]},
+    "risk_modifiers": {"type": "array", "items": {"type": "string"}},
+    "policy": {"type": "object"},
+    "approval_reference": {"type": "string"},
+    "created_at": {"type": "string", "minLength": 1},
+    "updated_at": {"type": "string", "minLength": 1},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
   }
 }

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import shlex
 import shutil
 import subprocess
@@ -292,12 +291,10 @@ def bootstrap_project(
         readiness_errors.append(
             "execution branch is missing or is not a configured branch"
         )
-    sprint_document = repository_root / sprint_path
-    if not sprint_document.is_file() or not re.search(
-        r"(?:\*\*)?Status:(?:\*\*)?\s*APPROVED FOR CODEX EXECUTION",
-        sprint_document.read_text(encoding="utf-8"),
-    ):
-        readiness_errors.append("approved Sprint specification is unavailable")
+    # Bootstrap may reference historical material for Context construction, but
+    # it never derives execution approval from Markdown text.
+    if not (repository_root / sprint_path).is_file():
+        readiness_errors.append("bootstrap reference document is unavailable")
     existing_by_repository = Project.objects.filter(
         repository_full_name=definition.repository_full_name
     ).exclude(project_id=definition.project_id)

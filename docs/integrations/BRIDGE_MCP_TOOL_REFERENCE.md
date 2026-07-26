@@ -10,15 +10,19 @@ raw Django mutation APIs.
 | Discovery | `factory.get_status`, `factory.list_capabilities` | read-only | choose a project tool |
 | Project | `project.list`, `project.resolve`, `project.continue_resolution`, `project.get`, `project.get_context` | read-only / preparatory | inspect context or AKB |
 | Accepted knowledge | `akb.search`, `akb.get_document` | read-only | prepare execution |
-| Preparation | `execution.prepare`, `execution.get_status`, `execution.render_handoff` | preparatory state / read-only | generate a contract |
+| Preparation | `execution.prepare`, `execution.get_status`, `execution.continue`, `execution.render_handoff` | preparatory state / read-only | generate a contract |
 | Lifecycle | `contract.generate`, `contract.validate`, `contract.issue`, `contract.consume`, `contract.complete`, `contract.supersede`, `contract.revoke`, `contract.get_status`, `contract.render_handoff` | preparatory, approval-required, lifecycle mutation | use only returned identifiers |
 | Execution boundary | `execution.request_start`, `execution.cancel` | execution boundary | start or cancel an owned run |
 | Execution observability | `execution.get_run_status`, `execution.list_events`, `execution.evidence_summary` | read-only | monitor the returned execution token |
+| Canonical scope | `scope.classify`, `sprint.propose`, `work_item.propose`, `scope.validate`, `scope.approve`, `scope.publish`, `scope.get`, `scope.contract.generate`, `scope.complete`, `scope.cancel`, `scope.supersede` | canonical planning and lifecycle | bind approval and publish before contract generation |
 
 `project.resolve` returns `PROJECT_RESOLVED`, `USER_INPUT_REQUIRED`, or
 `PROJECT_NOT_FOUND`; never select an ambiguous project silently.
-`execution.prepare` returns `EXECUTION_PREPARED` and cannot issue or consume a
-contract. `execution.request_start` writes the authorization and dispatch audit
+`execution.prepare` accepts a canonical `scope_identifier` only, returns
+`EXECUTION_PREPARED`, and cannot issue or consume a contract. A provider must
+supply its identity, the expected contract hash, baseline, schema version and
+idempotency key to `contract.consume`; the resulting durable receipt is
+required by `execution.request_start`. The start operation writes the authorization and dispatch audit
 record before it launches the configured canonical Codex CLI provider, then
 returns an `execution_token`. A successful response therefore means a provider
 process was started, not merely that a request was queued. `execution.list_events`
@@ -44,4 +48,8 @@ Internal Bridge operations are `scope.classify`, `sprint.propose`,
 validate/approve/publish/get aliases route to the same canonical authority.
 Approval is durable and mandatory before a scope can authorize execution.
 Canonical document validation is available through `python manage.py
-validate_scopes`.
+validate_scopes`. `scope.complete`, `scope.cancel` and `scope.supersede` make
+the scope terminal; no terminal scope can generate, issue, consume or start a
+new contract. `contract.complete` requires final commit, allowed closure state,
+execution result, non-empty gates and evidence manifest, changed files and a
+failure classification from a matching terminal execution run.

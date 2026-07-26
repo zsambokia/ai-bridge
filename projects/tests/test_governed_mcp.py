@@ -9,12 +9,14 @@ from django.utils import timezone
 from projects.governed_mcp import TOOL_SURFACE_VERSION, invoke_public_tool, public_tools
 from projects.models import (
     ExecutionContract,
+    GovernanceApproval,
     McpAuditEvent,
     McpIdempotencyRecord,
     Project,
     ProjectContext,
     ProjectResolutionContinuation,
 )
+from projects.scopes import bind_approval, propose_scope
 
 
 @pytest.mark.django_db
@@ -44,13 +46,19 @@ def test_preparation_is_idempotent_and_audited() -> None:
         definition_path=".bridge/project.yaml",
         onboarding_status=Project.OnboardingStatus.READY,
     )
+    scope = propose_scope(project, "Prepare the governed tool surface.", kind="SPRINT")
+    approval = GovernanceApproval.objects.create(
+        reference="PO-prepare",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="PO",
+    )
+    scope = bind_approval(scope, approval.reference)
+    scope.published_path = "docs/sprints/po-prepare.md"
+    scope.save(update_fields=["published_path"])
     args = {
         "project_id": project.project_id,
-        "intent": "Prepare the governed tool surface.",
-        "execution_level": "SPRINT",
-        "task_type": "FEATURE",
-        "risk_modifiers": ["EXTERNAL_INTEGRATION"],
-        "sprint_path": "docs/sprints/SPRINT_007_GOVERNED_BRIDGE_MCP_TOOL_SURFACE.md",
+        "scope_identifier": scope.identifier,
         "idempotency_key": "prepare-" + str(uuid.uuid4()),
     }
     first = invoke_public_tool("execution.prepare", args)
@@ -90,18 +98,26 @@ def test_project_resolution_context_and_akb_journey() -> None:
         validation_status=ProjectContext.ValidationStatus.VALID,
         source_commit_sha="a" * 40,
     )
+    scope = propose_scope(project, "Read context.", kind="SPRINT")
+    approval = GovernanceApproval.objects.create(
+        reference="PO-context-public",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="PO",
+    )
+    scope = bind_approval(scope, approval.reference)
+    scope.published_path = "docs/sprints/po-context.md"
+    scope.save(update_fields=["published_path"])
     resolved = invoke_public_tool("project.resolve", {"query": "ai-bridge"})
     assert resolved["status"] == "PROJECT_RESOLVED"
     context = invoke_public_tool(
         "project.get_context",
         {
             "project_id": project.project_id,
-            "sprint_path": (
-                "docs/sprints/SPRINT_007_GOVERNED_BRIDGE_MCP_TOOL_SURFACE.md"
-            ),
+            "scope_identifier": scope.identifier,
         },
     )
-    assert context["status"] == "EXECUTION_CONTEXT_GENERATED"
+    assert context["status"] == "SCOPE_RETRIEVED"
     search = invoke_public_tool(
         "akb.search", {"project_id": project.project_id, "query": "MCP"}
     )

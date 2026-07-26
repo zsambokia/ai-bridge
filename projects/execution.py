@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
+    ContractConsumption,
     ExecutionContract,
     ExecutionProgressEvent,
     ExecutionRun,
@@ -136,6 +137,11 @@ def start_run(
     """Persist authorization and ownership before an external start is active."""
     if contract.lifecycle != ExecutionContract.Lifecycle.CONSUMED:
         raise ValueError("CONTRACT_NOT_CONSUMED")
+    if not ContractConsumption.objects.filter(contract=contract).exists():
+        raise ValueError("CONSUMPTION_RECEIPT_REQUIRED")
+    from .contracts import validate_issued_execution_contract
+
+    validate_issued_execution_contract(contract, root)
     execution = contract.payload["execution"]
     if ExecutionRun.objects.filter(
         contract__project=contract.project,
@@ -195,6 +201,64 @@ def start_run(
         provider=run.provider_name,
         execution_id=started.execution_id,
     )
+    contract.lifecycle = ExecutionContract.Lifecycle.RUNNING
+    contract.save(update_fields=["lifecycle"])
+    return run
+
+
+def complete_run(
+    run: ExecutionRun, final_commit_sha: str, completion_data: dict[str, object]
+) -> ExecutionRun:
+    """Record completion only after the provider-owned run has actually run."""
+    if run.lifecycle != ExecutionRun.Lifecycle.RUNNING:
+        raise ValueError("RUN_NOT_RUNNING")
+    required = {
+        "execution_result",
+        "gate_results",
+        "evidence_manifest",
+        "changed_files",
+        "failure_classification",
+    }
+    missing = sorted(required - set(completion_data))
+    if missing:
+        raise ValueError("RUN_COMPLETION_EVIDENCE_REQUIRED:" + ",".join(missing))
+    if (
+        not isinstance(completion_data["execution_result"], str)
+        or not isinstance(completion_data["gate_results"], dict)
+        or not completion_data["gate_results"]
+        or not isinstance(completion_data["evidence_manifest"], dict)
+        or not completion_data["evidence_manifest"]
+        or not isinstance(completion_data["changed_files"], list)
+        or not isinstance(completion_data["failure_classification"], (str, type(None)))
+    ):
+        raise ValueError("RUN_COMPLETION_EVIDENCE_INVALID")
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=run.workspace_identifier,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if head.returncode or head.stdout.strip() != final_commit_sha:
+        raise ValueError("RUN_FINAL_COMMIT_MISMATCH")
+    run.lifecycle = ExecutionRun.Lifecycle.COMPLETED
+    run.current_phase = "COMPLETED"
+    run.final_commit_sha = final_commit_sha
+    run.terminal_state = "PASS — READY FOR PRODUCT OWNER REVIEW"
+    run.completion_data = completion_data
+    run.ended_at = timezone.now()
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "final_commit_sha",
+            "terminal_state",
+            "completion_data",
+            "ended_at",
+            "updated_at",
+        ]
+    )
+    add_event(run, "EXECUTION_COMPLETED", final_commit_sha=final_commit_sha)
     return run
 
 

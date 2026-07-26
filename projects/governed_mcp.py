@@ -10,8 +10,7 @@ from typing import Any
 
 from django.conf import settings
 
-from .contract_policy import resolve_policy
-from .execution import add_event, provider, start_run
+from .execution import add_event, complete_run, provider, start_run
 from .mcp import invoke_operation
 from .models import (
     ExecutableScope,
@@ -25,6 +24,7 @@ from .models import (
     McpIdempotencyRecord,
     Project,
 )
+from .scopes import approved_scope
 
 TOOL_SURFACE_VERSION = "2026-07-26.2"
 READ_ONLY = "READ_ONLY"
@@ -131,16 +131,13 @@ _TOOLS = [
     ),
     _tool(
         "project.get_context",
-        "Get a bounded execution context for a visible project and approved Sprint.",
+        "Get a bounded context for one canonical, approved executable scope.",
         READ_ONLY,
         {
             **_PROJECT,
-            "sprint_path": {
-                "type": "string",
-                "pattern": "^docs/sprints/[A-Za-z0-9_.-]+\\.md$",
-            },
+            "scope_identifier": {"type": "string", "minLength": 1},
         },
-        ["project_id", "sprint_path"],
+        ["project_id", "scope_identifier"],
     ),
     _tool(
         "akb.search",
@@ -170,44 +167,16 @@ _TOOLS = [
     ),
     _tool(
         "execution.prepare",
-        "Create a non-issuing execution preparation for an approved Sprint.",
+        "Create a non-issuing preparation from an approved canonical scope.",
         PREPARATORY_STATE,
         {
             **_PROJECT,
-            "intent": {"type": "string", "minLength": 1, "maxLength": 1000},
-            "execution_level": {
-                "type": "string",
-                "enum": ["HOTFIX", "BUGFIX", "TASK", "SPRINT", "EPIC"],
-            },
-            "task_type": {
-                "type": "string",
-                "enum": [
-                    "FEATURE",
-                    "BUGFIX",
-                    "MIGRATION",
-                    "RECOVERY",
-                    "DOCUMENTATION",
-                    "RELEASE",
-                    "SELF_DEVELOPMENT",
-                    "ONBOARDING",
-                    "SECURITY",
-                    "CONFIGURATION",
-                ],
-            },
-            "risk_modifiers": {"type": "array", "maxItems": 16},
-            "sprint_path": {
-                "type": "string",
-                "pattern": "^docs/sprints/[A-Za-z0-9_.-]+\\.md$",
-            },
+            "scope_identifier": {"type": "string", "minLength": 1},
             **_IDEMPOTENCY,
         },
         [
             "project_id",
-            "intent",
-            "execution_level",
-            "task_type",
-            "risk_modifiers",
-            "sprint_path",
+            "scope_identifier",
             "idempotency_key",
         ],
     ),
@@ -282,51 +251,13 @@ for action, classification in [
     if action == "generate":
         props = {
             **_PROJECT,
-            "sprint_path": {"type": "string"},
-            "intent": {"type": "string", "minLength": 1, "maxLength": 1000},
-            "execution_level": {
-                "type": "string",
-                "enum": ["HOTFIX", "BUGFIX", "TASK", "SPRINT", "EPIC"],
-            },
-            "task_type": {
-                "type": "string",
-                "enum": [
-                    "FEATURE",
-                    "BUGFIX",
-                    "MIGRATION",
-                    "RECOVERY",
-                    "DOCUMENTATION",
-                    "RELEASE",
-                    "SELF_DEVELOPMENT",
-                    "ONBOARDING",
-                    "SECURITY",
-                    "CONFIGURATION",
-                ],
-            },
-            "risk_modifiers": {
-                "type": "array",
-                "maxItems": 16,
-                "items": {
-                    "type": "string",
-                    "enum": [
-                        "AUTHENTICATION_OR_AUTHORIZATION",
-                        "CROSS_REPOSITORY",
-                        "EXTERNAL_INTEGRATION",
-                        "IRREVERSIBLE_OPERATION",
-                        "PUBLIC_API_OR_PROTOCOL",
-                    ],
-                },
-            },
+            "scope_identifier": {"type": "string", "minLength": 1},
             "preparation_token": {"type": "string"},
             **_IDEMPOTENCY,
         }
         required = [
             "project_id",
-            "sprint_path",
-            "intent",
-            "execution_level",
-            "task_type",
-            "risk_modifiers",
+            "scope_identifier",
             "preparation_token",
             "idempotency_key",
         ]
@@ -408,6 +339,24 @@ _TOOLS.extend(
             {"scope_identifier": {"type": "string", "minLength": 1}, **_IDEMPOTENCY},
             ["scope_identifier", "idempotency_key"],
         ),
+        *[
+            _tool(
+                f"scope.{action}",
+                f"Close an executable scope as {status.lower()}.",
+                LIFECYCLE_MUTATION,
+                {
+                    "scope_identifier": {"type": "string", "minLength": 1},
+                    **_APPROVAL,
+                    **_IDEMPOTENCY,
+                },
+                ["scope_identifier", "approval_reference", "idempotency_key"],
+            )
+            for action, status in (
+                ("complete", "COMPLETED"),
+                ("cancel", "CANCELLED"),
+                ("supersede", "SUPERSEDED"),
+            )
+        ],
         _tool(
             "contract.get_status",
             "Read a governed execution contract lifecycle status.",
@@ -427,7 +376,31 @@ _TOOLS.extend(
 # Lifecycle operations are intentionally strict; their durable reasons and
 # replacement bindings are required by the canonical domain service.
 for tool in _TOOLS:
-    if tool["name"] == "contract.complete":
+    if tool["name"] == "contract.consume":
+        tool["inputSchema"] = _schema(
+            {
+                "handoff_identifier": {"type": "string"},
+                "expected_contract_hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                },
+                "provider_identity": {"type": "string", "minLength": 1},
+                "observed_baseline": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+                "schema_version": {"type": "string", "const": "2.0"},
+                **_APPROVAL,
+                **_IDEMPOTENCY,
+            },
+            [
+                "handoff_identifier",
+                "expected_contract_hash",
+                "provider_identity",
+                "observed_baseline",
+                "schema_version",
+                "approval_reference",
+                "idempotency_key",
+            ],
+        )
+    elif tool["name"] == "contract.complete":
         tool["inputSchema"] = _schema(
             {
                 "handoff_identifier": {"type": "string"},
@@ -440,6 +413,11 @@ for tool in _TOOLS:
                         "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE",
                     ],
                 },
+                "execution_result": {"type": "string", "minLength": 1},
+                "gate_results": {"type": "object"},
+                "evidence_manifest": {"type": "object"},
+                "changed_files": {"type": "array"},
+                "failure_classification": {"type": "string"},
                 **_APPROVAL,
                 **_IDEMPOTENCY,
             },
@@ -447,6 +425,11 @@ for tool in _TOOLS:
                 "handoff_identifier",
                 "final_commit_sha",
                 "closure_state",
+                "execution_result",
+                "gate_results",
+                "evidence_manifest",
+                "changed_files",
+                "failure_classification",
                 "approval_reference",
                 "idempotency_key",
             ],
@@ -513,8 +496,36 @@ def _approval(
         raise ValueError(
             "APPROVAL_REQUIRED: provide a durable, non-revoked approval reference."
         )
-    if approval.approved_action not in {action, "ALL_GOVERNED_MUTATIONS"}:
+    if approval.approved_action not in {
+        action,
+        "ALL_GOVERNED_MUTATIONS",
+        "AUTHORIZE_EXECUTION",
+        "ALL",
+    }:
         raise ValueError("APPROVAL_ACTION_NOT_AUTHORIZED")
+    return approval
+
+
+def _approval_for_contract(
+    arguments: dict[str, Any], contract: ExecutionContract, action: str
+) -> GovernanceApproval:
+    approval = _approval(arguments, contract.project, action)
+    declared = contract.payload.get("approved_scope", {})
+    if contract.payload.get("schema_version") != "2.0" or not declared:
+        raise ValueError("CONTRACT_AUTHORITY_REQUIRED")
+    try:
+        scope = ExecutableScope.objects.get(
+            identifier=declared["identifier"], project=contract.project
+        )
+    except (ExecutableScope.DoesNotExist, KeyError) as exc:
+        raise ValueError("APPROVAL_SCOPE_MISMATCH") from exc
+    authorized = approved_scope(scope)
+    if (
+        approval.scope_id != scope.pk
+        or approval.reference != authorized["approval_reference"]
+        or declared.get("approval_reference") != approval.reference
+    ):
+        raise ValueError("APPROVAL_SCOPE_MISMATCH")
     return approval
 
 
@@ -718,14 +729,18 @@ def invoke_public_tool(
             }
         elif name == "project.get_context":
             assert project is not None
+            scope = ExecutableScope.objects.get(
+                identifier=arguments["scope_identifier"], project=project
+            )
+            authorized = approved_scope(scope)
             result = invoke_operation(
-                "generate_execution_context",
+                "scope.get",
                 {
-                    "project_id": project.project_id,
-                    "approved_sprint_path": arguments["sprint_path"],
+                    "scope_identifier": scope.identifier,
                 },
                 Path(settings.BASE_DIR),
             )
+            result["approved_scope"] = authorized
         elif name == "akb.get_document":
             assert project is not None
             ident, content = _akb(project, arguments["document_id"])
@@ -749,41 +764,28 @@ def invoke_public_tool(
             }
         elif name == "execution.prepare":
             assert project is not None
-            policy = resolve_policy(
-                arguments["execution_level"],
-                arguments["task_type"],
-                arguments["risk_modifiers"],
+            scope = ExecutableScope.objects.get(
+                identifier=arguments["scope_identifier"], project=project
             )
-            execution_context = invoke_operation(
-                "generate_execution_context",
-                {
-                    "project_id": project.project_id,
-                    "approved_sprint_path": arguments["sprint_path"],
-                },
-                Path(settings.BASE_DIR),
-            )
+            authorized = approved_scope(scope)
             preparation_data = {
-                "intent": arguments["intent"],
-                "execution_level": arguments["execution_level"],
-                "task_type": arguments["task_type"],
-                "risk_modifiers": arguments["risk_modifiers"],
-                "resolved_policy": policy,
-                "execution_context": execution_context,
+                "scope_identifier": scope.identifier,
+                "approved_scope": authorized,
+                "intent": scope.record["intent"],
+                "resolved_policy": scope.record["policy"],
                 "missing_product_owner_inputs": [],
-                "approved_sprint_required": True,
             }
             prep = ExecutionPreparation.objects.create(
                 project=project,
-                sprint_path=arguments["sprint_path"],
+                sprint_path=authorized["path"],
                 preparation_data=preparation_data,
             )
             result = {
                 "status": "EXECUTION_PREPARED",
                 "preparation_token": str(prep.token),
-                "execution_context": execution_context,
-                "resolved_policy": policy,
+                "approved_scope": authorized,
+                "resolved_policy": scope.record["policy"],
                 "missing_product_owner_inputs": [],
-                "approved_sprint_required": True,
                 "next_allowed_action": "contract.generate",
                 "next_tool": "contract.generate",
             }
@@ -819,7 +821,9 @@ def invoke_public_tool(
                 handoff_identifier=arguments["handoff_identifier"],
                 lifecycle=ExecutionContract.Lifecycle.CONSUMED,
             )
-            approval = _approval(arguments, contract.project, "execution.request_start")
+            approval = _approval_for_contract(
+                arguments, contract, "execution.request_start"
+            )
             req = ExecutionStartRequest.objects.create(
                 contract=contract, approval=approval
             )
@@ -856,8 +860,8 @@ def invoke_public_tool(
         }:
             run = ExecutionRun.objects.get(token=arguments["execution_token"])
             if name == "execution.cancel":
-                approval = _approval(
-                    arguments, run.contract.project, "execution.cancel"
+                approval = _approval_for_contract(
+                    arguments, run.contract, "execution.cancel"
                 )
                 if run.lifecycle not in {
                     ExecutionRun.Lifecycle.RUNNING,
@@ -916,19 +920,29 @@ def invoke_public_tool(
                 "scope.publish": "scope.publish",
                 "scope.get": "scope.get",
                 "scope.contract.generate": "scope.contract.generate",
+                "scope.complete": "scope.complete",
+                "scope.cancel": "scope.cancel",
+                "scope.supersede": "scope.supersede",
             }[name]
             if "scope_identifier" in arguments:
                 scope = ExecutableScope.objects.get(
                     identifier=arguments["scope_identifier"]
                 )
                 project = scope.project
+                if name in {"scope.complete", "scope.cancel", "scope.supersede"}:
+                    approval = _approval(
+                        arguments, project, f"scope.{name.split('.')[-1]}"
+                    )
+                    if approval.scope_id != scope.pk:
+                        raise ValueError("APPROVAL_SCOPE_MISMATCH")
+                    approved_scope(scope)
             result = invoke_operation(
                 operation, dict(arguments), Path(settings.BASE_DIR)
             )
         elif name.startswith("contract."):
             action = name.split(".")[1]
             op = {
-                "generate": "generate_execution_contract",
+                "generate": "scope.contract.generate",
                 "validate": "validate_execution_contract",
                 "issue": "issue_execution_contract",
                 "consume": "consume_execution_contract",
@@ -944,21 +958,42 @@ def invoke_public_tool(
                 prep = ExecutionPreparation.objects.get(
                     token=arguments["preparation_token"], project=project
                 )
-                if prep.sprint_path != arguments["sprint_path"]:
-                    raise ValueError("PREPARATION_SPRINT_MISMATCH")
+                if (
+                    prep.preparation_data.get("scope_identifier")
+                    != arguments["scope_identifier"]
+                ):
+                    raise ValueError("PREPARATION_SCOPE_MISMATCH")
                 payload = {
-                    "project_id": project.project_id,
-                    "approved_sprint_path": arguments["sprint_path"],
-                    "task_type": arguments["task_type"],
-                    "intent": arguments["intent"],
-                    "execution_level": arguments["execution_level"],
-                    "risk_modifiers": arguments["risk_modifiers"],
+                    "scope_identifier": arguments["scope_identifier"],
                 }
             elif action == "complete":
                 payload.update(
                     {
                         "final_commit_sha": arguments["final_commit_sha"],
                         "closure_state": arguments["closure_state"],
+                        "completion_data": {
+                            key: arguments[key]
+                            for key in (
+                                "execution_result",
+                                "gate_results",
+                                "evidence_manifest",
+                                "changed_files",
+                                "failure_classification",
+                            )
+                        },
+                    }
+                )
+            elif action == "consume":
+                payload.update(
+                    {
+                        key: arguments[key]
+                        for key in (
+                            "expected_contract_hash",
+                            "provider_identity",
+                            "observed_baseline",
+                            "schema_version",
+                            "idempotency_key",
+                        )
                     }
                 )
             elif action == "supersede":
@@ -971,7 +1006,14 @@ def invoke_public_tool(
                 contract = ExecutionContract.objects.get(
                     handoff_identifier=payload["handoff_identifier"]
                 )
-                _approval(arguments, contract.project, f"contract.{action}")
+                _approval_for_contract(arguments, contract, f"contract.{action}")
+            if action == "complete":
+                run = ExecutionRun.objects.get(
+                    contract=contract, lifecycle=ExecutionRun.Lifecycle.RUNNING
+                )
+                complete_run(
+                    run, payload["final_commit_sha"], payload["completion_data"]
+                )
             result = invoke_operation(op, payload, Path(settings.BASE_DIR))
         else:
             raise ValueError("TOOL_NOT_IMPLEMENTED")

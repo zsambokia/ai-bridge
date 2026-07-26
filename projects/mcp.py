@@ -13,7 +13,6 @@ from django.utils import timezone
 from .contracts import (
     complete_execution_contract,
     consume_execution_contract,
-    generate_execution_contract,
     generate_scope_execution_contract,
     issue_execution_contract,
     render_execution_handoff,
@@ -31,6 +30,7 @@ from .models import (
 from .scopes import (
     bind_approval,
     classify_request,
+    close_scope,
     propose_scope,
     publish_scope,
     validate_scope_record,
@@ -170,7 +170,6 @@ def continue_project_resolution(
     return {"status": "PROJECT_RESOLVED", "project": _project_view(project)}
 
 
-@mcp_operation("generate_execution_context")
 def generate_execution_context(
     payload: dict[str, Any], repository_root: Path
 ) -> dict[str, Any]:
@@ -209,42 +208,6 @@ def _contract_view(contract: ExecutionContract) -> dict[str, Any]:
     }
 
 
-@mcp_operation("generate_execution_contract")
-def generate_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
-    """Generate a contract draft only from explicit Project and Sprint inputs."""
-    project_id = str(payload.get("project_id", "")).strip()
-    sprint_path = str(payload.get("approved_sprint_path", "")).strip()
-    task_type = str(payload.get("task_type", "")).strip()
-    intent = str(payload.get("intent", "")).strip()
-    if not all((project_id, sprint_path, task_type, intent)):
-        return {
-            "status": "USER_INPUT_REQUIRED",
-            "prompt": (
-                "Provide project_id, approved_sprint_path, task_type, and intent."
-            ),
-        }
-    try:
-        project = Project.objects.get(project_id=project_id)
-        contract = generate_execution_contract(
-            project,
-            sprint_path,
-            task_type,
-            intent,
-            repository_root,
-            str(payload.get("execution_level", "SPRINT")),
-            list(payload.get("risk_modifiers", [])),
-            list(payload.get("child_contract_identifiers", [])),
-        )
-    except Project.DoesNotExist:
-        return {"status": "PROJECT_NOT_FOUND", "error": "Project is not registered."}
-    except ValueError as exc:
-        return {"status": str(exc), "error": "Execution Contract cannot be generated."}
-    return {
-        "status": "EXECUTION_CONTRACT_GENERATED",
-        "execution_contract": _contract_view(contract),
-    }
-
-
 @mcp_operation("validate_execution_contract")
 def validate_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
     """Validate a generated draft before its immutable issuance."""
@@ -268,11 +231,11 @@ def validate_contract(payload: dict[str, Any], repository_root: Path) -> dict[st
 @mcp_operation("issue_execution_contract")
 def issue_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
     """Issue a validated contract; no request input can alter its payload."""
-    del repository_root
     identifier = str(payload.get("handoff_identifier", "")).strip()
     try:
         contract = issue_execution_contract(
-            ExecutionContract.objects.get(handoff_identifier=identifier)
+            ExecutionContract.objects.get(handoff_identifier=identifier),
+            repository_root,
         )
     except ExecutionContract.DoesNotExist:
         return {
@@ -336,10 +299,11 @@ def consume_contract(payload: dict[str, Any], repository_root: Path) -> dict[str
         contract = consume_execution_contract(
             _find_contract(payload),
             repository_root,
-            expected_hash=payload.get("expected_contract_hash"),
-            provider_identity=str(payload.get("provider_identity", "legacy-provider")),
-            observed_baseline=payload.get("observed_baseline"),
-            schema_version=payload.get("schema_version"),
+            expected_hash=str(payload.get("expected_contract_hash", "")),
+            provider_identity=str(payload.get("provider_identity", "")),
+            observed_baseline=str(payload.get("observed_baseline", "")),
+            schema_version=str(payload.get("schema_version", "")),
+            idempotency_key=str(payload.get("idempotency_key", "")),
         )
     except ExecutionContract.DoesNotExist:
         return {
@@ -552,3 +516,31 @@ def scope_contract_generate(
         return {"status": "SCOPE_NOT_FOUND"}
     except ValueError as exc:
         return {"status": str(exc)}
+
+
+def _close_scope(payload: dict[str, Any], status: str) -> dict[str, Any]:
+    try:
+        scope = close_scope(_scope(payload), status)
+        return {"status": f"SCOPE_{status}", "scope": scope.record}
+    except ExecutableScope.DoesNotExist:
+        return {"status": "SCOPE_NOT_FOUND"}
+    except ValueError as exc:
+        return {"status": str(exc)}
+
+
+@mcp_operation("scope.complete")
+def scope_complete(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    return _close_scope(payload, "COMPLETED")
+
+
+@mcp_operation("scope.cancel")
+def scope_cancel(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    return _close_scope(payload, "CANCELLED")
+
+
+@mcp_operation("scope.supersede")
+def scope_supersede(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    return _close_scope(payload, "SUPERSEDED")

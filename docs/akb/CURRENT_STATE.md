@@ -102,10 +102,25 @@ Product Owner decisions remain honest block categories.
 The scope intentionally does not add AKB indexing, vector search, Discovery,
 autonomous planning, or a large user interface.
 
-## Next approved action
+## Sprint 010 canonical authority
 
-Sprint 010 introduces Bridge-managed canonical Sprint and Work Item authority,
-with durable approval binding, canonical projection validation, provider-neutral
-contracts, and recorded consumption. Historical Sprint Markdown remains
-readable only. Run the Sprint 010 Release Gates and review its final evidence
-bundle and contract binding.
+Sprint 010 replaces the former Sprint-Markdown authorization route with a
+versioned `ExecutableScope` record. A Sprint and an ad hoc Work Item are
+separate executable kinds; an Epic is a planning boundary and cannot be
+issued as execution authority. The canonical record is schema-validated,
+approved by a durable scope-bound approval, and published only as a
+deterministic Markdown projection. Historical Sprint 005–009 Markdown remains
+readable for compatibility, but cannot create, validate, issue, consume or
+start a new contract.
+
+Only AI Bridge can generate, validate and issue schema `2.0` contracts from a
+published, approved, non-terminal canonical scope. An execution provider must
+record an exact-hash consumption receipt under its own identity before a run
+can start. Approval and scope publication are rechecked at validation,
+issuance, consumption and start. Scope terminal transitions (`complete`,
+`cancel`, `supersede`) revoke new lifecycle progress; completion requires a
+matching terminal `ExecutionRun`, the actual checked-out commit, non-empty
+gate/evidence data, and the allowed closure state.
+
+The governed MCP registry exposes the end-to-end scope and contract lifecycle;
+the final repository evidence is under `docs/evidence/sprint-010/`.

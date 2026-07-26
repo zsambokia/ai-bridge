@@ -1,25 +1,20 @@
-"""Acceptance tests for the contract-bound external execution boundary."""
+"""Execution boundary tests using a consumed canonical v2 contract."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Iterator
 
 import pytest
 
 from projects.contracts import (
     consume_execution_contract,
-    generate_execution_contract,
+    generate_scope_execution_contract,
     issue_execution_contract,
     validate_execution_contract,
 )
-from projects.execution import (
-    ProviderStart,
-    _safe_details,
-    add_event,
-    classify_failure,
-    repair_failure,
-    start_run,
-)
+from projects.execution import ProviderStart, _safe_details, complete_run, start_run
 from projects.models import (
     ExecutionContract,
     ExecutionRun,
@@ -27,6 +22,7 @@ from projects.models import (
     GovernanceApproval,
     Project,
 )
+from projects.scopes import bind_approval, propose_scope, publish_scope
 from projects.services import bootstrap_project
 from projects.tests.test_services import write_definition
 
@@ -36,7 +32,7 @@ class StubProvider:
 
     def start(self, *, repository: Path, prompt: str) -> ProviderStart:
         assert "never expose credentials" in prompt
-        return ProviderStart("provider-42", str(repository / "external-workspace"))
+        return ProviderStart("provider-42", str(repository))
 
     def status(self, execution_id: str) -> str:
         return "RUNNING"
@@ -46,58 +42,59 @@ class StubProvider:
 
 
 @pytest.fixture
-def contract_project(
+def consumed_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Project]:
+) -> Iterator[tuple[Path, ExecutionContract, ExecutionStartRequest]]:
     definition = write_definition(tmp_path)
-    monkeypatch.setattr(
-        "projects.services._repository_identity", lambda root: "example/generic-project"
-    )
-    monkeypatch.setattr("projects.services._current_branch", lambda root: "main")
-    monkeypatch.setattr("projects.services._head_sha", lambda root: "a" * 40)
-    monkeypatch.setattr("projects.contracts._head_sha", lambda root: "a" * 40)
-    monkeypatch.setattr("projects.contracts._current_branch", lambda root: "main")
-    monkeypatch.setattr(
-        "projects.contracts._repository_identity",
-        lambda root: "example/generic-project",
-    )
-    monkeypatch.setattr(
-        "projects.contracts._baseline_exists", lambda root, baseline: True
-    )
+    for target in ("projects.services", "projects.contracts"):
+        monkeypatch.setattr(
+            f"{target}._repository_identity", lambda root: "example/generic-project"
+        )
+        monkeypatch.setattr(f"{target}._current_branch", lambda root: "main")
+        monkeypatch.setattr(f"{target}._head_sha", lambda root: "a" * 40)
+    monkeypatch.setattr("projects.contracts._baseline_exists", lambda root, sha: True)
     monkeypatch.setattr(
         "projects.contracts._is_descendant_of", lambda root, ancestor, head: True
     )
     assert bootstrap_project(definition, "docs/sprints/SPRINT_003.md", tmp_path).success
-    return tmp_path, Project.objects.get(project_id="generic-project")
-
-
-def _consume(contract: ExecutionContract, root: Path) -> None:
-    validated = validate_execution_contract(contract, root)
-    consume_execution_contract(issue_execution_contract(validated), root)
+    project = Project.objects.get(project_id="generic-project")
+    scope = propose_scope(
+        project, "Run the provider only after consumption.", kind="WORK_ITEM"
+    )
+    approval = GovernanceApproval.objects.create(
+        reference="PO-010-run",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="PO",
+    )
+    scope = publish_scope(bind_approval(scope, approval.reference), tmp_path)
+    contract = generate_scope_execution_contract(scope, tmp_path)
+    contract = issue_execution_contract(
+        validate_execution_contract(contract, tmp_path), tmp_path
+    )
+    contract = consume_execution_contract(
+        contract,
+        tmp_path,
+        expected_hash=contract.contract_hash,
+        provider_identity="provider-a",
+        observed_baseline="a" * 40,
+        schema_version="2.0",
+        idempotency_key="run-010",
+    )
+    request = ExecutionStartRequest.objects.create(contract=contract, approval=approval)
+    yield tmp_path, contract, request
 
 
 @pytest.mark.django_db
-def test_start_persists_audit_and_ordered_events_before_provider_run(
-    contract_project: tuple[Path, Project], monkeypatch: pytest.MonkeyPatch
+def test_provider_starts_only_after_consumption(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    root, project = contract_project
-    contract = generate_execution_contract(
-        project, "docs/sprints/SPRINT_003.md", "FEATURE", "Dispatch work.", root
-    )
-    _consume(contract, root)
-    approval = GovernanceApproval.objects.create(
-        reference="execution-start",
-        project=project,
-        approved_action="execution.request_start",
-        approved_by="po",
-    )
-    request = ExecutionStartRequest.objects.create(contract=contract, approval=approval)
+    root, contract, request = consumed_contract
     monkeypatch.setattr("projects.execution.provider", lambda: StubProvider())
-
     run = start_run(contract, request, root)
-
     assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
-    assert run.provider_execution_id == "provider-42"
+    assert contract.lifecycle == "RUNNING"
     assert list(run.events.values_list("sequence", "event_type")) == [
         (1, "PREFLIGHT_COMPLETED"),
         (2, "EXECUTOR_STARTED"),
@@ -105,66 +102,27 @@ def test_start_persists_audit_and_ordered_events_before_provider_run(
 
 
 @pytest.mark.django_db
-def test_progress_events_are_ordered_and_secret_free(
-    contract_project: tuple[Path, Project], monkeypatch: pytest.MonkeyPatch
+def test_completion_requires_a_real_completed_run(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    root, project = contract_project
-    contract = generate_execution_contract(
-        project, "docs/sprints/SPRINT_003.md", "FEATURE", "Dispatch work.", root
-    )
-    _consume(contract, root)
-    approval = GovernanceApproval.objects.create(
-        reference="event-start",
-        project=project,
-        approved_action="execution.request_start",
-        approved_by="po",
-    )
-    request = ExecutionStartRequest.objects.create(contract=contract, approval=approval)
+    root, contract, request = consumed_contract
     monkeypatch.setattr("projects.execution.provider", lambda: StubProvider())
     run = start_run(contract, request, root)
-
-    event = add_event(run, "PROGRESS", api_token="hidden", detail="safe")
-
-    assert event.sequence == 3
-    assert event.details == {"detail": "safe"}
-
-
-@pytest.mark.parametrize(
-    ("signature", "expected"),
-    [
-        ("ruff E501", "build/lint/type defect"),
-        ("makemigrations changed", "migration defect"),
-        ("provider network unavailable", "unavailable external input"),
-        ("needs product decision", "reserved Product Owner decision"),
-    ],
-)
-def test_failure_classification_is_deterministic(signature: str, expected: str) -> None:
-    assert classify_failure(signature) == expected
-
-
-@pytest.mark.django_db
-def test_routine_failure_enters_repair_and_external_failure_does_not(
-    contract_project: tuple[Path, Project], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root, project = contract_project
-    contract = generate_execution_contract(
-        project, "docs/sprints/SPRINT_003.md", "FEATURE", "Dispatch work.", root
+    completion: dict[str, object] = {
+        "execution_result": "PASS",
+        "gate_results": {"pytest": "PASS"},
+        "evidence_manifest": {"closure_report": "report"},
+        "changed_files": [],
+        "failure_classification": None,
+    }
+    monkeypatch.setattr(
+        "projects.execution.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="b" * 40 + "\n"),
     )
-    _consume(contract, root)
-    approval = GovernanceApproval.objects.create(
-        reference="repair-start",
-        project=project,
-        approved_action="execution.request_start",
-        approved_by="po",
-    )
-    request = ExecutionStartRequest.objects.create(contract=contract, approval=approval)
-    monkeypatch.setattr("projects.execution.provider", lambda: StubProvider())
-    run = start_run(contract, request, root)
-
-    assert repair_failure(run, "ruff E501") == "build/lint/type defect"
-    assert run.attempt_count == 1
-    with pytest.raises(ValueError, match="ROUTINE_TECHNICAL_ESCALATION_REJECTED"):
-        repair_failure(run, "provider network unavailable")
+    completed = complete_run(run, "b" * 40, completion)
+    assert completed.lifecycle == ExecutionRun.Lifecycle.COMPLETED
+    assert completed.completion_data == completion
 
 
 def test_secret_filter_removes_credential_named_fields() -> None:

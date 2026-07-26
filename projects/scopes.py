@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 import yaml
+from django.db import transaction
 from django.utils import timezone
 
 from .contract_policy import resolve_policy
@@ -29,21 +30,37 @@ def canonical_hash(record: dict[str, Any]) -> str:
 
 
 def classify_request(
-    request: str, *, requested_kind: str | None = None
+    request: str,
+    *,
+    requested_kind: str | None = None,
+    proposed_task_type: str | None = None,
 ) -> dict[str, str]:
-    """Deterministic classification; an LLM may supply text but not authority."""
+    """Validate a structured semantic proposal without inferring from keywords.
+
+    An LLM (or another client) may supply the natural-language intent and its
+    proposed classification.  Bridge validates that proposal and resolves the
+    policy later; it never represents a local keyword heuristic as semantics.
+    """
     text = request.strip()
     if not text:
         raise ValueError("REQUEST_REQUIRED")
-    kind = (
-        requested_kind
-        or ("SPRINT" if re.search(r"\bsprint\b", text, re.I) else "WORK_ITEM")
-    ).upper()
+    kind = (requested_kind or "WORK_ITEM").upper()
     if kind not in {"SPRINT", "WORK_ITEM"}:
         raise ValueError("SCOPE_KIND_INVALID")
-    task_type = (
-        "BUGFIX" if re.search(r"\b(fix|bug|repair)\b", text, re.I) else "FEATURE"
-    )
+    task_type = (proposed_task_type or "FEATURE").upper()
+    if task_type not in {
+        "FEATURE",
+        "BUGFIX",
+        "MIGRATION",
+        "RECOVERY",
+        "DOCUMENTATION",
+        "RELEASE",
+        "SELF_DEVELOPMENT",
+        "ONBOARDING",
+        "SECURITY",
+        "CONFIGURATION",
+    }:
+        raise ValueError("TASK_TYPE_INVALID")
     return {"kind": kind, "task_type": task_type, "intent": text}
 
 
@@ -62,7 +79,9 @@ def propose_scope(
     execution_level: str = "TASK",
     risk_modifiers: list[str] | None = None,
 ) -> ExecutableScope:
-    classified = classify_request(request, requested_kind=kind)
+    classified = classify_request(
+        request, requested_kind=kind, proposed_task_type=task_type
+    )
     scope_kind = classified["kind"]
     level = "SPRINT" if scope_kind == "SPRINT" else execution_level.upper()
     policy = resolve_policy(
@@ -102,20 +121,20 @@ def propose_scope(
 def validate_scope_record(
     record: dict[str, Any], project: Project | None = None
 ) -> dict[str, Any]:
-    required = {
-        "schema",
-        "scope_kind",
-        "identifier",
-        "project_id",
-        "title",
-        "status",
-        "execution_authorization",
-        "execution_level",
-        "task_type",
-        "intent",
-        "policy",
-        "created_by",
-    }
+    # The JSON Schema files are the source of truth.  This small runtime
+    # evaluator deliberately consumes their declarations instead of duplicating
+    # their required/const/enum rules in Python.
+    schema_name = (
+        "ai-bridge-sprint-v1.schema.json"
+        if record.get("scope_kind") == "SPRINT"
+        else "ai-bridge-work-item-v1.schema.json"
+    )
+    schema_path = Path(__file__).resolve().parents[1] / "docs" / "schemas" / schema_name
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("SCOPE_SCHEMA_UNAVAILABLE") from exc
+    required = set(schema["required"])
     missing = sorted(required - set(record))
     if missing:
         raise ValueError("SCOPE_SCHEMA_INVALID:MISSING_" + ",".join(missing))
@@ -126,6 +145,29 @@ def validate_scope_record(
         record["schema"] == SPRINT_SCHEMA
     ):
         raise ValueError("SCOPE_SCHEMA_INVALID:KIND")
+    for key, rule in schema.get("properties", {}).items():
+        if key in record and "const" in rule and record[key] != rule["const"]:
+            raise ValueError(f"SCOPE_SCHEMA_INVALID:{key.upper()}")
+        if key in record and "enum" in rule and record[key] not in rule["enum"]:
+            raise ValueError(f"SCOPE_SCHEMA_INVALID:{key.upper()}")
+        if key not in record:
+            continue
+        value = record[key]
+        expected_type = rule.get("type")
+        type_matches = {
+            "string": isinstance(value, str),
+            "array": isinstance(value, list),
+            "object": isinstance(value, dict),
+        }
+        if expected_type and not type_matches.get(expected_type, True):
+            raise ValueError(f"SCOPE_SCHEMA_INVALID:{key.upper()}")
+        if isinstance(value, str):
+            if len(value) < rule.get("minLength", 0):
+                raise ValueError(f"SCOPE_SCHEMA_INVALID:{key.upper()}")
+            if len(value) > rule.get("maxLength", float("inf")):
+                raise ValueError(f"SCOPE_SCHEMA_INVALID:{key.upper()}")
+            if "pattern" in rule and re.fullmatch(rule["pattern"], value) is None:
+                raise ValueError(f"SCOPE_SCHEMA_INVALID:{key.upper()}")
     if record["status"] not in {choice for choice, _ in ExecutableScope.Status.choices}:
         raise ValueError("SCOPE_SCHEMA_INVALID:STATUS")
     if record["execution_authorization"] not in {"NONE", "APPROVED_PROVIDER_EXECUTION"}:
@@ -141,40 +183,51 @@ def validate_scope_record(
 
 
 def bind_approval(scope: ExecutableScope, reference: str) -> ExecutableScope:
-    if scope.status in FINAL_STATUSES:
-        raise ValueError("CLOSED_SCOPE_IMMUTABLE")
-    try:
-        approval = GovernanceApproval.objects.get(
-            reference=reference, project=scope.project, revoked_at__isnull=True
+    caller_scope = scope
+    with transaction.atomic():
+        scope = ExecutableScope.objects.select_for_update().get(pk=scope.pk)
+        if scope.status in FINAL_STATUSES:
+            raise ValueError("CLOSED_SCOPE_IMMUTABLE")
+        try:
+            approval = GovernanceApproval.objects.select_for_update().get(
+                reference=reference, project=scope.project, revoked_at__isnull=True
+            )
+        except GovernanceApproval.DoesNotExist as exc:
+            raise ValueError("APPROVAL_REQUIRED") from exc
+        if approval.approved_action not in {"AUTHORIZE_EXECUTION", "ALL"}:
+            raise ValueError("APPROVAL_ACTION_INVALID")
+        if approval.scope_id not in {None, scope.pk}:
+            raise ValueError("APPROVAL_SCOPE_MISMATCH")
+        record = dict(scope.record)
+        record.update(
+            {
+                "status": "APPROVED",
+                "execution_authorization": "APPROVED_PROVIDER_EXECUTION",
+                "approval_reference": reference,
+                "updated_at": timezone.now().isoformat(),
+            }
         )
-    except GovernanceApproval.DoesNotExist as exc:
-        raise ValueError("APPROVAL_REFERENCE_INVALID") from exc
-    if approval.approved_action not in {"AUTHORIZE_EXECUTION", "ALL"}:
-        raise ValueError("APPROVAL_ACTION_INVALID")
-    record = dict(scope.record)
-    record.update(
-        {
-            "status": "APPROVED",
-            "execution_authorization": "APPROVED_PROVIDER_EXECUTION",
-            "approval_reference": reference,
-            "updated_at": timezone.now().isoformat(),
-        }
-    )
-    record["content_hash"] = canonical_hash(record)
-    scope.status = "APPROVED"
-    scope.approval_reference = reference
-    scope.record = record
-    scope.content_hash = record["content_hash"]
-    scope.save(
-        update_fields=[
-            "status",
-            "approval_reference",
-            "record",
-            "content_hash",
-            "updated_at",
-        ]
-    )
-    return scope
+        record["content_hash"] = canonical_hash(record)
+        approval.scope = scope
+        approval.save(update_fields=["scope"])
+        scope.status = "APPROVED"
+        scope.approval_reference = reference
+        scope.record = record
+        scope.content_hash = record["content_hash"]
+        scope.save(
+            update_fields=[
+                "status",
+                "approval_reference",
+                "record",
+                "content_hash",
+                "updated_at",
+            ]
+        )
+    # Preserve the useful service convention that callers may continue using
+    # the instance they supplied, while the transaction itself used a locked
+    # fresh row for authority checks.
+    caller_scope.refresh_from_db()
+    return caller_scope
 
 
 def render_scope(scope: ExecutableScope) -> str:
@@ -226,8 +279,23 @@ def approved_scope(scope: ExecutableScope) -> dict[str, Any]:
     validate_scope_record(scope.record, scope.project)
     if scope.status in FINAL_STATUSES:
         raise ValueError("CLOSED_SCOPE_IMMUTABLE")
-    if scope.status != "APPROVED" or not scope.approval_reference:
+    if (
+        scope.status != "APPROVED"
+        or not scope.approval_reference
+        or not scope.published_path
+    ):
         raise ValueError("SCOPE_NOT_APPROVED")
+    try:
+        approval = GovernanceApproval.objects.get(
+            reference=scope.approval_reference,
+            project=scope.project,
+            scope=scope,
+            revoked_at__isnull=True,
+        )
+    except GovernanceApproval.DoesNotExist as exc:
+        raise ValueError("APPROVAL_BINDING_INVALID") from exc
+    if approval.approved_action not in {"AUTHORIZE_EXECUTION", "ALL"}:
+        raise ValueError("APPROVAL_ACTION_INVALID")
     return {
         "identifier": scope.identifier,
         "path": scope.published_path,
@@ -236,3 +304,27 @@ def approved_scope(scope: ExecutableScope) -> dict[str, Any]:
         "approval_reference": scope.approval_reference,
         "content_hash": scope.content_hash,
     }
+
+
+def close_scope(scope: ExecutableScope, status: str) -> ExecutableScope:
+    """Terminal scope transitions are explicit and prohibit future execution."""
+    if status not in FINAL_STATUSES:
+        raise ValueError("SCOPE_TERMINAL_STATUS_INVALID")
+    if scope.status in FINAL_STATUSES:
+        raise ValueError("CLOSED_SCOPE_IMMUTABLE")
+    record = dict(scope.record)
+    record.update(
+        {
+            "status": status,
+            "execution_authorization": "NONE",
+            "updated_at": timezone.now().isoformat(),
+        }
+    )
+    record["content_hash"] = canonical_hash(record)
+    scope.status, scope.record, scope.content_hash = (
+        status,
+        record,
+        record["content_hash"],
+    )
+    scope.save(update_fields=["status", "record", "content_hash", "updated_at"])
+    return scope

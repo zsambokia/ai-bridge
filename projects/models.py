@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from django.db import models
+from django.utils import timezone
 
 
 class Project(models.Model):
@@ -213,6 +214,8 @@ class ContractConsumption(models.Model):
     expected_contract_hash = models.CharField(max_length=64)
     observed_baseline = models.CharField(max_length=64)
     schema_version = models.CharField(max_length=32)
+    receipt = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    idempotency_key = models.CharField(max_length=128, default="legacy")
     consumed_at = models.DateTimeField(auto_now_add=True)
 
 
@@ -221,10 +224,24 @@ class GovernanceApproval(models.Model):
 
     reference = models.CharField(max_length=128, unique=True)
     project = models.ForeignKey(Project, on_delete=models.PROTECT)
+    scope = models.ForeignKey(
+        ExecutableScope,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="approvals",
+    )
     approved_action = models.CharField(max_length=64)
     approved_by = models.CharField(max_length=128)
     created_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
+
+    def revoke(self) -> None:
+        """Durably revoke this approval so it cannot authorize later lifecycle steps."""
+
+        if self.revoked_at is None:
+            self.revoked_at = timezone.now()
+            self.save(update_fields=["revoked_at"])
 
 
 class McpAuditEvent(models.Model):
@@ -323,6 +340,7 @@ class ExecutionRun(models.Model):
     current_blocker = models.JSONField(default=dict, blank=True)
     final_commit_sha = models.CharField(max_length=64, blank=True)
     terminal_state = models.CharField(max_length=128, blank=True)
+    completion_data = models.JSONField(default=dict, blank=True)
     evidence_root = models.CharField(max_length=255)
     audit_event = models.ForeignKey(
         McpAuditEvent, null=True, blank=True, on_delete=models.PROTECT
