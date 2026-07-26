@@ -81,3 +81,20 @@ contract identifiers and cannot be consumed for code changes. The transport now
 also exposes `consume_execution_contract`, `complete_execution_contract`,
 `supersede_execution_contract`, and `revoke_execution_contract`; completion
 durably binds final commit SHA and the allowed closure state.
+
+Sprint 009 adds a single execution ownership model rather than a second
+dispatcher. `ExecutionRun` binds the consumed contract, requested repository,
+branch, baseline, contract hash, Bridge workspace, external provider workspace,
+provider execution ID, audit event and evidence root. Its lifecycle is
+`REQUESTED → STARTING → RUNNING → VALIDATING → REPAIRING → DOCUMENTING →
+CLOSING → COMPLETED`, with explicit business/external/governance blocks and
+`CANCELLED` terminal paths. Bridge persists preflight and audit ownership before
+calling the provider, and emits ordered, bounded, secret-filtered progress
+events afterwards. The initial provider is a fixed-argument `codex exec`
+adapter; it does not persist credentials or raw provider output.
+
+Routine failures are classified deterministically (migration, lint/type,
+repository/implementation) and enter `REPAIRING`; unavailable providers and
+reserved Product Owner decisions do not masquerade as automatic repairs. A
+future gate runner may extend this controller, but it must preserve the same
+contract, event, retry, evidence and terminal-state ownership.

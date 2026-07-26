@@ -43,6 +43,14 @@ boundary tools additionally require project scope, durable idempotency and, when
 state changes, a durable Product Owner approval reference. See the
 [tool reference](docs/integrations/BRIDGE_MCP_TOOL_REFERENCE.md).
 
+Sprint 009 adds the contract-bound execution boundary. A consumed contract can
+be started only with a durable approval; Bridge writes the dispatch audit record
+and `ExecutionRun` before it launches the configured Codex CLI provider. Run
+status, ordered secret-free progress events, evidence metadata, and authorized
+cancellation are available through the governed MCP registry. Provider output
+is not treated as evidence by itself: Release Gates, documentation, AKB, and
+the final contract binding remain required.
+
 ## Verification
 
 ```powershell

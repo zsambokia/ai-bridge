@@ -215,7 +215,7 @@ class ExecutionPreparation(models.Model):
 
 
 class ExecutionStartRequest(models.Model):
-    """A dispatcher-free request; creation never executes external code."""
+    """The durable authorization record for one dispatched execution."""
 
     contract = models.ForeignKey(ExecutionContract, on_delete=models.PROTECT)
     approval = models.ForeignKey(GovernanceApproval, on_delete=models.PROTECT)
@@ -225,3 +225,74 @@ class ExecutionStartRequest(models.Model):
         default="A configured canonical dispatcher must review and start execution.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ExecutionRun(models.Model):
+    """One contract-bound execution owned by the canonical dispatcher."""
+
+    class Lifecycle(models.TextChoices):
+        REQUESTED = "REQUESTED", "Requested"
+        STARTING = "STARTING", "Starting"
+        RUNNING = "RUNNING", "Running"
+        VALIDATING = "VALIDATING", "Validating"
+        REPAIRING = "REPAIRING", "Repairing"
+        DOCUMENTING = "DOCUMENTING", "Documenting"
+        CLOSING = "CLOSING", "Closing"
+        COMPLETED = "COMPLETED", "Completed"
+        BLOCKED_BUSINESS_DECISION = "BLOCKED_BUSINESS_DECISION", "Blocked business"
+        BLOCKED_EXTERNAL_INPUT = "BLOCKED_EXTERNAL_INPUT", "Blocked external"
+        FAILED_GOVERNANCE = "FAILED_GOVERNANCE", "Failed governance"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    contract = models.ForeignKey(ExecutionContract, on_delete=models.PROTECT)
+    start_request = models.OneToOneField(
+        ExecutionStartRequest, on_delete=models.PROTECT, related_name="run"
+    )
+    repository = models.CharField(max_length=255)
+    branch = models.CharField(max_length=255)
+    baseline_commit = models.CharField(max_length=64)
+    contract_hash = models.CharField(max_length=64)
+    workspace_identifier = models.CharField(max_length=255)
+    provider_name = models.CharField(max_length=64)
+    provider_execution_id = models.CharField(max_length=255, blank=True)
+    lifecycle = models.CharField(
+        max_length=32, choices=Lifecycle.choices, default=Lifecycle.REQUESTED
+    )
+    current_phase = models.CharField(max_length=64, default="PREFLIGHT")
+    attempt_count = models.PositiveIntegerField(default=0)
+    gate_rerun_count = models.PositiveIntegerField(default=0)
+    current_blocker = models.JSONField(default=dict, blank=True)
+    final_commit_sha = models.CharField(max_length=64, blank=True)
+    terminal_state = models.CharField(max_length=128, blank=True)
+    evidence_root = models.CharField(max_length=255)
+    audit_event = models.ForeignKey(
+        McpAuditEvent, null=True, blank=True, on_delete=models.PROTECT
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class ExecutionProgressEvent(models.Model):
+    """Ordered, bounded and secret-free projection of execution progress."""
+
+    run = models.ForeignKey(
+        ExecutionRun, on_delete=models.CASCADE, related_name="events"
+    )
+    sequence = models.PositiveIntegerField()
+    event_type = models.CharField(max_length=64)
+    details = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "sequence"], name="unique_execution_event_sequence"
+            )
+        ]
+        ordering = ["sequence"]

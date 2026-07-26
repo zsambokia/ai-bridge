@@ -88,10 +88,22 @@ it adds durable approval references, audit events, idempotency records,
 execution preparations and dispatcher-free start requests. The public AKB
 surface is deliberately bounded to accepted current-state and roadmap documents.
 
+Sprint 009 replaces the dispatcher-free start-request boundary with the
+canonical `ExecutionRun` model and a fixed-argument Codex CLI provider. A
+consumed contract, scoped durable approval and dispatch audit record are all
+required before external execution becomes active. The run records repository,
+branch, baseline, contract hash, workspace/provider identity, lifecycle,
+bounded secret-free events, repair attempts, evidence root and final binding.
+The governed MCP surface now supports start, status, events, cancellation and
+evidence-summary operations. Routine migration and lint/type failures have
+deterministic repair classifications; unavailable provider access and reserved
+Product Owner decisions remain honest block categories.
+
 The scope intentionally does not add AKB indexing, vector search, Discovery,
 autonomous planning, or a large user interface.
 
 ## Next approved action
 
-Complete the issued Sprint 006 evidence and perform the remaining ChatGPT
-workspace UI tool-scan as the Product Owner acceptance step.
+Review the Sprint 009 evidence bundle and its final contract binding, then
+perform the remaining ChatGPT workspace UI tool-scan as the Product Owner
+acceptance step.

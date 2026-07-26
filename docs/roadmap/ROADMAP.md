@@ -292,7 +292,7 @@ These may remain part of the long-term product vision, but they must not distrac
 1. complete the Sprint 007 staging migration recovery and authenticated live MCP tool-call proof;
 2. refresh and rescan the Bridge app in ChatGPT Business;
 3. implement the Bridge Conversation Orchestrator as the next approved orchestration Sprint;
-4. execute Sprint 009 Autonomous Execution and Repair Loop only after its tiered Execution Contract is issued and consumed;
+4. review the completed Sprint 009 autonomous execution and repair-loop evidence;
 5. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop;
 6. keep `.bridge/project.yaml` as the static Project definition;
 7. use the smallest sufficient tiered Execution Contract for every implementation, repair, migration, and recovery task.

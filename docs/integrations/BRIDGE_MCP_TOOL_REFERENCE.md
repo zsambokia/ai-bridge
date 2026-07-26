@@ -12,13 +12,18 @@ raw Django mutation APIs.
 | Accepted knowledge | `akb.search`, `akb.get_document` | read-only | prepare execution |
 | Preparation | `execution.prepare`, `execution.get_status`, `execution.render_handoff` | preparatory state / read-only | generate a contract |
 | Lifecycle | `contract.generate`, `contract.validate`, `contract.issue`, `contract.consume`, `contract.complete`, `contract.supersede`, `contract.revoke`, `contract.get_status`, `contract.render_handoff` | preparatory, approval-required, lifecycle mutation | use only returned identifiers |
-| Execution boundary | `execution.request_start` | execution boundary | canonical dispatcher review |
+| Execution boundary | `execution.request_start`, `execution.cancel` | execution boundary | start or cancel an owned run |
+| Execution observability | `execution.get_run_status`, `execution.list_events`, `execution.evidence_summary` | read-only | monitor the returned execution token |
 
 `project.resolve` returns `PROJECT_RESOLVED`, `USER_INPUT_REQUIRED`, or
 `PROJECT_NOT_FOUND`; never select an ambiguous project silently.
 `execution.prepare` returns `EXECUTION_PREPARED` and cannot issue or consume a
-contract. `execution.request_start` writes only an
-`EXECUTION_START_REQUESTED` record; it does not claim to launch Codex.
+contract. `execution.request_start` writes the authorization and dispatch audit
+record before it launches the configured canonical Codex CLI provider, then
+returns an `execution_token`. A successful response therefore means a provider
+process was started, not merely that a request was queued. `execution.list_events`
+returns bounded, ordered, secret-filtered progress records; it never returns
+provider stdout, stderr, or credentials.
 
 State-changing calls require an idempotency key. Lifecycle-changing calls and
 the execution boundary also require a durable, non-revoked Product Owner

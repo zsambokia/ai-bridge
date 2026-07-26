@@ -11,10 +11,13 @@ from typing import Any
 from django.conf import settings
 
 from .contract_policy import resolve_policy
+from .execution import add_event, provider, start_run
 from .mcp import invoke_operation
 from .models import (
     ExecutionContract,
     ExecutionPreparation,
+    ExecutionProgressEvent,
+    ExecutionRun,
     ExecutionStartRequest,
     GovernanceApproval,
     McpAuditEvent,
@@ -22,7 +25,7 @@ from .models import (
     Project,
 )
 
-TOOL_SURFACE_VERSION = "2026-07-26.1"
+TOOL_SURFACE_VERSION = "2026-07-26.2"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -95,7 +98,8 @@ _TOOLS = [
             "repository": {"type": "string", "maxLength": 255},
             "lifecycle": {"type": "string", "enum": ["ACTIVE", "INACTIVE"]},
             "onboarding_status": {
-                "type": "string", "enum": ["PENDING", "READY", "INVALID"]
+                "type": "string",
+                "enum": ["PENDING", "READY", "INVALID"],
             },
         },
     ),
@@ -229,10 +233,38 @@ _TOOLS = [
     ),
     _tool(
         "execution.request_start",
-        "Create a durable start request for a consumed approved contract.",
+        "Authorize and start a consumed contract through the canonical provider.",
         EXECUTION_BOUNDARY,
         {"handoff_identifier": {"type": "string"}, **_APPROVAL, **_IDEMPOTENCY},
         ["handoff_identifier", "approval_reference", "idempotency_key"],
+    ),
+    _tool(
+        "execution.get_run_status",
+        "Read a bounded execution-run status.",
+        READ_ONLY,
+        {"execution_token": {"type": "string"}},
+        ["execution_token"],
+    ),
+    _tool(
+        "execution.list_events",
+        "List ordered bounded events for one execution run.",
+        READ_ONLY,
+        {"execution_token": {"type": "string"}},
+        ["execution_token"],
+    ),
+    _tool(
+        "execution.cancel",
+        "Cancel one active execution with durable Product Owner authority.",
+        EXECUTION_BOUNDARY,
+        {"execution_token": {"type": "string"}, **_APPROVAL, **_IDEMPOTENCY},
+        ["execution_token", "approval_reference", "idempotency_key"],
+    ),
+    _tool(
+        "execution.evidence_summary",
+        "Read final execution evidence binding metadata.",
+        READ_ONLY,
+        {"execution_token": {"type": "string"}},
+        ["execution_token"],
     ),
 ]
 for action, classification in [
@@ -726,11 +758,86 @@ def invoke_public_tool(
             req = ExecutionStartRequest.objects.create(
                 contract=contract, approval=approval
             )
+            dispatch_audit = McpAuditEvent.objects.create(
+                caller=caller,
+                tool_name=name,
+                project=contract.project,
+                outcome="DISPATCHING",
+                details={"handoff_identifier": contract.handoff_identifier},
+            )
+            run = start_run(
+                contract,
+                req,
+                Path(settings.BASE_DIR),
+                audit_event_id=dispatch_audit.pk,
+            )
+            req.status = "EXECUTION_STARTED"
+            req.next_action = (
+                "Monitor the execution run through execution.get_run_status."
+            )
+            req.save(update_fields=["status", "next_action"])
             result = {
                 "status": req.status,
                 "request_id": req.pk,
                 "next_action": req.next_action,
+                "execution_token": str(run.token),
+                "provider": run.provider_name,
             }
+        elif name in {
+            "execution.get_run_status",
+            "execution.list_events",
+            "execution.evidence_summary",
+            "execution.cancel",
+        }:
+            run = ExecutionRun.objects.get(token=arguments["execution_token"])
+            if name == "execution.cancel":
+                approval = _approval(
+                    arguments, run.contract.project, "execution.cancel"
+                )
+                if run.lifecycle not in {
+                    ExecutionRun.Lifecycle.RUNNING,
+                    ExecutionRun.Lifecycle.STARTING,
+                }:
+                    raise ValueError("EXECUTION_NOT_CANCELLABLE")
+                provider().cancel(run.provider_execution_id)
+                run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
+                run.current_phase = "CANCELLED"
+                run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+                add_event(run, "EXECUTION_CANCELLED", approval=approval.reference)
+                result = {"status": "CANCELLED", "execution_token": str(run.token)}
+            elif name == "execution.list_events":
+                result = {
+                    "execution_token": str(run.token),
+                    "events": [
+                        {
+                            "sequence": event.sequence,
+                            "type": event.event_type,
+                            "details": event.details,
+                            "created_at": event.created_at.isoformat(),
+                        }
+                        for event in ExecutionProgressEvent.objects.filter(run=run)[
+                            :100
+                        ]
+                    ],
+                }
+            elif name == "execution.evidence_summary":
+                result = {
+                    "execution_token": str(run.token),
+                    "evidence_root": run.evidence_root,
+                    "final_commit_sha": run.final_commit_sha,
+                    "terminal_state": run.terminal_state,
+                    "contract_hash": run.contract_hash,
+                }
+            else:
+                result = {
+                    "execution_token": str(run.token),
+                    "status": run.lifecycle,
+                    "phase": run.current_phase,
+                    "provider": run.provider_name,
+                    "provider_execution_id": run.provider_execution_id,
+                    "attempt_count": run.attempt_count,
+                    "current_blocker": run.current_blocker,
+                }
         elif name.startswith("contract."):
             action = name.split(".")[1]
             op = {
