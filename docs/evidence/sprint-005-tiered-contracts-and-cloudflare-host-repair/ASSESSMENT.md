@@ -1,7 +1,7 @@
 # Sprint 005 assessment
 
-**Contract:** `bridge:ai-bridge:sprint_005_tiered_execution_contracts_and_cloudflare_host_repair:e0676db2-b7b4-47c2-9ba0-bf3cce45470c`  
-**Preflight baseline:** `ffdd62e7ff43952266cbc2fd89216a8b32ed38ca` on `main`  
+**Contract:** `bridge:ai-bridge:sprint_005_tiered_execution_contracts_and_cloudflare_host_repair:e0676db2-b7b4-47c2-9ba0-bf3cce45470c`
+**Preflight baseline:** `ffdd62e7ff43952266cbc2fd89216a8b32ed38ca` on `main`
 **Repository:** `zsambokia/ai-bridge`
 
 ## Existing canonical components
