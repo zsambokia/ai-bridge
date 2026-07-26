@@ -1,0 +1,24 @@
+{
+  "contract_hash": "e2557c5dba90265581ea678699884d4f552542346d25a4d36d651070648a6383",
+  "handoff_identifier": "bridge:ai-bridge:sprint_009_autonomous_execution_and_repair_loop:96491e40-86fe-4570-aa4a-4a29bfe3c716",
+  "lifecycle": "ISSUED",
+  "payload": {
+    "allowed_terminal_states": ["PASS — READY FOR PRODUCT OWNER REVIEW", "BLOCKED — BUSINESS DECISION REQUIRED", "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"],
+    "binding_documents": {
+      "agents_path": {"path": "AGENTS.md", "sha256": "178ed7108e7228a8d080c89fb2ef46f79e54ba8e95cb16867b8c5fff4b4d8361"},
+      "akb_current_state_path": {"path": "docs/akb/CURRENT_STATE.md", "sha256": "3adb3c22ad632030c6e112a186d8e3c88ba07c4f74532f63101503dd5ab189b2"},
+      "approved_sprint_path": {"path": "docs/sprints/SPRINT_009_AUTONOMOUS_EXECUTION_AND_REPAIR_LOOP.md", "sha256": "1d3b5f6e3e4f99d832da60594253a62c25967f39160f6a203f22a5eb90add7cc"},
+      "constitution_path": {"path": "docs/constitution/BRIDGE_CONSTITUTION.md", "sha256": "b6242b4bd1c28650d3c51670ebb4aee3b66c68e4f313fdc7858cd8d16dfbbd6f"},
+      "handoff_contract_path": {"path": "docs/contracts/HANDOFF_EXECUTION_CONTRACT.md", "sha256": "ce4a5d997ccd2be90eb93c91155d7d52fea1b1d4290ec33b4d9a1ca061b657b9"},
+      "roadmap_path": {"path": "docs/roadmap/ROADMAP.md", "sha256": "1406db160fab32c10d7ca303d0e9b64987d35471a1bdac52d80f4d0cbf713932"},
+      "workflow_path": {"path": "docs/workflows/EVIDENCE_DRIVEN_SPRINT.md", "sha256": "4bbd5682c8e6fabc491123903c110a9fbf9a59549fb2416686754a1cb868d0cc"}
+    },
+    "evidence": {"closure_report": "docs/evidence/sprint-009-autonomous-execution-and-repair-loop/CLOSURE_REPORT.md", "machine_results": "docs/evidence/sprint-009-autonomous-execution-and-repair-loop/acceptance-results.json", "root": "docs/evidence/sprint-009-autonomous-execution-and-repair-loop"},
+    "execution": {"approved_sprint_path": "docs/sprints/SPRINT_009_AUTONOMOUS_EXECUTION_AND_REPAIR_LOOP.md", "baseline_commit": "10130902415aeba64d6d59c80a58a6cceacd79f5", "baseline_rule": "DESCENDANT_OF", "child_contract_identifiers": [], "execution_level": "SPRINT", "intent": "Implement and prove the governed autonomous Codex execution and repair loop for approved Sprint 009.", "risk_modifiers": ["AUTHENTICATION_OR_AUTHORIZATION", "EXTERNAL_INTEGRATION", "IRREVERSIBLE_OPERATION", "PRODUCTION_IMPACT", "PUBLIC_API_OR_PROTOCOL"], "target_branch": "main", "task_type": "FEATURE"},
+    "handoff_identifier": "bridge:ai-bridge:sprint_009_autonomous_execution_and_repair_loop:96491e40-86fe-4570-aa4a-4a29bfe3c716",
+    "policy": {"child_contract_required": false, "omission_justifications": [], "profile_version": "1.0", "required_assessment_depth": "extended", "required_documentation_updates": ["architecture", "akb", "roadmap"], "required_evidence_artifacts": ["acceptance-results", "assessment", "authorization-validation", "closure-report", "compatibility-validation", "explicit-risk-review", "integration-validation", "machine-results", "production-smoke", "rollback-assessment"], "required_release_gates": ["backend-tests", "lint", "sprint-specific", "type-check"], "resolved_profile": "sprint-feature", "review_requirements": ["authorization-validation", "compatibility-validation", "explicit-risk-review", "integration-validation", "production-smoke", "rollback-assessment"]},
+    "project": {"definition_source": ".bridge/project.yaml", "id": "ai-bridge", "repository": "zsambokia/ai-bridge"},
+    "release_gates": {"repository_wide": [{"command": "pytest", "id": "backend-tests", "required": true}, {"command": "ruff check .", "id": "lint", "required": true}, {"command": "mypy .", "id": "type-check", "required": true}], "sprint_specific": []},
+    "schema_version": "1.1"
+  }
+}
