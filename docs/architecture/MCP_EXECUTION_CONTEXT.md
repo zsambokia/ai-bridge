@@ -21,6 +21,12 @@ exposed as a ChatGPT tool surface.
 
 Sprint 006 replaces the public proprietary adapter at `POST /mcp/` with a
 stateless, JSON-RPC 2.0 MCP server using the 2025-03-26 protocol version and
+
+Sprint 007 keeps the HTTP layer as a thin adapter and routes `tools/list` and
+`tools/call` through `projects.governed_mcp`. The registry owns stable schemas,
+annotations, authorization classification, bounded output and audit/idempotency
+hooks; canonical project, execution-context and contract services remain the
+only domain implementations.
 Streamable HTTP transport. It supports `initialize`, `notifications/initialized`,
 `tools/list`, and `tools/call`. Every protocol failure is a JSON response; the
 endpoint is CSRF-exempt because Bearer authentication, rather than browser

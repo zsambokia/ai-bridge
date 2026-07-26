@@ -82,6 +82,12 @@ baseline because its own publication advances `HEAD`; generated repository
 contracts therefore use the canonical `DESCENDANT_OF` rule and retain the exact
 generation SHA. A regression test prevents recurrence.
 
+Sprint 007 adds the governed public MCP registry. It reuses the canonical
+Project resolver, execution-context generator and tiered contract lifecycle;
+it adds durable approval references, audit events, idempotency records,
+execution preparations and dispatcher-free start requests. The public AKB
+surface is deliberately bounded to accepted current-state and roadmap documents.
+
 The scope intentionally does not add AKB indexing, vector search, Discovery,
 autonomous planning, or a large user interface.
 

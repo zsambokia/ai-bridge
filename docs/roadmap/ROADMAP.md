@@ -251,6 +251,10 @@ These may remain part of the long-term product vision, but they must not distrac
 3. use the smallest sufficient tiered Execution Contract for each approved Sprint;
 4. prepare the dedicated Operational Capability State Sprint;
 5. extend remote MCP tools only through explicit approved, authorization-aware Sprints;
+
+Sprint 007 delivers that governed expansion: versioned public discovery,
+project/context/AKB access, safe preparation, approval-aware contract lifecycle
+controls, and a dispatcher-free execution-start boundary.
 6. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop.
 
 ## 7. Roadmap success criterion

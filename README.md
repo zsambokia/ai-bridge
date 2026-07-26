@@ -37,6 +37,12 @@ the service; a missing token fails closed. See the
 [ChatGPT connection guide](docs/integrations/CHATGPT_MCP_CONNECTION.md) and
 [MCP architecture](docs/architecture/MCP_EXECUTION_CONTEXT.md).
 
+Sprint 007 expands this into a governed, versioned registry. Read-only tools
+require a Bearer-authenticated caller; preparation, lifecycle and execution
+boundary tools additionally require project scope, durable idempotency and, when
+state changes, a durable Product Owner approval reference. See the
+[tool reference](docs/integrations/BRIDGE_MCP_TOOL_REFERENCE.md).
+
 ## Verification
 
 ```powershell

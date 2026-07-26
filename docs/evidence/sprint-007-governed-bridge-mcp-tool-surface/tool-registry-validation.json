@@ -1,0 +1,8 @@
+{
+  "result": "PASS",
+  "tool_surface_version": "2026-07-26.1",
+  "tool_count": 23,
+  "registry": "projects.governed_mcp.public_tools",
+  "checks": ["unique stable names", "strict input schemas", "public metadata excludes internal classification", "MCP tools/list delegates to canonical registry"],
+  "representative_tools": ["factory.get_status", "project.resolve", "akb.search", "execution.prepare", "contract.issue", "execution.request_start"]
+}

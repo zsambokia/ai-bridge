@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -90,7 +91,8 @@ def resolve_project(payload: dict[str, Any], repository_root: Path) -> dict[str,
     if len(candidates) == 1:
         return {"status": "PROJECT_RESOLVED", "project": _project_view(candidates[0])}
     continuation = ProjectResolutionContinuation.objects.create(
-        candidate_project_ids=[candidate.project_id for candidate in candidates]
+        candidate_project_ids=[candidate.project_id for candidate in candidates],
+        expires_at=timezone.now() + timedelta(minutes=30),
     )
     return {
         "status": "USER_INPUT_REQUIRED",
@@ -124,6 +126,14 @@ def continue_project_resolution(
         return {
             "status": "CONTINUATION_CONSUMED",
             "error": "Continuation token was already used.",
+        }
+    if (
+        continuation.expires_at is not None
+        and continuation.expires_at <= timezone.now()
+    ):
+        return {
+            "status": "CONTINUATION_EXPIRED",
+            "error": "Continuation token expired; resolve the project again.",
         }
     if selected_project_id not in continuation.candidate_project_ids:
         return {

@@ -1,0 +1,7 @@
+{
+  "result": "PASS",
+  "capability": "bounded deterministic accepted-document search",
+  "documents": ["current-state", "roadmap"],
+  "limits": {"document_characters": 12000, "search_results": 10, "snippet_characters": 500},
+  "scope": "ai-bridge ready active project only; no arbitrary filesystem path is accepted"
+}

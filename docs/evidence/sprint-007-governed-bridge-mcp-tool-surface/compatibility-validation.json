@@ -1,0 +1,5 @@
+{
+  "result": "PASS",
+  "preserved": ["POST /mcp/", "MCP protocol 2025-03-26", "Bearer authentication", "initialize", "notifications/initialized", "tools/list", "tools/call", "factory.get_status"],
+  "change": "The HTTP adapter now delegates public discovery and invocation to the governed registry; the former proprietary public operation/payload adapter remains absent."
+}

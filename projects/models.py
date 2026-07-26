@@ -79,6 +79,7 @@ class ProjectResolutionContinuation(models.Model):
     candidate_project_ids = models.JSONField(default=list)
     selected_project_id = models.CharField(max_length=128, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
     consumed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -155,3 +156,72 @@ class ExecutionContract(models.Model):
             ):
                 raise ValueError("ISSUED_CONTRACT_IMMUTABLE")
         super().save(*args, **kwargs)
+
+
+class GovernanceApproval(models.Model):
+    """A durable Product Owner approval reference for governed mutations."""
+
+    reference = models.CharField(max_length=128, unique=True)
+    project = models.ForeignKey(Project, on_delete=models.PROTECT)
+    approved_action = models.CharField(max_length=64)
+    approved_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+
+class McpAuditEvent(models.Model):
+    """Append-only audit record for externally requested governed actions."""
+
+    caller = models.CharField(max_length=128)
+    tool_name = models.CharField(max_length=128)
+    project = models.ForeignKey(
+        Project, null=True, blank=True, on_delete=models.PROTECT
+    )
+    outcome = models.CharField(max_length=32)
+    details = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class McpIdempotencyRecord(models.Model):
+    """Canonical duplicate protection for a caller/tool/idempotency key."""
+
+    caller = models.CharField(max_length=128)
+    tool_name = models.CharField(max_length=128)
+    key = models.CharField(max_length=128)
+    request_fingerprint = models.CharField(max_length=64)
+    result = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["caller", "tool_name", "key"], name="unique_mcp_idempotency_key"
+            )
+        ]
+
+
+class ExecutionPreparation(models.Model):
+    """A non-issuing, project-scoped execution preparation record."""
+
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    project = models.ForeignKey(Project, on_delete=models.PROTECT)
+    sprint_path = models.CharField(max_length=255)
+    status = models.CharField(max_length=32, default="PREPARED")
+    preparation_data = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ExecutionStartRequest(models.Model):
+    """A dispatcher-free request; creation never executes external code."""
+
+    contract = models.ForeignKey(ExecutionContract, on_delete=models.PROTECT)
+    approval = models.ForeignKey(GovernanceApproval, on_delete=models.PROTECT)
+    status = models.CharField(max_length=32, default="EXECUTION_START_REQUESTED")
+    next_action = models.CharField(
+        max_length=255,
+        default="A configured canonical dispatcher must review and start execution.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)

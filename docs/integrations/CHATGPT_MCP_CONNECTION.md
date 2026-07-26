@@ -78,6 +78,17 @@ Cloudflare. Cloudflare Access service credentials authorize Cloudflare Access.
 Neither authenticates an MCP client to Django; `MCP_API_TOKEN` is the separate
 MCP client credential.
 
+## Governed tool refresh (Sprint 007)
+
+After deploying the registry, refresh or re-scan the custom MCP app. ChatGPT
+should discover `factory.list_capabilities`, project resolution/context, bounded
+AKB search, execution preparation, governed contract lifecycle tools, and the
+execution-start request boundary. If it only shows `factory.get_status`, remove
+and re-add the app or force its tool refresh, then verify `tools/list` with the
+same endpoint and Bearer token. State-changing tools may return an approval
+requirement: the workspace credential does not replace a durable Product Owner
+approval record. The complete inventory is in `BRIDGE_MCP_TOOL_REFERENCE.md`.
+
 ## Troubleshooting
 
 | Symptom | Check |

@@ -1,0 +1,5 @@
+{
+  "result": "PASS",
+  "journeys": ["resolved project -> bounded context", "ambiguous project -> durable continuation", "expired continuation rejected", "forged continuation rejected"],
+  "test": "projects/tests/test_governed_mcp.py::test_project_resolution_context_and_akb_journey and ::test_expired_and_forged_continuations_are_rejected"
+}

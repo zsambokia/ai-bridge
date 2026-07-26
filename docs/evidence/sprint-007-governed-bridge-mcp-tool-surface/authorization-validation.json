@@ -1,0 +1,6 @@
+{
+  "result": "PASS (local); BLOCKED (live Bearer proof)",
+  "controls": ["constant-time Bearer comparison", "fail-closed missing configuration", "authenticated caller fingerprint only in audit", "ready/active project scope", "durable non-revoked approval reference", "approval action matching"],
+  "local_proof": "contract.issue without a durable approval raises APPROVAL_REQUIRED; authenticated transport regression tests pass.",
+  "live_blocker": "MCP_API_TOKEN is not visible to the current execution process. No token or credential was recorded in evidence."
+}

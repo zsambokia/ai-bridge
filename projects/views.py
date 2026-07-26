@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 from typing import Any
@@ -10,10 +11,10 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Project
+from .governed_mcp import TOOL_SURFACE_VERSION, invoke_public_tool, public_tools
 
 MCP_PROTOCOL_VERSION = "2025-03-26"
-MCP_SERVER_INFO = {"name": "ai-bridge", "version": "0.1.0"}
+MCP_SERVER_INFO = {"name": "ai-bridge", "version": TOOL_SURFACE_VERSION}
 
 
 def _response(payload: dict[str, Any], status: int = 200) -> JsonResponse:
@@ -52,49 +53,11 @@ def _authenticate(request: HttpRequest) -> JsonResponse | None:
     return None
 
 
-def _status_tool_result() -> dict[str, Any]:
-    projects = list(
-        Project.objects.order_by("project_id").values(
-            "project_id", "repository_full_name", "lifecycle", "onboarding_status"
-        )
-    )
-    return {
-        "service": "ai-bridge",
-        "transport": "streamable-http",
-        "project_count": len(projects),
-        "projects": projects,
-    }
-
-
-STATUS_TOOL = {
-    "name": "factory.get_status",
-    "description": "Return the current read-only AI Bridge project registry status.",
-    "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-    "outputSchema": {
-        "type": "object",
-        "required": ["service", "transport", "project_count", "projects"],
-    },
-    "annotations": {
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    },
-}
-
-
-def _tool_result(name: str, arguments: Any) -> dict[str, Any]:
-    if name != STATUS_TOOL["name"]:
-        return {
-            "content": [{"type": "text", "text": "Unknown tool."}],
-            "isError": True,
-        }
-    if arguments not in ({}, None):
-        return {
-            "content": [{"type": "text", "text": "This tool accepts no arguments."}],
-            "isError": True,
-        }
-    status = _status_tool_result()
+def _tool_result(name: str, arguments: Any, caller: str) -> dict[str, Any]:
+    try:
+        status = invoke_public_tool(name, arguments, caller=caller)
+    except (ValueError, KeyError) as exc:
+        return {"content": [{"type": "text", "text": str(exc)}], "isError": True}
     return {
         "content": [{"type": "text", "text": json.dumps(status, sort_keys=True)}],
         "structuredContent": status,
@@ -112,6 +75,9 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
     authentication_error = _authenticate(request)
     if authentication_error is not None:
         return authentication_error
+    caller = hashlib.sha256(
+        request.headers["Authorization"].encode("utf-8")
+    ).hexdigest()
     try:
         message = json.loads(request.body)
     except json.JSONDecodeError:
@@ -136,7 +102,9 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": MCP_SERVER_INFO,
                     "instructions": (
-                        "AI Bridge exposes read-only governed status tools."
+                        "AI Bridge exposes governed, project-scoped tools. "
+                        "State-changing tools require a durable Product Owner "
+                        "approval reference."
                     ),
                 },
             }
@@ -148,7 +116,7 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
         return response
     if method == "tools/list":
         return _response(
-            {"jsonrpc": "2.0", "id": request_id, "result": {"tools": [STATUS_TOOL]}}
+            {"jsonrpc": "2.0", "id": request_id, "result": {"tools": public_tools()}}
         )
     if method == "tools/call":
         name = params.get("name")
@@ -158,7 +126,7 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
             {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "result": _tool_result(name, params.get("arguments", {})),
+                "result": _tool_result(name, params.get("arguments", {}), caller),
             }
         )
     return _error(request_id, -32601, "Method not found.")
