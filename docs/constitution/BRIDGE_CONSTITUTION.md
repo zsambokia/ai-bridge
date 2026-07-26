@@ -478,3 +478,13 @@ This Constitution may be changed only by an explicit Product Owner decision comm
 A Sprint may propose a constitutional amendment, but Codex may not weaken constitutional rules on its own.
 
 Every amendment must preserve the historical repository record and state why the change was necessary.
+
+## 24. Canonical executable scope authority
+
+AI Bridge is the system of record for newly proposed executable Sprints and
+standalone Work Items. Canonical scope records must be machine-validatable,
+versioned, hash-bound, and published as deterministic projections. Product
+Owner approval is a durable reference bound to the canonical record. A provider
+may consume an AI Bridge-issued contract but may not create its own authority,
+approval, or issuance chain. Historical Markdown remains readable evidence, not
+new execution authority.

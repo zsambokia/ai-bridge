@@ -607,3 +607,17 @@ suppress a gate, lower evidence depth, or make an Epic executable.
 The lifecycle is durable: `ISSUED → CONSUMED → COMPLETED`, with explicit
 `SUPERSEDED` and `REVOKED` alternatives. Completion binds the exact final commit
 SHA and one allowed closure state; it cannot be inferred from a passing test.
+
+## Sprint 010 provider-neutral contract authority
+
+For canonical Bridge scopes, schema `2.0` contracts contain the issuing system,
+approved scope identity/hash/version, durable approval reference, Project,
+repository, target branch, baseline, resolved policy, Release Gates, evidence
+locations and terminal states. A consumer supplies the expected contract hash,
+provider identity, observed baseline and schema version; the acknowledgement is
+stored atomically in `ContractConsumption`.
+
+Completion of schema `2.0` requires gate results, evidence manifest, changed
+files, execution result and failure classification in addition to the exact
+final commit and allowed closure state. Providers never create their own
+execution authorization.

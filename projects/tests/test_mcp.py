@@ -37,7 +37,17 @@ def test_governance_operations_remain_registered_for_internal_services() -> None
         "supersede_execution_contract",
         "revoke_execution_contract",
         "resolve_project",
-    } == set(registered_operations())
+    }.issubset(set(registered_operations()))
+    assert {
+        "scope.classify",
+        "sprint.propose",
+        "work_item.propose",
+        "scope.validate",
+        "scope.approve",
+        "scope.publish",
+        "scope.get",
+        "scope.contract.generate",
+    }.issubset(set(registered_operations()))
 
 
 @pytest.mark.django_db

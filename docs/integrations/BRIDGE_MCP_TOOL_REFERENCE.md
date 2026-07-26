@@ -35,3 +35,13 @@ context”, “Search accepted knowledge for release gates”, and “Prepare Sp
 007; tell me which durable approval is required next.” Avoid asking the model
 to invent identifiers, hashes or approvals: it must use values returned by prior
 tools.
+
+## Canonical scope authority (Sprint 010)
+
+Internal Bridge operations are `scope.classify`, `sprint.propose`,
+`work_item.propose`, `scope.validate`, `scope.approve`, `scope.publish`,
+`scope.get`, and `scope.contract.generate`; `sprint.*` and `work_item.*`
+validate/approve/publish/get aliases route to the same canonical authority.
+Approval is durable and mandatory before a scope can authorize execution.
+Canonical document validation is available through `python manage.py
+validate_scopes`.

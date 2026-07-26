@@ -14,6 +14,7 @@ from .contract_policy import resolve_policy
 from .execution import add_event, provider, start_run
 from .mcp import invoke_operation
 from .models import (
+    ExecutableScope,
     ExecutionContract,
     ExecutionPreparation,
     ExecutionProgressEvent,
@@ -343,6 +344,70 @@ for action, classification in [
     )
 _TOOLS.extend(
     [
+        _tool(
+            "scope.classify",
+            "Classify a natural-language request without creating authority.",
+            READ_ONLY,
+            {"request": {"type": "string", "minLength": 1, "maxLength": 4000}},
+            ["request"],
+        ),
+        *[
+            _tool(
+                name,
+                "Propose a canonical Bridge-managed executable scope.",
+                PREPARATORY_STATE,
+                {
+                    **_PROJECT,
+                    "request": {"type": "string", "minLength": 1, "maxLength": 4000},
+                    "title": {"type": "string", "maxLength": 160},
+                    "task_type": {"type": "string", "maxLength": 32},
+                    "execution_level": {"type": "string", "maxLength": 16},
+                    "risk_modifiers": {"type": "array", "maxItems": 16},
+                    **_IDEMPOTENCY,
+                },
+                ["project_id", "request", "idempotency_key"],
+            )
+            for name in ("sprint.propose", "work_item.propose")
+        ],
+        _tool(
+            "scope.validate",
+            "Validate one canonical scope record and projection.",
+            READ_ONLY,
+            {"scope_identifier": {"type": "string", "minLength": 1}},
+            ["scope_identifier"],
+        ),
+        _tool(
+            "scope.approve",
+            "Bind durable Product Owner execution approval to a scope.",
+            APPROVAL_REQUIRED,
+            {
+                "scope_identifier": {"type": "string", "minLength": 1},
+                **_APPROVAL,
+                **_IDEMPOTENCY,
+            },
+            ["scope_identifier", "approval_reference", "idempotency_key"],
+        ),
+        _tool(
+            "scope.publish",
+            "Publish a deterministic projection of an approved scope.",
+            LIFECYCLE_MUTATION,
+            {"scope_identifier": {"type": "string", "minLength": 1}, **_IDEMPOTENCY},
+            ["scope_identifier", "idempotency_key"],
+        ),
+        _tool(
+            "scope.get",
+            "Retrieve canonical scope data and publication path.",
+            READ_ONLY,
+            {"scope_identifier": {"type": "string", "minLength": 1}},
+            ["scope_identifier"],
+        ),
+        _tool(
+            "scope.contract.generate",
+            "Generate an AI Bridge-issued provider-neutral scope contract.",
+            PREPARATORY_STATE,
+            {"scope_identifier": {"type": "string", "minLength": 1}, **_IDEMPOTENCY},
+            ["scope_identifier", "idempotency_key"],
+        ),
         _tool(
             "contract.get_status",
             "Read a governed execution contract lifecycle status.",
@@ -838,6 +903,28 @@ def invoke_public_tool(
                     "attempt_count": run.attempt_count,
                     "current_blocker": run.current_blocker,
                 }
+        elif name.startswith("scope.") or name in {
+            "sprint.propose",
+            "work_item.propose",
+        }:
+            operation = {
+                "scope.classify": "scope.classify",
+                "sprint.propose": "sprint.propose",
+                "work_item.propose": "work_item.propose",
+                "scope.validate": "scope.validate",
+                "scope.approve": "scope.approve",
+                "scope.publish": "scope.publish",
+                "scope.get": "scope.get",
+                "scope.contract.generate": "scope.contract.generate",
+            }[name]
+            if "scope_identifier" in arguments:
+                scope = ExecutableScope.objects.get(
+                    identifier=arguments["scope_identifier"]
+                )
+                project = scope.project
+            result = invoke_operation(
+                operation, dict(arguments), Path(settings.BASE_DIR)
+            )
         elif name.startswith("contract."):
             action = name.split(".")[1]
             op = {

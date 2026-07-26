@@ -51,6 +51,14 @@ cancellation are available through the governed MCP registry. Provider output
 is not treated as evidence by itself: Release Gates, documentation, AKB, and
 the final contract binding remain required.
 
+Sprint 010 makes executable Sprints and standalone Work Items Bridge-managed
+canonical records. Markdown in `docs/sprints` and `docs/work-items` is a
+deterministic projection with YAML front matter, never the source of authority.
+Only a durable Product Owner approval can grant execution authorization; Bridge
+then issues provider-neutral contracts and records hash-bound provider
+consumption. Historical Sprint documents remain readable but cannot authorize
+new work.
+
 ## Verification
 
 ```powershell
@@ -59,6 +67,7 @@ the final contract binding remain required.
 .\.venv\Scripts\python -m ruff check .
 .\.venv\Scripts\python -m ruff format --check .
 .\.venv\Scripts\python -m mypy .
+.\.venv\Scripts\python manage.py validate_scopes
 .\.venv\Scripts\python -m scripts.release_gate
 ```
 

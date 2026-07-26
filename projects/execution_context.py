@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .models import Project, ProjectContext
+from .scopes import parse_scope_document
 from .services import load_project_definition
 
 
@@ -63,7 +64,16 @@ def build_execution_context(
     if not sprint_document.is_file():
         raise ValueError("SPRINT_NOT_FOUND")
     sprint_text = sprint_document.read_text(encoding="utf-8")
-    if not re.search(
+    # Canonical front matter is the authority.  The legacy branch is retained
+    # solely to read immutable pre-Sprint-010 repository history.
+    if sprint_text.startswith("---"):
+        record = parse_scope_document(sprint_text, project)
+        if (
+            record["status"] != "APPROVED"
+            or record["execution_authorization"] != "APPROVED_PROVIDER_EXECUTION"
+        ):
+            raise ValueError("SCOPE_NOT_APPROVED")
+    elif not re.search(
         r"(?:\*\*)?Status:(?:\*\*)?\s*APPROVED FOR CODEX EXECUTION", sprint_text
     ):
         raise ValueError("SPRINT_NOT_APPROVED")

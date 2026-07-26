@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ai-bridge-sprint/v1",
+  "type": "object",
+  "required": ["schema", "scope_kind", "identifier", "project_id", "title", "status", "execution_authorization", "execution_level", "task_type", "intent", "policy", "created_by"],
+  "properties": {
+    "schema": {"const": "ai-bridge-sprint/v1"},
+    "scope_kind": {"const": "SPRINT"},
+    "status": {"enum": ["DRAFT", "PROPOSED", "APPROVED", "ACTIVE", "COMPLETED", "CANCELLED", "SUPERSEDED"]},
+    "execution_authorization": {"enum": ["NONE", "APPROVED_PROVIDER_EXECUTION"]},
+    "created_by": {"const": "AI_BRIDGE"}
+  }
+}

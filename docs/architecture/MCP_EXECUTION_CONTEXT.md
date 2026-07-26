@@ -98,3 +98,18 @@ repository/implementation) and enter `REPAIRING`; unavailable providers and
 reserved Product Owner decisions do not masquerade as automatic repairs. A
 future gate runner may extend this controller, but it must preserve the same
 contract, event, retry, evidence and terminal-state ownership.
+
+## Sprint 010 canonical scope authority
+
+`ExecutableScope` is the only authority for new executable Sprints and
+standalone Work Items. It stores canonical machine data, lifecycle state,
+policy, approval reference, publication path and content hash. The Bridge MCP
+operations classify, propose, validate, approve, publish and retrieve scopes;
+`sprint.*` and `work_item.*` aliases make the ownership explicit. Free-text
+Markdown and legacy status headings are read-only historical material and are
+rejected as new authority.
+
+Approved, published scopes generate schema `2.0` execution contracts issued by
+AI Bridge. A provider must consume the exact hash under its identity, cannot
+self-issue or self-authorize, and completion records gates, evidence manifest,
+changed files, result and failure classification.

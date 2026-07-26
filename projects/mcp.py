@@ -14,6 +14,7 @@ from .contracts import (
     complete_execution_contract,
     consume_execution_contract,
     generate_execution_contract,
+    generate_scope_execution_contract,
     issue_execution_contract,
     render_execution_handoff,
     revoke_execution_contract,
@@ -21,7 +22,19 @@ from .contracts import (
     validate_execution_contract,
 )
 from .execution_context import build_execution_context
-from .models import ExecutionContract, Project, ProjectResolutionContinuation
+from .models import (
+    ExecutableScope,
+    ExecutionContract,
+    Project,
+    ProjectResolutionContinuation,
+)
+from .scopes import (
+    bind_approval,
+    classify_request,
+    propose_scope,
+    publish_scope,
+    validate_scope_record,
+)
 
 McpHandler = Callable[[dict[str, Any], Path], dict[str, Any]]
 _OPERATIONS: dict[str, McpHandler] = {}
@@ -320,7 +333,14 @@ def _find_contract(payload: dict[str, Any]) -> ExecutionContract:
 @mcp_operation("consume_execution_contract")
 def consume_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
     try:
-        contract = consume_execution_contract(_find_contract(payload), repository_root)
+        contract = consume_execution_contract(
+            _find_contract(payload),
+            repository_root,
+            expected_hash=payload.get("expected_contract_hash"),
+            provider_identity=str(payload.get("provider_identity", "legacy-provider")),
+            observed_baseline=payload.get("observed_baseline"),
+            schema_version=payload.get("schema_version"),
+        )
     except ExecutionContract.DoesNotExist:
         return {
             "status": "CONTRACT_NOT_FOUND",
@@ -342,6 +362,7 @@ def complete_contract(payload: dict[str, Any], repository_root: Path) -> dict[st
             _find_contract(payload),
             str(payload.get("final_commit_sha", "")),
             str(payload.get("closure_state", "")),
+            payload.get("completion_data"),
         )
     except ExecutionContract.DoesNotExist:
         return {
@@ -399,3 +420,135 @@ def revoke_contract(payload: dict[str, Any], repository_root: Path) -> dict[str,
         "status": "EXECUTION_CONTRACT_REVOKED",
         "execution_contract": _contract_view(contract),
     }
+
+
+def _scope(payload: dict[str, Any]) -> ExecutableScope:
+    return ExecutableScope.objects.get(
+        identifier=str(payload.get("scope_identifier", "")).strip()
+    )
+
+
+@mcp_operation("scope.classify")
+def scope_classify(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        return {
+            "status": "SCOPE_CLASSIFIED",
+            "classification": classify_request(
+                str(payload.get("request", "")), requested_kind=payload.get("kind")
+            ),
+        }
+    except ValueError as exc:
+        return {"status": str(exc)}
+
+
+def _propose(payload: dict[str, Any], root: Path, kind: str) -> dict[str, Any]:
+    del root
+    try:
+        scope = propose_scope(
+            Project.objects.get(project_id=str(payload.get("project_id", ""))),
+            str(payload.get("request", "")),
+            kind=kind,
+            title=payload.get("title"),
+            task_type=payload.get("task_type"),
+            execution_level=str(payload.get("execution_level", "TASK")),
+            risk_modifiers=list(payload.get("risk_modifiers", [])),
+        )
+        return {"status": "SCOPE_PROPOSED", "scope": scope.record}
+    except Project.DoesNotExist:
+        return {"status": "PROJECT_NOT_FOUND"}
+    except ValueError as exc:
+        return {"status": str(exc)}
+
+
+@mcp_operation("sprint.propose")
+def sprint_propose(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    return _propose(payload, repository_root, "SPRINT")
+
+
+@mcp_operation("work_item.propose")
+def work_item_propose(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    return _propose(payload, repository_root, "WORK_ITEM")
+
+
+@mcp_operation("work_item.validate")
+@mcp_operation("sprint.validate")
+@mcp_operation("scope.validate")
+def scope_validate(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        scope = _scope(payload)
+        validate_scope_record(scope.record, scope.project)
+        return {"status": "SCOPE_VALID", "scope": scope.record}
+    except ExecutableScope.DoesNotExist:
+        return {"status": "SCOPE_NOT_FOUND"}
+    except ValueError as exc:
+        return {"status": str(exc)}
+
+
+@mcp_operation("work_item.approve")
+@mcp_operation("sprint.approve")
+@mcp_operation("scope.approve")
+def scope_approve(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        scope = bind_approval(
+            _scope(payload), str(payload.get("approval_reference", ""))
+        )
+        return {"status": "SCOPE_APPROVED", "scope": scope.record}
+    except ExecutableScope.DoesNotExist:
+        return {"status": "SCOPE_NOT_FOUND"}
+    except ValueError as exc:
+        return {"status": str(exc)}
+
+
+@mcp_operation("work_item.publish")
+@mcp_operation("sprint.publish")
+@mcp_operation("scope.publish")
+def scope_publish(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    try:
+        scope = publish_scope(_scope(payload), repository_root)
+        return {
+            "status": "SCOPE_PUBLISHED",
+            "scope": scope.record,
+            "published_path": scope.published_path,
+        }
+    except ExecutableScope.DoesNotExist:
+        return {"status": "SCOPE_NOT_FOUND"}
+    except ValueError as exc:
+        return {"status": str(exc)}
+
+
+@mcp_operation("work_item.get")
+@mcp_operation("sprint.get")
+@mcp_operation("scope.get")
+def scope_get(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        scope = _scope(payload)
+        return {
+            "status": "SCOPE_RETRIEVED",
+            "scope": scope.record,
+            "published_path": scope.published_path,
+        }
+    except ExecutableScope.DoesNotExist:
+        return {"status": "SCOPE_NOT_FOUND"}
+
+
+@mcp_operation("scope.contract.generate")
+def scope_contract_generate(
+    payload: dict[str, Any], repository_root: Path
+) -> dict[str, Any]:
+    try:
+        contract = generate_scope_execution_contract(
+            _scope(payload),
+            repository_root,
+        )
+        return {
+            "status": "EXECUTION_CONTRACT_GENERATED",
+            "execution_contract": _contract_view(contract),
+        }
+    except ExecutableScope.DoesNotExist:
+        return {"status": "SCOPE_NOT_FOUND"}
+    except ValueError as exc:
+        return {"status": str(exc)}

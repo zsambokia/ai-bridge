@@ -97,6 +97,10 @@ class ExecutionContract(models.Model):
         COMPLETED = "COMPLETED", "Completed"
         SUPERSEDED = "SUPERSEDED", "Superseded"
         REVOKED = "REVOKED", "Revoked"
+        RUNNING = "RUNNING", "Running"
+        FAILED = "FAILED", "Failed"
+        CANCELLED = "CANCELLED", "Cancelled"
+        EXPIRED = "EXPIRED", "Expired"
 
     project = models.ForeignKey(
         Project, on_delete=models.PROTECT, related_name="execution_contracts"
@@ -116,6 +120,7 @@ class ExecutionContract(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     final_commit_sha = models.CharField(max_length=64, blank=True)
     closure_state = models.CharField(max_length=128, blank=True)
+    completion_data = models.JSONField(default=dict, blank=True)
     superseded_by = models.ForeignKey(
         "self",
         null=True,
@@ -156,6 +161,59 @@ class ExecutionContract(models.Model):
             ):
                 raise ValueError("ISSUED_CONTRACT_IMMUTABLE")
         super().save(*args, **kwargs)
+
+
+class ExecutableScope(models.Model):
+    """Bridge-managed authoritative Sprint or standalone Work Item.
+
+    The JSON record is authoritative; its Markdown file is a deterministic
+    publication projection and is never parsed as new authority.
+    """
+
+    class Kind(models.TextChoices):
+        SPRINT = "SPRINT", "Sprint"
+        WORK_ITEM = "WORK_ITEM", "Work Item"
+
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        PROPOSED = "PROPOSED", "Proposed"
+        APPROVED = "APPROVED", "Approved"
+        ACTIVE = "ACTIVE", "Active"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Cancelled"
+        SUPERSEDED = "SUPERSEDED", "Superseded"
+
+    identifier = models.CharField(max_length=160, unique=True)
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="scopes"
+    )
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PROPOSED
+    )
+    version = models.PositiveIntegerField(default=1)
+    record = models.JSONField(default=dict)
+    approval_reference = models.CharField(max_length=128, blank=True)
+    published_path = models.CharField(max_length=255, blank=True)
+    content_hash = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["identifier", "version"]
+
+
+class ContractConsumption(models.Model):
+    """Durable, atomic acknowledgement by a provider of an issued contract."""
+
+    contract = models.OneToOneField(
+        ExecutionContract, on_delete=models.PROTECT, related_name="consumption"
+    )
+    provider_identity = models.CharField(max_length=255)
+    expected_contract_hash = models.CharField(max_length=64)
+    observed_baseline = models.CharField(max_length=64)
+    schema_version = models.CharField(max_length=32)
+    consumed_at = models.DateTimeField(auto_now_add=True)
 
 
 class GovernanceApproval(models.Model):

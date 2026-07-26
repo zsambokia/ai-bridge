@@ -38,10 +38,19 @@ paths:
   evidence_root: "docs/evidence"
 
 sprints:
-  approval_mode: "explicit_path"
-  active_sprint_inference: false
-  filename_pattern: "SPRINT_<number>_<name>.md"
-  required_status_for_execution: "APPROVED FOR CODEX EXECUTION"
+  authority: "bridge_managed_canonical_scope"
+  canonical_schema: "ai-bridge-sprint/v1"
+  legacy_markdown_reader: "read_only"
+
+scope_authority:
+  managed_by: "AI_BRIDGE"
+  sprint_schema: "ai-bridge-sprint/v1"
+  work_item_schema: "ai-bridge-work-item/v1"
+  publication_roots:
+    sprint: "docs/sprints"
+    work_item: "docs/work-items"
+  approval_required_for_execution: true
+  provider_may_issue_contracts: false
 
 technology:
   language_runtime:
@@ -67,6 +76,9 @@ release_gates:
       required: true
     - id: "type-check"
       command: "mypy ."
+      required: true
+    - id: "scope-schema"
+      command: "python manage.py validate_scopes"
       required: true
   composed_command: null
   sprint_specific_required: true

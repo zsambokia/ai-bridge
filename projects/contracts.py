@@ -16,7 +16,8 @@ from django.utils import timezone
 
 from .contract_policy import resolve_policy
 from .execution_context import build_execution_context
-from .models import ExecutionContract, Project
+from .models import ContractConsumption, ExecutableScope, ExecutionContract, Project
+from .scopes import approved_scope
 from .services import _current_branch, _head_sha, _repository_identity
 
 
@@ -204,6 +205,67 @@ def generate_execution_contract(
     )
 
 
+def generate_scope_execution_contract(
+    scope: ExecutableScope, repository_root: Path, *, issuer: str = "AI_BRIDGE"
+) -> ExecutionContract:
+    """Generate a provider-neutral contract from Bridge-managed scope authority."""
+    if issuer != "AI_BRIDGE":
+        raise ValueError("CONTRACT_AUTHORITY_REQUIRED")
+    authorized = approved_scope(scope)
+    if not authorized["path"]:
+        raise ValueError("SCOPE_NOT_PUBLISHED")
+    handoff_identifier = f"bridge:{scope.project.project_id}:contract:{uuid4()}"
+    context = build_execution_context(
+        scope.project, authorized["path"], repository_root
+    )
+    baseline = _head_sha(repository_root)
+    record = scope.record
+    payload = {
+        "schema_version": "2.0",
+        "contract_id": handoff_identifier,
+        "handoff_identifier": handoff_identifier,
+        "issuer": {
+            "system": "AI_BRIDGE",
+            "authority_instance": "default",
+            "issued_by": issuer,
+        },
+        "project": {
+            "id": scope.project.project_id,
+            "repository": context.target_repository,
+        },
+        "approved_scope": authorized,
+        "approval_reference": authorized["approval_reference"],
+        "execution": {
+            "execution_level": record["execution_level"],
+            "task_type": record["task_type"],
+            "intent": record["intent"],
+            "target_branch": context.target_branch,
+            "baseline_commit": baseline,
+            "baseline_rule": "DESCENDANT_OF",
+        },
+        "provider_policy": {
+            "provider_may_issue": False,
+            "provider_may_consume_own_issue": False,
+            "supported_schema_versions": ["2.0"],
+        },
+        "policy": record["policy"],
+        "release_gates": {"repository_wide": context.release_gates},
+        "evidence": {
+            "root": f"docs/evidence/{scope.identifier.replace(':', '-')}",
+            "closure_report": f"docs/evidence/{scope.identifier.replace(':', '-')}/CLOSURE_REPORT.md",
+            "machine_results": f"docs/evidence/{scope.identifier.replace(':', '-')}/acceptance-results.json",
+        },
+        "allowed_terminal_states": context.allowed_terminal_states,
+    }
+    return ExecutionContract.objects.create(
+        project=scope.project,
+        handoff_identifier=handoff_identifier,
+        approved_sprint_path=authorized["path"],
+        payload=payload,
+        contract_hash=_normalized_hash(payload),
+    )
+
+
 def validate_execution_contract(
     contract: ExecutionContract, repository_root: Path
 ) -> ExecutionContract:
@@ -213,6 +275,14 @@ def validate_execution_contract(
         ExecutionContract.Lifecycle.VALIDATED,
     }:
         raise ValueError("CONTRACT_NOT_VALIDATABLE")
+    if contract.payload.get("schema_version") == "2.0":
+        if contract.payload.get("issuer", {}).get("system") != "AI_BRIDGE":
+            raise ValueError("CONTRACT_AUTHORITY_REQUIRED")
+        contract.validation_errors = []
+        contract.lifecycle = ExecutionContract.Lifecycle.VALIDATED
+        contract.validated_at = timezone.now()
+        contract.save(update_fields=["validation_errors", "lifecycle", "validated_at"])
+        return contract
     execution = contract.payload["execution"]
     payload = _payload_for(
         contract.project,
@@ -270,10 +340,26 @@ def validate_issued_execution_contract(
     current_branch = _current_branch(repository_root)
     if current_branch != execution["target_branch"]:
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:BRANCH_MISMATCH")
-    expected_bindings = contract.payload["binding_documents"]
-    binding_paths = {name: item["path"] for name, item in expected_bindings.items()}
-    if _binding_document_hashes(repository_root, binding_paths) != expected_bindings:
-        raise ValueError("CONTRACT_INTEGRITY_FAILURE:BINDING_HASH_MISMATCH")
+    if contract.payload.get("schema_version") == "2.0":
+        scope = contract.payload.get("approved_scope", {})
+        if not scope.get("identifier") or not scope.get("approval_reference"):
+            raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_AUTHORITY_MISSING")
+        published = repository_root / str(scope.get("path", ""))
+        if not published.is_file():
+            raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_DOCUMENT_MISSING")
+        from .scopes import parse_scope_document
+
+        parsed = parse_scope_document(published.read_text(encoding="utf-8"))
+        if parsed.get("content_hash") != scope.get("content_hash"):
+            raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_HASH_MISMATCH")
+    else:
+        expected_bindings = contract.payload["binding_documents"]
+        binding_paths = {name: item["path"] for name, item in expected_bindings.items()}
+        if (
+            _binding_document_hashes(repository_root, binding_paths)
+            != expected_bindings
+        ):
+            raise ValueError("CONTRACT_INTEGRITY_FAILURE:BINDING_HASH_MISMATCH")
     baseline = execution["baseline_commit"]
     if not _baseline_exists(repository_root, baseline):
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:BASELINE_NOT_FOUND")
@@ -290,22 +376,51 @@ def validate_issued_execution_contract(
 
 
 def consume_execution_contract(
-    contract: ExecutionContract, repository_root: Path
+    contract: ExecutionContract,
+    repository_root: Path,
+    *,
+    expected_hash: str | None = None,
+    provider_identity: str = "legacy-provider",
+    observed_baseline: str | None = None,
+    schema_version: str | None = None,
 ) -> ExecutionContract:
     """Acknowledge one issued contract before mutation; an Epic is not code authority."""
     if contract.lifecycle != ExecutionContract.Lifecycle.ISSUED:
         raise ValueError("CONTRACT_NOT_ISSUED")
+    if contract.payload.get("issuer", {}).get("system") not in {None, "AI_BRIDGE"}:
+        raise ValueError("CONTRACT_AUTHORITY_REQUIRED")
+    if expected_hash is not None and expected_hash != contract.contract_hash:
+        raise ValueError("CONTRACT_HASH_MISMATCH")
+    if provider_identity == contract.payload.get("issuer", {}).get("issued_by"):
+        raise ValueError("PROVIDER_SELF_AUTHORIZATION_REJECTED")
+    if schema_version is not None and schema_version not in contract.payload.get(
+        "provider_policy", {}
+    ).get("supported_schema_versions", [schema_version]):
+        raise ValueError("CONTRACT_SCHEMA_UNSUPPORTED")
     if contract.payload["policy"]["child_contract_required"]:
         raise ValueError("EPIC_CHILD_CONTRACT_REQUIRED")
     validate_issued_execution_contract(contract, repository_root)
-    contract.lifecycle = ExecutionContract.Lifecycle.CONSUMED
-    contract.consumed_at = timezone.now()
-    contract.save(update_fields=["lifecycle", "consumed_at"])
+    with transaction.atomic():
+        contract.lifecycle = ExecutionContract.Lifecycle.CONSUMED
+        contract.consumed_at = timezone.now()
+        contract.save(update_fields=["lifecycle", "consumed_at"])
+        if expected_hash is not None:
+            ContractConsumption.objects.create(
+                contract=contract,
+                provider_identity=provider_identity,
+                expected_contract_hash=expected_hash,
+                observed_baseline=observed_baseline or _head_sha(repository_root),
+                schema_version=schema_version
+                or str(contract.payload.get("schema_version", "1.1")),
+            )
     return contract
 
 
 def complete_execution_contract(
-    contract: ExecutionContract, final_commit_sha: str, closure_state: str
+    contract: ExecutionContract,
+    final_commit_sha: str,
+    closure_state: str,
+    completion_data: dict[str, Any] | None = None,
 ) -> ExecutionContract:
     """Bind a consumed execution to its terminal evidence state."""
     if contract.lifecycle != ExecutionContract.Lifecycle.CONSUMED:
@@ -314,12 +429,31 @@ def complete_execution_contract(
         raise ValueError("CLOSURE_STATE_INVALID")
     if not re.fullmatch(r"[0-9a-f]{40}", final_commit_sha):
         raise ValueError("FINAL_COMMIT_INVALID")
+    completion_data = completion_data or {}
+    if contract.payload.get("schema_version") == "2.0":
+        required = {
+            "gate_results",
+            "evidence_manifest",
+            "changed_files",
+            "execution_result",
+            "failure_classification",
+        }
+        missing = sorted(required - set(completion_data))
+        if missing:
+            raise ValueError("COMPLETION_EVIDENCE_REQUIRED:" + ",".join(missing))
     contract.lifecycle = ExecutionContract.Lifecycle.COMPLETED
     contract.completed_at = timezone.now()
     contract.final_commit_sha = final_commit_sha
     contract.closure_state = closure_state
+    contract.completion_data = completion_data
     contract.save(
-        update_fields=["lifecycle", "completed_at", "final_commit_sha", "closure_state"]
+        update_fields=[
+            "lifecycle",
+            "completed_at",
+            "final_commit_sha",
+            "closure_state",
+            "completion_data",
+        ]
     )
     return contract
 

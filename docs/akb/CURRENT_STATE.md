@@ -104,6 +104,8 @@ autonomous planning, or a large user interface.
 
 ## Next approved action
 
-Review the Sprint 009 evidence bundle and its final contract binding, then
-perform the remaining ChatGPT workspace UI tool-scan as the Product Owner
-acceptance step.
+Sprint 010 introduces Bridge-managed canonical Sprint and Work Item authority,
+with durable approval binding, canonical projection validation, provider-neutral
+contracts, and recorded consumption. Historical Sprint Markdown remains
+readable only. Run the Sprint 010 Release Gates and review its final evidence
+bundle and contract binding.
