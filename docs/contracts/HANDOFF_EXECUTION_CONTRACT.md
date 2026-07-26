@@ -578,3 +578,32 @@ The Handoff Generator is ready for implementation when:
 - repository-wide Release Gates can be resolved from Project configuration;
 - persistence and lifecycle event conventions are available;
 - the Product Owner approves a dedicated implementation Sprint.
+
+## 23. Tiered execution policy
+
+Every generated contract additionally resolves one immutable execution policy
+from the Project definition, execution level, task type, approved scope, and
+declared risk modifiers. It is a deterministic policy decision, not a caller
+editable checklist.
+
+```text
+HOTFIX < BUGFIX < TASK < SPRINT < EPIC
+```
+
+The supported execution levels are `HOTFIX`, `BUGFIX`, `TASK`, `SPRINT`, and
+`EPIC`. Supported task types are `FEATURE`, `BUGFIX`, `MIGRATION`, `RECOVERY`,
+`DOCUMENTATION`, `RELEASE`, `SELF_DEVELOPMENT`, `ONBOARDING`, `SECURITY`, and
+`CONFIGURATION`. An `EPIC` contract records decomposition and child contract
+identifiers, but cannot be consumed as code-change authority.
+
+The machine-readable `execution` object must include `execution_level`,
+`task_type`, `risk_modifiers`, and `child_contract_identifiers`. A `policy`
+object must include a profile version, resolved profile, assessment depth,
+resolved required Release Gates, evidence artifacts, documentation obligations,
+review requirements, any explicit omission justification, and whether a child
+contract is required. Risk modifiers can only add obligations. They cannot
+suppress a gate, lower evidence depth, or make an Epic executable.
+
+The lifecycle is durable: `ISSUED → CONSUMED → COMPLETED`, with explicit
+`SUPERSEDED` and `REVOKED` alternatives. Completion binds the exact final commit
+SHA and one allowed closure state; it cannot be inferred from a passing test.

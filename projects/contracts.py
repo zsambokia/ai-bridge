@@ -1,4 +1,5 @@
 """Canonical execution-contract generation and immutable issuance."""
+# ruff: noqa: E501
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from uuid import uuid4
 from django.db import transaction
 from django.utils import timezone
 
+from .contract_policy import resolve_policy
 from .execution_context import build_execution_context
 from .models import ExecutionContract, Project
 from .services import _head_sha, _repository_identity
@@ -83,6 +85,9 @@ def _payload_for(
     intent: str,
     repository_root: Path,
     handoff_identifier: str,
+    execution_level: str = "SPRINT",
+    risk_modifiers: list[str] | None = None,
+    child_contract_identifiers: list[str] | None = None,
 ) -> dict[str, Any]:
     if not task_type.strip() or not intent.strip():
         raise ValueError("TASK_TYPE_AND_INTENT_REQUIRED")
@@ -101,9 +106,24 @@ def _payload_for(
         **{key: value for key, value in context.binding_documents.items()},
         "approved_sprint_path": approved_sprint_path,
     }
+    task_type = task_type.strip().upper()
+    execution_level = execution_level.strip().upper()
+    risks = sorted({risk.strip().upper() for risk in risk_modifiers or []})
+    policy = resolve_policy(execution_level, task_type, risks)
+    policy["required_release_gates"] = sorted(
+        {
+            "sprint-specific",
+            *[gate["id"] for gate in context.release_gates],
+        }
+    )
+    children = sorted(set(child_contract_identifiers or []))
+    if policy["child_contract_required"] and not children:
+        raise ValueError("EPIC_CHILD_CONTRACT_IDENTIFIERS_REQUIRED")
     evidence_root = context.evidence_root
+    if execution_level != "SPRINT":
+        evidence_root = f"{evidence_root}/{execution_level.lower()}-{task_type.lower()}"
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "handoff_identifier": handoff_identifier,
         "project": {
             "id": project.project_id,
@@ -111,7 +131,10 @@ def _payload_for(
             "definition_source": project.definition_path,
         },
         "execution": {
-            "task_type": task_type.strip(),
+            "execution_level": execution_level,
+            "task_type": task_type,
+            "risk_modifiers": risks,
+            "child_contract_identifiers": children,
             "intent": intent.strip(),
             "approved_sprint_path": approved_sprint_path,
             "target_branch": context.target_branch,
@@ -123,6 +146,7 @@ def _payload_for(
             "repository_wide": context.release_gates,
             "sprint_specific": _sprint_specific_gates(sprint_document),
         },
+        "policy": policy,
         "evidence": {
             "root": evidence_root,
             "closure_report": f"{evidence_root}/CLOSURE_REPORT.md",
@@ -138,6 +162,9 @@ def generate_execution_contract(
     task_type: str,
     intent: str,
     repository_root: Path,
+    execution_level: str = "SPRINT",
+    risk_modifiers: list[str] | None = None,
+    child_contract_identifiers: list[str] | None = None,
 ) -> ExecutionContract:
     """Create one explicit draft after resolving every binding input."""
     sprint_slug = Path(approved_sprint_path).stem.lower()
@@ -149,6 +176,9 @@ def generate_execution_contract(
         intent,
         repository_root,
         handoff_identifier,
+        execution_level,
+        risk_modifiers,
+        child_contract_identifiers,
     )
     return ExecutionContract.objects.create(
         project=project,
@@ -176,6 +206,9 @@ def validate_execution_contract(
         execution["intent"],
         repository_root,
         contract.handoff_identifier,
+        execution.get("execution_level", "SPRINT"),
+        execution.get("risk_modifiers", []),
+        execution.get("child_contract_identifiers", []),
     )
     contract.payload = payload
     contract.contract_hash = _normalized_hash(payload)
@@ -207,6 +240,66 @@ def issue_execution_contract(contract: ExecutionContract) -> ExecutionContract:
     return contract
 
 
+def consume_execution_contract(contract: ExecutionContract) -> ExecutionContract:
+    """Acknowledge one issued contract before mutation; an Epic is not code authority."""
+    if contract.lifecycle != ExecutionContract.Lifecycle.ISSUED:
+        raise ValueError("CONTRACT_NOT_ISSUED")
+    if contract.payload["policy"]["child_contract_required"]:
+        raise ValueError("EPIC_CHILD_CONTRACT_REQUIRED")
+    contract.lifecycle = ExecutionContract.Lifecycle.CONSUMED
+    contract.consumed_at = timezone.now()
+    contract.save(update_fields=["lifecycle", "consumed_at"])
+    return contract
+
+
+def complete_execution_contract(
+    contract: ExecutionContract, final_commit_sha: str, closure_state: str
+) -> ExecutionContract:
+    """Bind a consumed execution to its terminal evidence state."""
+    if contract.lifecycle != ExecutionContract.Lifecycle.CONSUMED:
+        raise ValueError("CONTRACT_NOT_CONSUMED")
+    if closure_state not in contract.payload["allowed_terminal_states"]:
+        raise ValueError("CLOSURE_STATE_INVALID")
+    if not re.fullmatch(r"[0-9a-f]{40}", final_commit_sha):
+        raise ValueError("FINAL_COMMIT_INVALID")
+    contract.lifecycle = ExecutionContract.Lifecycle.COMPLETED
+    contract.completed_at = timezone.now()
+    contract.final_commit_sha = final_commit_sha
+    contract.closure_state = closure_state
+    contract.save(
+        update_fields=["lifecycle", "completed_at", "final_commit_sha", "closure_state"]
+    )
+    return contract
+
+
+def supersede_execution_contract(
+    contract: ExecutionContract, replacement: ExecutionContract
+) -> ExecutionContract:
+    if contract.lifecycle not in {
+        ExecutionContract.Lifecycle.ISSUED,
+        ExecutionContract.Lifecycle.VALIDATED,
+    }:
+        raise ValueError("CONTRACT_NOT_SUPERSEDABLE")
+    if replacement.project_id != contract.project_id:
+        raise ValueError("CONTRACT_PROJECT_MISMATCH")
+    contract.lifecycle = ExecutionContract.Lifecycle.SUPERSEDED
+    contract.superseded_by = replacement
+    contract.save(update_fields=["lifecycle", "superseded_by"])
+    return contract
+
+
+def revoke_execution_contract(contract: ExecutionContract) -> ExecutionContract:
+    if contract.lifecycle not in {
+        ExecutionContract.Lifecycle.DRAFT,
+        ExecutionContract.Lifecycle.VALIDATED,
+        ExecutionContract.Lifecycle.ISSUED,
+    }:
+        raise ValueError("CONTRACT_NOT_REVOKABLE")
+    contract.lifecycle = ExecutionContract.Lifecycle.REVOKED
+    contract.save(update_fields=["lifecycle"])
+    return contract
+
+
 def render_execution_handoff(contract: ExecutionContract) -> str:
     """Render only persisted machine data, never request-time inputs."""
     payload = contract.payload
@@ -220,6 +313,7 @@ def render_execution_handoff(contract: ExecutionContract) -> str:
             f"**Repository:** {payload['project']['repository']}",
             f"**Sprint:** `{execution['approved_sprint_path']}`",
             f"**Task type:** {execution['task_type']}",
+            f"**Execution level:** {execution.get('execution_level', 'SPRINT')}",
             f"**Target branch:** {execution['target_branch']}",
             f"**Baseline:** `{execution['baseline_commit']}`",
             f"**Contract SHA-256:** `{contract.contract_hash}`",

@@ -33,6 +33,10 @@ def test_mcp_operations_are_registered_and_http_reachable() -> None:
         "issue_execution_contract",
         "get_execution_contract",
         "render_execution_handoff",
+        "consume_execution_contract",
+        "complete_execution_contract",
+        "supersede_execution_contract",
+        "revoke_execution_contract",
         "resolve_project",
     } == set(registered_operations())
     response = Client().post(

@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SECRET_KEY = "development-only-not-a-secret"
 DEBUG = False
-ALLOWED_HOSTS: list[str] = []
+CLOUDFLARE_TUNNEL_HOSTS = [
+    "stage.artificial-software-factory.com",
+    "app.artificial-software-factory.com",
+]
+
+
+def _allowed_hosts() -> list[str]:
+    """Use explicit host names only; deployment may add, never wildcard, hosts."""
+    configured = [
+        host.strip()
+        for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
+        if host.strip()
+    ]
+    if "*" in configured:
+        raise ValueError("DJANGO_ALLOWED_HOSTS must not contain '*'")
+    return list(dict.fromkeys([*CLOUDFLARE_TUNNEL_HOSTS, *configured]))
+
+
+ALLOWED_HOSTS = _allowed_hosts()
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

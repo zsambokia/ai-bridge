@@ -42,3 +42,13 @@ the current repository baseline, bindings and hashes; validation re-resolves
 those inputs; issuance makes the payload immutable and rejects evidence-root
 collisions. Human-readable handoff Markdown is rendered only from that stored
 payload, so it cannot drift from the issued contract.
+
+Sprint 005 makes the contract policy tiered and deterministic. Each contract
+stores a `HOTFIX`, `BUGFIX`, `TASK`, `SPRINT`, or `EPIC` execution level, task
+type, explicit risk modifiers, and a resolved policy profile. The profile binds
+assessment depth, Project-resolved Release Gates, evidence, documentation and
+review obligations. Risks add requirements only. `EPIC` contracts require child
+contract identifiers and cannot be consumed for code changes. The transport now
+also exposes `consume_execution_contract`, `complete_execution_contract`,
+`supersede_execution_contract`, and `revoke_execution_contract`; completion
+durably binds final commit SHA and the allowed closure state.

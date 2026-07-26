@@ -1,4 +1,5 @@
 """Small, registered MCP-facing operations for the canonical Project domain."""
+# ruff: noqa: E501
 
 from __future__ import annotations
 
@@ -9,9 +10,13 @@ from typing import Any
 from django.utils import timezone
 
 from .contracts import (
+    complete_execution_contract,
+    consume_execution_contract,
     generate_execution_contract,
     issue_execution_contract,
     render_execution_handoff,
+    revoke_execution_contract,
+    supersede_execution_contract,
     validate_execution_contract,
 )
 from .execution_context import build_execution_context
@@ -198,7 +203,14 @@ def generate_contract(payload: dict[str, Any], repository_root: Path) -> dict[st
     try:
         project = Project.objects.get(project_id=project_id)
         contract = generate_execution_contract(
-            project, sprint_path, task_type, intent, repository_root
+            project,
+            sprint_path,
+            task_type,
+            intent,
+            repository_root,
+            str(payload.get("execution_level", "SPRINT")),
+            list(payload.get("risk_modifiers", [])),
+            list(payload.get("child_contract_identifiers", [])),
         )
     except Project.DoesNotExist:
         return {"status": "PROJECT_NOT_FOUND", "error": "Project is not registered."}
@@ -286,4 +298,95 @@ def render_contract(payload: dict[str, Any], repository_root: Path) -> dict[str,
         "status": "EXECUTION_HANDOFF_RENDERED",
         "handoff_identifier": contract.handoff_identifier,
         "rendered_handoff": render_execution_handoff(contract),
+    }
+
+
+def _find_contract(payload: dict[str, Any]) -> ExecutionContract:
+    return ExecutionContract.objects.get(
+        handoff_identifier=str(payload.get("handoff_identifier", "")).strip()
+    )
+
+
+@mcp_operation("consume_execution_contract")
+def consume_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        contract = consume_execution_contract(_find_contract(payload))
+    except ExecutionContract.DoesNotExist:
+        return {
+            "status": "CONTRACT_NOT_FOUND",
+            "error": "Handoff identifier is unknown.",
+        }
+    except ValueError as exc:
+        return {"status": str(exc), "error": "Execution Contract cannot be consumed."}
+    return {
+        "status": "EXECUTION_CONTRACT_CONSUMED",
+        "execution_contract": _contract_view(contract),
+    }
+
+
+@mcp_operation("complete_execution_contract")
+def complete_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        contract = complete_execution_contract(
+            _find_contract(payload),
+            str(payload.get("final_commit_sha", "")),
+            str(payload.get("closure_state", "")),
+        )
+    except ExecutionContract.DoesNotExist:
+        return {
+            "status": "CONTRACT_NOT_FOUND",
+            "error": "Handoff identifier is unknown.",
+        }
+    except ValueError as exc:
+        return {"status": str(exc), "error": "Execution Contract cannot be completed."}
+    return {
+        "status": "EXECUTION_CONTRACT_COMPLETED",
+        "execution_contract": _contract_view(contract),
+    }
+
+
+@mcp_operation("supersede_execution_contract")
+def supersede_contract(
+    payload: dict[str, Any], repository_root: Path
+) -> dict[str, Any]:
+    del repository_root
+    try:
+        contract = supersede_execution_contract(
+            _find_contract(payload),
+            ExecutionContract.objects.get(
+                handoff_identifier=str(
+                    payload.get("replacement_handoff_identifier", "")
+                ).strip()
+            ),
+        )
+    except ExecutionContract.DoesNotExist:
+        return {
+            "status": "CONTRACT_NOT_FOUND",
+            "error": "Handoff identifier is unknown.",
+        }
+    except ValueError as exc:
+        return {"status": str(exc), "error": "Execution Contract cannot be superseded."}
+    return {
+        "status": "EXECUTION_CONTRACT_SUPERSEDED",
+        "execution_contract": _contract_view(contract),
+    }
+
+
+@mcp_operation("revoke_execution_contract")
+def revoke_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        contract = revoke_execution_contract(_find_contract(payload))
+    except ExecutionContract.DoesNotExist:
+        return {
+            "status": "CONTRACT_NOT_FOUND",
+            "error": "Handoff identifier is unknown.",
+        }
+    except ValueError as exc:
+        return {"status": str(exc), "error": "Execution Contract cannot be revoked."}
+    return {
+        "status": "EXECUTION_CONTRACT_REVOKED",
+        "execution_contract": _contract_view(contract),
     }

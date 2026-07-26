@@ -25,6 +25,11 @@ python -m venv .venv
 {"status":"ok","service":"ai-bridge"}
 ```
 
+The deployment-safe default allows the two approved Cloudflare tunnel hosts:
+`stage.artificial-software-factory.com` and
+`app.artificial-software-factory.com`. Deployments may add explicit host names
+with `DJANGO_ALLOWED_HOSTS` (comma-separated). Wildcard hosts are rejected.
+
 `POST /mcp/` accepts a JSON object with `operation` and `payload`. It exposes
 registered Project resolution, Execution Context, and Execution Contract
 operations; see

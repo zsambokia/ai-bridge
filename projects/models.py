@@ -1,4 +1,5 @@
 """Canonical runtime models for registered Projects and their Contexts."""
+# ruff: noqa: E501
 
 from __future__ import annotations
 
@@ -110,6 +111,17 @@ class ExecutionContract(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     validated_at = models.DateTimeField(null=True, blank=True)
     issued_at = models.DateTimeField(null=True, blank=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    final_commit_sha = models.CharField(max_length=64, blank=True)
+    closure_state = models.CharField(max_length=128, blank=True)
+    superseded_by = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="supersedes",
+    )
 
     class Meta:
         ordering = ["-created_at"]

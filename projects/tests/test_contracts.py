@@ -6,8 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from projects.contract_policy import resolve_policy
 from projects.contracts import (
     _normalized_hash,
+    complete_execution_contract,
+    consume_execution_contract,
     generate_execution_contract,
     issue_execution_contract,
     render_execution_handoff,
@@ -191,3 +194,87 @@ def test_complete_mcp_contract_flow_uses_registered_surface(
     assert (
         retrieved["execution_contract"]["contract_hash"] in rendered["rendered_handoff"]
     )
+
+
+@pytest.mark.django_db
+def test_policy_profiles_are_deterministic_and_distinct(
+    contract_project: tuple[Path, Project],
+) -> None:
+    root, project = contract_project
+    bugfix = generate_execution_contract(
+        project,
+        "docs/sprints/SPRINT_003.md",
+        "CONFIGURATION",
+        "Host repair.",
+        root,
+        execution_level="BUGFIX",
+    )
+    sprint = generate_execution_contract(
+        project,
+        "docs/sprints/SPRINT_003.md",
+        "FEATURE",
+        "Feature.",
+        root,
+        execution_level="SPRINT",
+    )
+    epic = generate_execution_contract(
+        project,
+        "docs/sprints/SPRINT_003.md",
+        "SELF_DEVELOPMENT",
+        "Epic plan.",
+        root,
+        execution_level="EPIC",
+        child_contract_identifiers=["child-sprint-006"],
+    )
+    assert bugfix.payload["policy"]["required_assessment_depth"] == "standard"
+    assert sprint.payload["policy"]["required_assessment_depth"] == "extended"
+    assert epic.payload["policy"]["child_contract_required"] is True
+    assert resolve_policy("BUGFIX", "CONFIGURATION") == resolve_policy(
+        "BUGFIX", "CONFIGURATION"
+    )
+
+
+@pytest.mark.django_db
+def test_risk_only_strengthens_and_epic_cannot_be_consumed(
+    contract_project: tuple[Path, Project],
+) -> None:
+    root, project = contract_project
+    ordinary = resolve_policy("BUGFIX", "CONFIGURATION")
+    risk = resolve_policy("BUGFIX", "CONFIGURATION", ["SECURITY_RELEVANT"])
+    assert set(ordinary["required_evidence_artifacts"]).issubset(
+        risk["required_evidence_artifacts"]
+    )
+    epic = generate_execution_contract(
+        project,
+        "docs/sprints/SPRINT_003.md",
+        "SELF_DEVELOPMENT",
+        "Epic plan.",
+        root,
+        execution_level="EPIC",
+        child_contract_identifiers=["child-sprint-006"],
+    )
+    epic = issue_execution_contract(validate_execution_contract(epic, root))
+    with pytest.raises(ValueError, match="EPIC_CHILD_CONTRACT_REQUIRED"):
+        consume_execution_contract(epic)
+
+
+@pytest.mark.django_db
+def test_contract_completion_binds_final_commit(
+    contract_project: tuple[Path, Project],
+) -> None:
+    root, project = contract_project
+    contract = generate_execution_contract(
+        project,
+        "docs/sprints/SPRINT_003.md",
+        "BUGFIX",
+        "Fix.",
+        root,
+        execution_level="BUGFIX",
+    )
+    contract = issue_execution_contract(validate_execution_contract(contract, root))
+    contract = consume_execution_contract(contract)
+    completed = complete_execution_contract(
+        contract, "b" * 40, "PASS â€” READY FOR PRODUCT OWNER REVIEW"
+    )
+    assert completed.final_commit_sha == "b" * 40
+    assert completed.lifecycle == ExecutionContract.Lifecycle.COMPLETED

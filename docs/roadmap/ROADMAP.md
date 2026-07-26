@@ -145,6 +145,10 @@ Required outcomes:
 - supersession and revocation;
 - proof that the same implementation handles differently configured Projects without Project-specific branches.
 
+Sprint 005 establishes tiered policy resolution and the full durable contract
+lifecycle. Subsequent work consumes the smallest sufficient contract level;
+Epic-level planning must be decomposed into child implementation contracts.
+
 Canonical specification:
 
 ```text

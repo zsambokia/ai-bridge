@@ -55,6 +55,17 @@ their governance documents and baseline commit, and render human handoffs only
 from stored data. The generator successfully issued the required Sprint 004
 contract from baseline `14ce5ff7f1c6e5739d7aa83044529e9d6d55b1e7`.
 
+The execution contract is now tiered (`HOTFIX`, `BUGFIX`, `TASK`, `SPRINT`,
+`EPIC`) with deterministic policy profiles resolved from level, task type, and
+risk modifiers. The policy can only strengthen obligations. Durable lifecycle
+operations consume, complete (with final commit and closure binding),
+supersede, or revoke a contract; an Epic cannot authorize code changes itself.
+
+The Django base settings explicitly permit the approved Cloudflare tunnel
+hosts `stage.artificial-software-factory.com` and
+`app.artificial-software-factory.com`. Additional deployment hosts are opt-in
+through `DJANGO_ALLOWED_HOSTS`; wildcard configuration is rejected.
+
 The scope intentionally does not add AKB indexing, vector search, Discovery,
 autonomous planning, or a large user interface.
 
