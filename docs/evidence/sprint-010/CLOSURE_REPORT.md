@@ -1,31 +1,46 @@
-# Sprint 010 closure report
+# Sprint 010 closure remediation report
 
-**Result:** PASS — READY FOR PRODUCT OWNER REVIEW  
-**Implementation commit:** `5d75f9139daac7badcce4ef8a56c8df46357e145`  
-**Bootstrap contract:** `bridge:ai-bridge:sprint_010_executable_scope_and_ad_hoc_work_item_governance:1a2ca465-c604-4511-979f-c6d05e379605`  
-**Contract hash:** `afc2307720ff86bda4eca21922a2070ca91c9febba9b7cb297e9d330a618fbcf`
+**Result:** PASS — READY FOR PRODUCT OWNER REVIEW
+**Validated implementation commit:** `9d23d59f4b4b530ee26876ac1d71985c1a95b10a`
+**Baseline before remediation:** `b5b5460b630050eb74b06a8cbd2f843aa1e21edd`
 
-## Delivered
+## Delivered and proven
 
-- Canonical, Bridge-managed Sprint and Work Item records, schemas, validation,
-  durable approval binding, controlled publication and immutable closed states.
-- Provider-neutral schema `2.0` execution contracts with exact-hash consumption
-  acknowledgement and completion evidence requirements.
-- Governed MCP scope operations and a repository Release Gate that validates
-  canonical published scope documents.
-- Updated Project definition, architecture, contract, constitution, MCP and AKB
-  documentation. Legacy Markdown remains readable but cannot authorize new work.
+- `ExecutableScope` is the runtime authority for executable Sprint and ad hoc
+  Work Item records. Epic is not executable. `projects.scopes.close_scope` and
+  public `scope.complete`, `scope.cancel`, and `scope.supersede` terminalize a
+  scope; the approved-scope checks reject it from further contract lifecycle.
+- Canonical scope data is validated against the versioned JSON schemas and
+  published as a deterministic Markdown projection. The legacy Markdown parser
+  is import/read-only; the legacy contract generator always raises
+  `LEGACY_CONTRACT_GENERATION_DISABLED`.
+- Only AI Bridge creates schema `2.0` contracts. Validation, issue, consume,
+  and run start each recheck the scope publication and bound, non-revoked
+  approval. An Execution Provider cannot issue its own contract.
+- Consumption persists provider identity, exact contract hash, observed
+  baseline, schema version, idempotency key, timestamp, and a unique receipt.
+  A receipt and canonical validation are required before execution starts.
+- Completion requires a matching `ExecutionRun` to have reached a terminal
+  state at the actual checked-out final SHA, plus non-empty gates and evidence.
+  Public `contract.complete` supplies all completion inputs and cannot bypass
+  the run lifecycle.
+- Historical Sprint 005–009 documents stay readable but are not executable
+  authority. The governed MCP registry exposes the canonical scope and full
+  contract lifecycle instead.
 
-## Release Gates
+## Release gates
 
 | Gate | Result |
 | --- | --- |
-| `python manage.py makemigrations --check` | PASS |
-| `pytest` | PASS — 50 passed |
+| `python manage.py makemigrations --check` | PASS — no changes detected |
+| `pytest` | PASS — 40 passed |
 | `ruff check .` | PASS |
-| `ruff format --check .` | PASS |
-| `mypy .` | PASS — 54 source files |
+| `ruff format --check .` | PASS — 55 files already formatted |
+| `mypy .` | PASS — 55 source files |
+| `python manage.py validate_scopes` | PASS — all canonical scopes valid |
 | `git diff --check` | PASS |
-| `python manage.py validate_scopes` | PASS |
 
-The complete machine-readable results are in `acceptance-results.json`.
+The machine-readable results are in `acceptance-results.json`. The evidence
+commit is intentionally separate from the validated implementation commit so
+the report binds a real, immutable code revision rather than claiming a
+self-referential final SHA.
