@@ -1,10 +1,11 @@
 # Sprint 010 — Executable Scope, Work Item Governance, and AI Bridge Contract Authority
 
-**Status:** APPROVED FOR IMPLEMENTATION  
+**Status:** APPROVED FOR CODEX EXECUTION  
 **Project:** AI Bridge  
 **Repository:** `zsambokia/ai-bridge`  
 **Execution level:** SPRINT  
 **Task type:** SELF_DEVELOPMENT  
+**Target branch:** `main`  
 **Primary outcome:** Replace the mandatory-Sprint execution assumption with a governed executable-scope model and make AI Bridge the authoritative issuer and lifecycle owner of Execution Contracts. Execution providers such as Codex must consume an already issued contract rather than authorizing themselves.
 
 ## 1. Problem statement
@@ -395,285 +396,335 @@ AI Bridge returns either:
 CONSUMED
 ```
 
-with a durable consumption record, or a deterministic rejection such as:
+or a deterministic rejection, including at minimum:
 
 ```text
 CONTRACT_NOT_ISSUED
-CONTRACT_HASH_MISMATCH
 CONTRACT_ALREADY_CONSUMED
-CONTRACT_EXPIRED
-CONTRACT_REVOKED
+CONTRACT_HASH_MISMATCH
+REPOSITORY_MISMATCH
+BRANCH_MISMATCH
 BASELINE_MISMATCH
 PROVIDER_NOT_ALLOWED
-SCHEMA_NOT_SUPPORTED
+CONTRACT_EXPIRED
+CONTRACT_REVOKED
 ```
 
-No repository mutation may occur when consumption fails.
+No repository mutation may begin before `CONSUMED` is durably recorded.
 
-### 9.5 Completion
+## 10. Provider-neutral handoff
 
-The Execution Provider submits:
+The canonical handoff must not depend on Codex-specific prompt text.
 
-- final commit SHA;
-- gate results;
-- evidence manifest;
-- changed-file summary;
-- execution result;
-- failure classification where applicable.
-
-AI Bridge validates these against the contract before recording `COMPLETED` or `FAILED`.
-
-## 10. Contract handoff protocol
-
-The canonical handoff must not rely only on a Markdown path.
-
-AI Bridge must provide the Execution Provider with at least:
+AI Bridge must provide an immutable machine-readable handoff containing at least:
 
 ```yaml
 handoff:
-  contract_id: "immutable contract identifier"
-  contract_hash: "expected canonical hash"
+  contract_id: "..."
+  contract_hash: "..."
   contract_status: "ISSUED"
-  project_id: "registered project"
-  repository: "owner/name or canonical repository identifier"
-  target_ref: "branch or governed ref"
-  approved_scope_id: "Sprint or Work Item identifier"
-  approved_scope_version: "scope content hash"
-  retrieval_reference: "MCP resource, governed API reference, or immutable local artifact"
+  authority_endpoint: "..."
+  project_id: "..."
+  repository: "..."
+  branch: "..."
+  baseline: "..."
+  approved_scope: {}
+  provider_policy: {}
+  required_gates: []
+  evidence_requirements: []
 ```
 
-The provider may receive a cached contract artifact, but must validate it against AI Bridge's authoritative record before mutation.
+Execution-provider-specific adapters may render this into:
 
-The system must support provider-neutral handoff so Codex can later be replaced or supplemented without changing governance semantics.
+- a Codex task prompt;
+- a Claude Code command package;
+- a remote runner request;
+- a governed human runbook.
 
-## 11. Product Owner approval binding
+Those adapters must not alter scope, approval, policy, hash, baseline, gates, or evidence requirements.
 
-A natural-language Product Owner instruction may authorize a bounded ad hoc Work Item only when:
+## 11. Sprint 010 bootstrap and transition rule
 
-- requester identity is authenticated and auditable;
-- the request clearly authorizes execution rather than discussion or proposal only;
-- the bounded outcome is determinable;
-- no unresolved business decision remains;
-- normalized request, timestamp, requester, policy result, generated scope identifier, and approval reference are stored;
-- the approval reference exists before contract issuance.
+Sprint 010 implements the generalized Contract Authority model, but it must itself start through the strongest currently available governed path.
 
-The system must distinguish:
+Before any Sprint 010 implementation mutation:
 
-```text
-DISCUSS_OR_ASSESS
-PREPARE_PROPOSAL
-AUTHORIZE_EXECUTION
-```
+1. AI Bridge resolves the exact approved Sprint 010 document.
+2. AI Bridge computes and binds the exact Sprint content hash.
+3. AI Bridge resolves the registered Project, target repository, target branch, and baseline.
+4. AI Bridge generates the current-version Execution Contract.
+5. AI Bridge validates that contract.
+6. A durable Product Owner approval reference authorizes issuance.
+7. AI Bridge changes the contract to `ISSUED`.
+8. The issued contract identifier or immutable handoff is passed to Codex.
+9. Codex validates and consumes it before mutation.
 
-Only `AUTHORIZE_EXECUTION` may produce an approved executable scope and an issued contract without an additional Product Owner approval step.
+The approved Sprint Markdown document is not itself an Execution Contract.
 
-## 12. MCP and service surface
+The existing AI Bridge contract lifecycle must be used to issue the bootstrap contract. Sprint 010 may then migrate and generalize that mechanism without rewriting the immutable bootstrap contract.
 
-Update or add governed operations sufficient to support the full lifecycle. Exact names may follow repository conventions.
-
-### 12.1 Request and scope capabilities
-
-- classify a natural-language request;
-- validate classification deterministically;
-- create a proposed Work Item;
-- approve a Work Item with durable approval reference;
-- retrieve Work Item details and status;
-- list relevant active and closed scopes;
-- resolve an approved Sprint;
-- generate Execution Context from Sprint or Work Item.
-
-### 12.2 Contract Authority capabilities
-
-- generate contract draft from approved scope;
-- validate contract draft;
-- issue contract;
-- retrieve authoritative contract by identifier;
-- verify contract hash and status;
-- atomically consume contract for an Execution Provider;
-- mark execution running;
-- submit execution evidence and result;
-- complete or fail contract after validation;
-- cancel, expire, or revoke under policy;
-- list contract audit events.
-
-Mutation operations must remain governed and auditable. No unaudited direct mutation shortcut may be introduced.
-
-## 13. Contract and runtime migration
-
-Update every layer that assumes Sprint-only execution or executor-owned contract preparation, including as applicable:
-
-- domain models and migrations;
-- Work Item services;
-- classification proposal boundary;
-- deterministic policy resolver;
-- approval reference storage;
-- Execution Context generation;
-- contract schemas and serializers;
-- canonical hashing and signature support;
-- issuance service;
-- contract lifecycle state machine;
-- atomic consumption service;
-- provider identity and eligibility checks;
-- MCP request and response schemas;
-- execution identifiers;
-- evidence path allocation;
-- audit events;
-- ExecutionRun linkage;
-- completion verification;
-- tests and fixtures;
-- documentation examples.
-
-Existing immutable issued contracts and historical Sprint 005–009 evidence must remain valid and readable. Do not rewrite historical artifacts.
-
-## 14. Sprint 010 bootstrap and transition rule
-
-Sprint 010 introduces the completed Contract Authority model, so its own first contract requires an explicit transition path.
-
-This is not permission to bypass governance.
-
-Before Sprint 010 repository implementation begins:
-
-1. the approved Sprint 010 file must exist on the execution workspace's checked-out `main` and its content hash must match the approved repository version;
-2. the current pre-Sprint-010 AI Bridge contract service must generate and validate the Sprint 010 contract using the existing Sprint-based contract schema;
-3. AI Bridge must issue that contract and store a durable authoritative record before Codex mutation;
-4. Codex must fetch, validate, and consume that issued contract;
-5. the issued Sprint 010 contract and its hash must be preserved as bootstrap evidence;
-6. after Sprint 010 migration, the new Contract Authority must import or recognize that historical bootstrap contract without rewriting it.
-
-If the existing AI Bridge service cannot issue the Sprint 010 bootstrap contract, implementation must stop with:
+If the currently deployed AI Bridge cannot perform one of the required bootstrap operations, the run must stop with:
 
 ```text
 BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE
 ```
 
-The blocker report must identify the missing authority operation precisely. Codex must not issue the contract to itself.
+The blocker report must identify the exact missing Contract Authority operation. Codex must not issue an authorization to itself as a workaround.
 
-The approved Sprint document alone is not an issued contract.
+## 12. Evidence layout
 
-## 15. Evidence layout
+Sprint evidence and Work Item evidence must use separate deterministic roots.
 
-Use separate roots for Sprint and Work Item evidence.
-
-Recommended canonical paths:
+Recommended paths:
 
 ```text
 docs/evidence/sprints/<sprint-slug>/<execution-id>/
 docs/evidence/work-items/<work-item-id>-<slug>/<execution-id>/
 ```
 
-Equivalent deterministic layouts are acceptable if collision-free and documented.
+Equivalent layouts are acceptable only when collision-free, deterministic, and documented.
 
 Required behavior:
 
 - no ad hoc execution may write under a closed Sprint evidence root;
 - repeated executions must not overwrite earlier evidence;
-- final evidence must bind the final repository commit and authoritative contract;
-- evidence indexes may show planning traceability without nesting unrelated evidence into closed scope directories;
-- AI Bridge reserves the evidence root at issuance;
-- the provider submits evidence, but AI Bridge validates completion binding.
+- final evidence must bind the issued contract, contract hash, scope hash, baseline, final commit, and gate results;
+- planning traceability may reference an Epic or Sprint without physically nesting unrelated evidence inside a closed scope directory.
 
-## 16. Constitution and canonical documentation
+## 13. Classification policy
 
-This model is a platform governance rule and must be reflected in the Constitution.
+Implement a provider-independent classifier boundary with two stages.
 
-Update the Constitution so it states at minimum:
+### Stage A — semantic proposal
+
+Input:
+
+- authenticated Product Owner request;
+- selected Project;
+- current Project Context;
+- active and closed scope metadata;
+- roadmap and AKB where relevant.
+
+Output:
+
+```yaml
+proposal:
+  scope_kind: "SPRINT | WORK_ITEM"
+  parent_kind: "PROJECT | EPIC | SPRINT | null"
+  parent_identifier: "nullable"
+  origin: "..."
+  work_type: "..."
+  requested_profile: "COMPACT | STANDARD | EXTENDED"
+  urgency: "NORMAL | HOTFIX"
+  risk_modifiers: []
+  rationale: []
+  clarification_required: false
+  clarification_questions: []
+```
+
+The semantic implementation may use an LLM provider or deterministic test double, but must be auditable and replaceable.
+
+### Stage B — deterministic resolution
+
+The resolver returns:
+
+```text
+ACCEPTED
+STRENGTHENED
+REJECTED
+CLARIFICATION_REQUIRED
+```
+
+At minimum enforce:
+
+- one small independently reviewable result may become a Work Item;
+- multiple coordinated outcomes or material architectural change require Sprint-level scope;
+- Epic-only repository mutation is rejected;
+- closed Sprint parent or evidence binding is rejected;
+- production, security, schema, authentication, public API, cross-repository, external integration, or irreversible risk strengthens obligations;
+- governance may be strengthened but not silently weakened;
+- missing business intent triggers clarification;
+- routine technical implementation choices do not require Product Owner intervention.
+
+## 14. Product Owner approval binding
+
+A natural-language Product Owner request may authorize creation and approval of an ad hoc Work Item only when:
+
+- requester identity is authenticated and auditable;
+- the request clearly authorizes a bounded result;
+- unresolved business ambiguity is absent;
+- the normalized request, requester, timestamp, classification, and Work Item identifier are stored;
+- a durable approval reference exists before contract issuance.
+
+The system must distinguish:
+
+```text
+discussion or assessment request
+proposal preparation request
+bounded execution authorization
+```
+
+Only bounded execution authorization may proceed automatically to an approved executable Work Item and contract issuance.
+
+Contract issuance remains a distinct authoritative lifecycle transition even when the Product Owner instruction supplies the underlying approval.
+
+## 15. MCP and service surface
+
+Update or add governed operations sufficient to support the complete separation of duties.
+
+### 15.1 Classification and scope
+
+Capabilities must include:
+
+- classify a natural-language request;
+- validate or strengthen classification deterministically;
+- create a proposed Work Item;
+- approve a Work Item with durable approval reference;
+- retrieve Work Item details and status;
+- list active and closed executable scopes;
+- resolve one exact approved Sprint or Work Item.
+
+### 15.2 Contract Authority
+
+Capabilities must include:
+
+- generate a DRAFT contract from approved scope;
+- validate a DRAFT contract;
+- issue a VALIDATED contract using a durable Product Owner approval reference;
+- retrieve immutable contract status and payload;
+- render provider-neutral handoff;
+- consume an issued contract atomically;
+- start and track an execution run;
+- accept evidence and final commit submission;
+- complete, reject, cancel, expire, revoke, or supersede contracts according to policy.
+
+### 15.3 Authorization boundary
+
+At minimum:
+
+- read-only contract retrieval may be broadly available to authenticated allowed actors;
+- contract generation is governed preparation;
+- contract validation is deterministic preparation;
+- contract issuance requires Product Owner authority or an approved delegated authority policy;
+- contract consumption requires an allowed Execution Provider identity;
+- completion requires evidence validation;
+- self-issuance by the Execution Provider must be rejected and audited.
+
+No unaudited mutation shortcut may bypass scope approval, contract issuance, consumption, evidence, or completion validation.
+
+## 16. Contract and runtime migration
+
+Update every Sprint-only or executor-authority assumption, including as applicable:
+
+- domain models and migrations;
+- Work Item services;
+- semantic-classifier interface;
+- deterministic policy resolver;
+- Project and scope resolution;
+- Execution Context generation;
+- contract schemas and serializers;
+- contract hashing and integrity validation;
+- issuer identity and authority proof;
+- contract lifecycle transitions;
+- approval-reference validation;
+- provider eligibility;
+- atomic consumption;
+- evidence allocation;
+- execution identifiers;
+- ExecutionRun linkage;
+- audit events and ordering;
+- MCP input and response schemas;
+- tests, fixtures, and documentation examples.
+
+Historical immutable contracts and Sprint 005–009 evidence must remain valid and readable. Do not rewrite historical issued contracts to match the new schema.
+
+Compatibility adapters may expose old fields, but the canonical path must use the approved executable scope and AI Bridge-issued contract.
+
+## 17. Constitution and canonical documentation
+
+This is a platform governance rule and must be added to the Constitution.
+
+The Constitution must state at minimum:
 
 - every repository mutation requires one approved executable scope;
 - executable scope may be Sprint or Work Item;
-- ad hoc Product Owner requests become standalone approved Work Items;
+- ad hoc Product Owner requests become standalone approved Work Items rather than being attached to closed Sprints;
 - closed Sprint scope and evidence are immutable historical records;
-- Epic is planning/orchestration scope and requires a child executable scope;
+- Epic is planning and orchestration scope and requires child executable authority;
 - LLM classification is advisory and deterministic policy is authoritative;
-- policy may strengthen but not silently weaken governance;
-- AI Bridge is the sole authoritative Execution Contract issuer;
-- execution providers cannot approve or issue their own authorization;
-- mutation requires successful contract consumption;
-- routine technical decisions remain autonomous inside approved scope;
-- Product Owner intervention is reserved for genuine business ambiguity, material risk authorization, or required external authority;
-- historical contracts and evidence are immutable and remain readable across schema migration.
+- policy may strengthen but never silently weaken governance;
+- AI Bridge is the Contract Authority;
+- Execution Providers cannot approve or issue their own authorization;
+- only an issued and atomically consumed contract permits mutation;
+- routine technical decisions remain autonomous within approved scope;
+- Product Owner intervention is reserved for genuine business ambiguity, risk authorization, or required external authority.
 
-Also update:
+Also update and synchronize:
 
 - `docs/contracts/HANDOFF_EXECUTION_CONTRACT.md`;
-- `AGENTS.md` where permanent agent behavior changes;
+- `AGENTS.md` where permanent executor behavior changes;
 - architecture documentation;
 - MCP tool reference;
-- AKB current state;
-- roadmap;
-- README where user-visible platform behavior is described.
+- `docs/akb/CURRENT_STATE.md`;
+- `docs/roadmap/ROADMAP.md`;
+- README where user-visible behavior is described.
 
-## 17. Required proving executions
+## 18. Required proving executions
 
 Sprint 010 is not complete without end-to-end proof.
 
-### 17.1 Bootstrap proof — Sprint 010 contract handoff
+### 18.1 Bootstrap proof — Sprint 010 contract handoff
 
-Prove the transition sequence:
+Prove the transition path used to start Sprint 010:
 
-1. approved Sprint 010 exists on `main` and in the executor workspace;
-2. the current AI Bridge service resolves its exact path and hash;
-3. AI Bridge generates and validates the bootstrap contract;
-4. AI Bridge issues it with an authoritative identifier and hash;
-5. Codex retrieves and validates the contract;
-6. Codex atomically consumes it before repository mutation;
-7. audit events prove separation between issuer and executor.
+```text
+approved Sprint 010
+→ AI Bridge Execution Context
+→ contract DRAFT
+→ VALIDATED
+→ Product Owner approval binding
+→ ISSUED
+→ Codex retrieval
+→ independent validation
+→ atomic CONSUMED
+→ execution start
+```
 
-### 17.2 Positive proof — ad hoc Work Item
+Record the immutable bootstrap contract separately from any new-schema proving contract produced later in the Sprint.
+
+### 18.2 Positive proof — ad hoc Work Item
 
 Use a harmless predetermined README sentence change.
 
 Prove:
 
-1. an authenticated Product Owner submits a bounded execution request to AI Bridge;
-2. semantic classification proposes `WORK_ITEM`;
-3. deterministic policy accepts or strengthens it;
-4. AI Bridge creates a standalone approved Work Item under the Project;
-5. a durable approval reference is created;
-6. AI Bridge generates Execution Context;
-7. AI Bridge generates, validates, and issues the contract;
-8. Codex or a test Execution Provider retrieves and consumes the issued contract;
-9. the predetermined mutation occurs only after consumption;
-10. required gates run;
-11. evidence is submitted under the reserved Work Item root;
-12. AI Bridge validates the result and records completion with final commit binding.
+1. ChatGPT or equivalent authenticated caller submits a bounded execution request.
+2. Semantic classification proposes `WORK_ITEM`.
+3. Deterministic policy accepts or strengthens it.
+4. A standalone approved Work Item is created under the Project.
+5. It is not attached to Sprint 009 or another closed Sprint.
+6. A durable approval reference is created.
+7. AI Bridge generates and validates the contract.
+8. AI Bridge issues the contract.
+9. An allowed Execution Provider retrieves and atomically consumes it.
+10. The predetermined repository mutation occurs only after consumption.
+11. Required Release Gates run.
+12. Evidence is written under the Work Item evidence root.
+13. AI Bridge validates evidence and completes the contract with final commit binding.
 
-The Work Item must not be attached to Sprint 009 or another closed Sprint.
+### 18.3 Negative proof — executor self-issuance
 
-### 17.3 Negative proof — closed Sprint rejection
-
-Attempt to attach a new Work Item or evidence-producing execution to closed Sprint 009.
-
-Expected result:
-
-```text
-REJECTED — CLOSED_SCOPE_IMMUTABLE
-```
-
-No mutation, contract issuance, or evidence write may occur under the closed Sprint root.
-
-### 17.4 Negative proof — Epic direct mutation rejection
-
-Attempt direct repository mutation with Epic-only scope.
+Attempt to issue a contract using the same authority identity as the intended Execution Provider without Product Owner or delegated authority.
 
 Expected result:
 
 ```text
-REJECTED — CHILD_EXECUTABLE_SCOPE_REQUIRED
+REJECTED — EXECUTOR_SELF_ISSUANCE_FORBIDDEN
 ```
 
-### 17.5 Negative proof — executor self-issuance
+### 18.4 Negative proof — mutation before consumption
 
-Attempt to let an Execution Provider issue the contract that authorizes its own mutation.
-
-Expected result:
-
-```text
-REJECTED — CONTRACT_AUTHORITY_REQUIRED
-```
-
-### 17.6 Negative proof — mutation before consumption
-
-Attempt repository mutation with a valid but merely `ISSUED` contract that has not been consumed.
+Attempt to start execution or record repository mutation while the contract is only `VALIDATED` or `ISSUED`.
 
 Expected result:
 
@@ -681,27 +732,44 @@ Expected result:
 REJECTED — CONTRACT_NOT_CONSUMED
 ```
 
-### 17.7 Negative proof — hash or baseline mismatch
+### 18.5 Negative proof — closed Sprint
 
-Attempt consumption with a wrong contract hash or invalid repository baseline.
+Attempt to attach a new Work Item, contract, execution, or evidence to closed Sprint 009.
 
 Expected result:
 
 ```text
-CONTRACT_HASH_MISMATCH
+REJECTED — CLOSED_SCOPE_IMMUTABLE
 ```
 
-or
+No repository mutation or evidence write may occur under Sprint 009.
+
+### 18.6 Negative proof — Epic direct mutation
+
+Attempt repository mutation using Epic-only scope.
+
+Expected result:
 
 ```text
-BASELINE_MISMATCH
+REJECTED — CHILD_EXECUTABLE_SCOPE_REQUIRED
 ```
 
-No mutation may occur.
+### 18.7 Integrity proofs
 
-### 17.8 Strengthening proof
+Prove deterministic rejection for:
 
-Provide a semantic proposal that is too weak for an explicit risk modifier.
+- altered contract payload after issuance;
+- wrong contract hash;
+- wrong target repository;
+- wrong target branch;
+- wrong baseline;
+- unauthorized provider;
+- duplicate consumption;
+- expired or revoked contract.
+
+### 18.8 Strengthening proof
+
+Provide a deliberately too-weak semantic proposal with an explicit high-risk modifier.
 
 Expected result:
 
@@ -709,13 +777,15 @@ Expected result:
 STRENGTHENED
 ```
 
-The issued contract must contain the stronger gates and evidence requirements.
+The issued contract must contain the stronger gates, evidence, and review obligations.
 
-### 17.9 Provider-neutral proof
+### 18.9 Provider-neutrality proof
 
-Use at least one deterministic fake Execution Provider in tests and ensure the contract handoff interface does not contain Codex-specific authorization semantics.
+Demonstrate that the same issued contract or canonical handoff can be rendered for at least two provider adapter types without changing the authoritative contract payload.
 
-## 18. Release Gates
+A deterministic test adapter is sufficient for the second provider; a live second coding provider is not required.
+
+## 19. Release Gates
 
 At minimum run and record:
 
@@ -728,31 +798,30 @@ mypy .
 git diff --check
 ```
 
-Also run Sprint-specific acceptance tests covering:
+Also run Sprint-specific tests covering:
 
 - Work Item lifecycle;
-- classification proposal schema;
-- deterministic policy validation;
+- semantic proposal schema;
+- deterministic classification;
 - closed Sprint rejection;
-- Epic mutation rejection;
+- Epic direct mutation rejection;
 - strengthening-only behavior;
-- approved-scope contract generation for Sprint and Work Item;
-- AI Bridge-only issuance authorization;
-- contract canonical hashing;
-- atomic contract consumption;
-- duplicate-consumption rejection;
-- provider eligibility;
-- mutation-before-consumption rejection;
-- hash and baseline mismatch rejection;
+- Sprint and Work Item approved-scope contract generation;
+- AI Bridge-only issuance authority;
+- Product Owner approval binding;
+- executor self-issuance rejection;
+- contract hash integrity;
+- atomic consumption and duplicate-consumption rejection;
+- repository, branch, and baseline validation;
 - deterministic evidence roots;
-- completion evidence verification;
-- immutable historical contract compatibility;
-- MCP authorization and audit ordering;
+- historical contract compatibility;
 - provider-neutral handoff;
-- end-to-end Work Item execution;
-- Sprint 010 bootstrap contract recognition.
+- MCP authorization;
+- audit ordering and lifecycle events;
+- end-to-end ad hoc Work Item execution;
+- completion evidence validation.
 
-## 19. Evidence requirements
+## 20. Evidence requirements
 
 Create Sprint evidence under:
 
@@ -765,63 +834,66 @@ At minimum include:
 ```text
 ASSESSMENT.md
 CLASSIFICATION_MODEL.md
-CONTRACT_AUTHORITY_ARCHITECTURE.md
-BOOTSTRAP_HANDOFF.md
+CONTRACT_AUTHORITY_MODEL.md
+BOOTSTRAP_CONTRACT_HANDOFF.md
 MIGRATION_NOTES.md
 PROVING_EXECUTION.md
 NEGATIVE_PROOFS.md
 RELEASE_GATES.md
 CLOSURE_REPORT.md
 acceptance-results.json
-BOOTSTRAP_ISSUED_EXECUTION_CONTRACT.json
+ISSUED_EXECUTION_CONTRACT.json
 ```
 
-The positive ad hoc Work Item must have a separate Work Item evidence root.
+The ad hoc proving Work Item must have a separate Work Item evidence root.
 
-Evidence must distinguish:
+Evidence must identify:
 
-- authoritative AI Bridge contract records;
-- provider-local validation records;
-- execution evidence;
-- completion validation and final commit binding.
+- AI Bridge authority instance;
+- Product Owner approval reference;
+- immutable contract identifier and hash;
+- approved scope identifier and hash;
+- Execution Provider identity;
+- consumption event;
+- execution run;
+- required gates and results;
+- final commit;
+- AI Bridge completion decision.
 
-## 20. Out of scope
+## 21. Out of scope
 
 This Sprint does not require:
 
-- a full Jira clone;
-- boards, drag-and-drop planning UI, estimation, story points, or velocity;
+- a Jira clone;
+- planning boards, estimation, story points, or velocity;
 - mandatory Epic creation for every Work Item;
 - mandatory Sprint creation for every mutation;
 - independent contracts for ordinary Subtasks;
-- a complete multi-agent planner;
-- the complete future Conversation Orchestrator UI;
-- automatic dispatch to every possible coding provider;
-- replacing historical contracts with the new schema;
-- a general-purpose public PKI, provided contract authority and integrity are still verifiable inside the governed platform.
+- a complete Conversation Orchestrator interface;
+- a live integration with every possible coding provider;
+- a public-key infrastructure beyond the repository's reasonable current maturity, provided canonical hashing and issuer identity are proven.
 
-## 21. Definition of done
+## 22. Definition of done
 
 Sprint 010 is complete only when:
 
-- Sprint-only assumptions are removed from the canonical execution path;
+- the Sprint-only canonical execution assumption is removed;
 - Sprint and Work Item executable scopes are supported;
-- ad hoc requests create standalone governed Work Items;
+- ad hoc Product Owner requests create standalone governed Work Items;
 - closed Sprint attachment is deterministically rejected;
 - Epic direct mutation is deterministically rejected;
-- LLM proposals are validated by deterministic policy;
-- policy strengthening is proven;
-- AI Bridge is the authoritative contract issuer and lifecycle owner;
-- Execution Providers cannot self-issue authorization;
-- contract handoff is provider-neutral;
-- atomic consumption is required before mutation;
-- completion is validated by AI Bridge against contract and evidence;
-- Work Item evidence is deterministic and collision-free;
-- historical contracts remain readable and immutable;
-- the Sprint 010 bootstrap contract is issued by the pre-migration AI Bridge authority and preserved as evidence;
-- Constitution and all canonical documentation are synchronized;
+- LLM classification remains advisory and deterministic policy is authoritative;
+- governance strengthening is proven;
+- AI Bridge is the authoritative Contract Authority;
+- an Execution Provider cannot issue its own contract;
+- the Sprint 010 bootstrap contract was issued by AI Bridge and consumed before mutation;
+- repository mutation before consumption is rejected;
+- Work Item evidence roots are deterministic and collision-free;
+- historical contracts remain readable and valid;
+- provider-neutral handoff is proven;
+- Constitution and canonical documentation match implementation;
 - positive and negative proving executions pass;
-- all required gates pass;
+- all required Release Gates pass;
 - final evidence binds the exact `main` commit;
 - `HEAD == origin/main` and the worktree is clean.
 
