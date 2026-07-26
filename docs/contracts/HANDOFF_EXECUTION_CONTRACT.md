@@ -18,6 +18,15 @@ The generated handoff connects four separate concerns:
 
 The contract binds the exact inputs for one execution. It does not define project-specific business scope and it does not replace the Sprint.
 
+### Execution Context representation
+
+The canonical runtime object is an **Execution Context**, resolved from the
+Registry, Project Context, Project definition, and explicit approved Sprint.
+An Execution Contract is one possible human-readable rendering of that object;
+MCP responses, Codex execution packages, audit records, and future agent
+contexts are other representations. Every representation must derive from the
+same canonical values and must not independently infer Project or Sprint.
+
 ## 2. Platform rule
 
 The Handoff Generator and Execution Contract are platform-level capabilities.

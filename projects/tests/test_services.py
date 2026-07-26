@@ -51,6 +51,11 @@ release_gates:
   repository_wide:
     - id: tests
       command: python -m pytest
+evidence:
+  path_template: docs/evidence/{{sprint_slug}}
+execution:
+  allowed_terminal_states:
+    - PASS â€” READY FOR PRODUCT OWNER REVIEW
         """.format(extra_project=extra_project),
         encoding="utf-8",
     )

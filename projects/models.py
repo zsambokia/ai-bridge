@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from django.db import models
 
 
@@ -63,6 +65,19 @@ class ProjectContext(models.Model):
     validation_reason = models.TextField(blank=True)
     source_commit_sha = models.CharField(max_length=64)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class ProjectResolutionContinuation(models.Model):
+    """Durable state for an ambiguous MCP Project resolution."""
+
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    candidate_project_ids = models.JSONField(default=list)
+    selected_project_id = models.CharField(max_length=128, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

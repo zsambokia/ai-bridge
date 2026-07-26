@@ -33,6 +33,26 @@ the `ai-bridge` and `bridge-demo` Registry records. Django Admin exposes both
 runtime models as read-only operational views; it cannot create, change, or
 delete them outside the canonical bootstrap lifecycle.
 
-## Completed implementation awaiting Product Owner review
+## Implemented execution foundation
 
-`docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
+Sprint 004 adds a lightweight, registered MCP transport at `POST /mcp/` to the
+canonical `projects` domain. It resolves only active ready Registry records,
+persists ambiguous-resolution candidate state behind a continuation token, and
+requires the caller to choose a listed `project_id` before continuation.
+
+The same domain now constructs a canonical, structured Execution Context from a
+Project, its valid Project Context, `.bridge/project.yaml`, and an explicit
+approved Sprint path. The Context includes repository, branch, exact baseline,
+binding documents, release gates, evidence root, allowed terminal states, and a
+unique execution identifier. It is the source for the MCP response and Codex
+execution package; Markdown contracts are representations rather than the
+canonical object.
+
+The scope intentionally does not add AKB indexing, vector search, Discovery,
+autonomous planning, or a large user interface.
+
+## Next approved action
+
+Use the Execution Context Generator as the basis for future contract rendering,
+durable audit records, and agent-specific views after an explicitly approved
+sprint.

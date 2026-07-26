@@ -1,0 +1,35 @@
+{
+  "sprint": "SPRINT_004_BASIC_AKB_MCP_CONTEXT",
+  "handoff_identifier": "bridge:ai-bridge:sprint-004:foundation-bootstrap-20260726",
+  "baseline_commit": "3582976ccd150b05678302e7216c58e4a1282d68",
+  "repository": "zsambokia/ai-bridge",
+  "branch": "main",
+  "assessment": {
+    "reused": [
+      "projects.Project Registry",
+      "projects.ProjectContext runtime context",
+      "projects.services definition loader and bootstrap",
+      "Django URL and test infrastructure",
+      "repository release-gate script"
+    ],
+    "created_only_where_missing": [
+      "registered MCP transport adapter",
+      "durable ProjectResolutionContinuation",
+      "canonical ExecutionContext builder"
+    ],
+    "parallel_akb_implementation": false
+  },
+  "acceptance_scenarios": {
+    "mcp_operations_are_discoverable_and_http_reachable": "PASS",
+    "multiple_project_matches_return_user_input_required": "PASS",
+    "continuation_token_resumes_the_same_persisted_candidates": "PASS",
+    "execution_context_uses_registry_context_definition_and_approved_sprint": "PASS",
+    "codex_execution_package_is_the_same_canonical_context": "PASS",
+    "project_or_sprint_is_never_inferred": "PASS"
+  },
+  "migration_validation": "PASS — projects.0002_projectresolutioncontinuation is present; makemigrations --check --dry-run reports no pending changes.",
+  "focused_tests": "12 passed",
+  "full_test_suite": "14 passed",
+  "release_gate": "PASS — Backend Release Gate",
+  "evidence_integrity": "PASS"
+}

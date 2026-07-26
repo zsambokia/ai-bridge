@@ -31,6 +31,8 @@ class ProjectDefinition:
     definition_path: str
     paths: dict[str, str]
     release_gates: list[dict[str, Any]]
+    evidence_path_template: str
+    allowed_terminal_states: list[str]
 
 
 @dataclass
@@ -77,6 +79,8 @@ def load_project_definition(path: Path, repository_root: Path) -> ProjectDefinit
     repository = _mapping(root.get("repository"), "repository", errors)
     paths = _mapping(root.get("paths"), "paths", errors)
     release_gates = _mapping(root.get("release_gates"), "release_gates", errors)
+    evidence = _mapping(root.get("evidence"), "evidence", errors)
+    execution = _mapping(root.get("execution"), "execution", errors)
 
     forbidden = FORBIDDEN_RUNTIME_KEYS.intersection(project)
     forbidden.update(FORBIDDEN_RUNTIME_KEYS.intersection(root))
@@ -107,6 +111,18 @@ def load_project_definition(path: Path, repository_root: Path) -> ProjectDefinit
     for index, command in enumerate(commands):
         if not isinstance(command, dict) or not isinstance(command.get("command"), str):
             errors.append(f"release_gates.repository_wide[{index}] needs a command")
+    evidence_path_template = _string(evidence, "path_template", errors)
+    allowed_terminal_states = execution.get("allowed_terminal_states")
+    if (
+        not isinstance(allowed_terminal_states, list)
+        or not allowed_terminal_states
+        or not all(
+            isinstance(state, str) and state.strip()
+            for state in allowed_terminal_states
+        )
+    ):
+        errors.append("execution.allowed_terminal_states must be a non-empty list")
+        allowed_terminal_states = []
 
     if errors:
         raise ValueError("; ".join(errors))
@@ -120,6 +136,8 @@ def load_project_definition(path: Path, repository_root: Path) -> ProjectDefinit
         definition_path=relative_path,
         paths={key: str(value) for key, value in paths.items()},
         release_gates=[dict(item) for item in commands],
+        evidence_path_template=evidence_path_template,
+        allowed_terminal_states=list(allowed_terminal_states),
     )
 
 
