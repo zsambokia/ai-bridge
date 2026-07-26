@@ -1,0 +1,33 @@
+{
+  "contract_id": 8,
+  "contract_hash": "797f08d26b8697dec63f4dde106d37f96af1947d71287f1edd010327abad1c8a",
+  "endpoint": "https://stage.artificial-software-factory.com/mcp/",
+  "status": "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE",
+  "completed_pre_migration_checks": {
+    "initialize": "PASS",
+    "notifications_initialized": "PASS",
+    "tools_list": {"status": "PASS", "tool_count": 23, "tool_surface_version": "2026-07-26.1"},
+    "missing_token": "PASS — 401 JSON",
+    "invalid_token": "PASS — 401 JSON",
+    "unknown_tool": "PASS — canonical rejection",
+    "missing_lifecycle_approval": "PASS — canonical rejection",
+    "missing_idempotency_key": "PASS — canonical rejection"
+  },
+  "blocked_valid_calls": [
+    "factory.get_status",
+    "factory.list_capabilities",
+    "project.list"
+  ],
+  "blocked_reason": "Staging migration state has not been supplied; valid calls observed HTTP 500 before structured MCP output.",
+  "required_post_migration_calls": [
+    "initialize",
+    "notifications/initialized",
+    "tools/list",
+    "tools/call(factory.get_status)",
+    "tools/call(factory.list_capabilities)",
+    "tools/call(project.list)",
+    "tools/call(project.resolve)",
+    "tools/call(akb.search) bounded",
+    "tools/call(execution.prepare) non-executing"
+  ]
+}
