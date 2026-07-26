@@ -1,4 +1,4 @@
-# Sprint 011 — Conversational Product Owner Review and Approval
+# Sprint 011 — Conversational Product Owner Review, Approval, and Governed Execution Orchestration
 
 **Status:** PROPOSED  
 **Project:** AI Bridge  
@@ -9,50 +9,150 @@
 
 ## 1. Problem statement
 
-AI Bridge can now create a canonical proposed Work Item from a natural-language Product Owner request, but the conversation flow stops after proposal creation. The Product Owner must currently inspect Django admin or invoke later lifecycle operations manually to discover what was created and to approve it.
+AI Bridge can now create a canonical proposed Work Item from a natural-language Product Owner request, but the conversational experience still exposes too many internal lifecycle steps and can stop after proposal creation or approval.
 
-This is technically valid but does not yet provide the intended Product Owner experience. When the Product Owner initiates a request through ChatGPT or another conversational client, AI Bridge must return the generated proposal in the same interaction, surface any material clarification questions, and explicitly ask whether the proposal may proceed.
-
-The intended experience is:
+The intended Product Owner experience is simpler:
 
 ```text
-Product Owner request
-→ AI Bridge proposal
-→ proposal summary returned to the requester
-→ material clarification questions, if any
-→ explicit "Mehet?" approval request
-→ Product Owner approval
-→ scope.approve
-→ scope.publish
-→ execution preparation and contract lifecycle
+Product Owner: explains the requested outcome.
+AI Bridge: returns what it understood and the plan it created.
+AI Bridge: asks material clarification questions if needed.
+AI Bridge: asks: "Jó lesz így?"
+Product Owner: confirms once.
+AI Bridge: completes the governed lifecycle and implementation autonomously.
+AI Bridge: returns the finished result, evidence, test instructions, and any remaining limitations.
 ```
 
-Django admin remains sufficient as the temporary operational and diagnostic interface. This Sprint does not require a dedicated Product Owner web UI.
+The Product Owner should not need to manually invoke approval, publication, preparation, contract generation, contract issuance, consumption, execution start, evidence collection, or closure as separate conversational actions.
+
+Those transitions must remain technically separate, deterministic, auditable, and recoverable inside AI Bridge, but one valid Product Owner confirmation should authorize AI Bridge to orchestrate the complete bounded flow.
+
+Django admin remains sufficient as the temporary operational, diagnostic, support, and recovery interface. This Sprint does not require a dedicated Product Owner web UI.
 
 ## 2. Product Owner decisions
 
-1. The conversational client is the primary review surface for requests initiated in conversation.
+1. The conversation is the primary Product Owner interaction surface for requests initiated in conversation.
 2. Django admin remains the temporary secondary inspection, support, and recovery interface.
-3. `work_item.propose` and `sprint.propose` must return a complete, human-reviewable proposal result.
-4. AI Bridge or its conversation adapter must ask material clarification questions before approval.
-5. When no unresolved material ambiguity remains, the response must explicitly ask for Product Owner confirmation, using a clear equivalent of: `Mehet?`
-6. Proposal creation must not itself approve, publish, prepare, issue, consume, or execute the scope.
-7. A conversational affirmative response may initiate approval only through the governed approval operation and only when it can be durably bound to the exact proposal version.
-8. The system must not infer approval from silence, unrelated positive language, or the original request alone when the current flow requires post-proposal confirmation.
+3. AI Bridge must return a complete, human-reviewable proposal immediately after creating or revising a Sprint or Work Item.
+4. AI Bridge must ask only material business or governance questions. Routine technical decisions remain autonomous within the approved scope.
+5. When no unresolved material ambiguity remains, AI Bridge must ask a clear equivalent of: `Jó lesz így?`
+6. The original request creates a proposal only. It does not itself authorize execution.
+7. One authenticated affirmative Product Owner response to the displayed immutable proposal authorizes AI Bridge to orchestrate the full bounded governed lifecycle.
+8. The confirmation must bind the exact scope identifier and immutable proposal version or content hash shown to the Product Owner.
+9. Internal lifecycle transitions remain separate and audited even though they are not separate Product Owner interactions.
+10. AI Bridge must pause and return to the Product Owner only when a genuine blocker, new business decision, new external authority, material scope change, or newly discovered risk requires it.
+11. On successful completion, AI Bridge must return a concise completion report equivalent to: `Főnök, kész!`
+12. Successful approval must not be interpreted as unbounded authority. It applies only to the reviewed and version-bound scope.
 
-## 3. Scope
+## 3. Target Product Owner experience
+
+### 3.1 Request and proposal
+
+Example:
+
+```text
+Product Owner:
+Create a new Django app named storybook.
+
+AI Bridge:
+Ezt értettem meg:
+- új Django app készüljön `storybook` néven;
+- az app legyen regisztrálva a projektben;
+- készüljenek el az alapfájlok;
+- fussanak le a kötelező Release Gate-ek;
+- készüljön evidence a módosításról és az eredményekről.
+
+Ezt a tervet készítettem:
+- ...
+
+Jó lesz így?
+```
+
+### 3.2 Product Owner confirmation
+
+```text
+Product Owner:
+Igen.
+```
+
+This one confirmation means:
+
+> I approve this exact displayed proposal version and authorize AI Bridge to complete the governed publication, contract, execution, testing, evidence, and closure lifecycle within this bounded scope.
+
+### 3.3 Autonomous governed execution
+
+After valid confirmation, AI Bridge must orchestrate:
+
+```text
+scope.approve
+→ scope.publish
+→ execution.prepare
+→ contract.generate
+→ contract.validate
+→ contract.issue
+→ contract.consume
+→ execution.request_start
+→ execution provider implementation
+→ Release Gates
+→ evidence collection
+→ execution completion
+→ final result reporting
+```
+
+Equivalent canonical operation names are acceptable.
+
+The system must not ask the Product Owner to approve each internal transition separately.
+
+### 3.4 Completion response
+
+Example:
+
+```text
+AI Bridge:
+Főnök, kész!
+
+Elkészült:
+- létrejött a `storybook` Django app;
+- regisztrálva lett a projektben;
+- az alapfájlok elkészültek.
+
+Ellenőrzések:
+- pytest: PASS
+- ruff: PASS
+- mypy: PASS
+
+Repository eredmény:
+- commit vagy PR: ...
+
+Evidence:
+- ...
+
+Így tudod kipróbálni:
+- ...
+
+Ismert korlátozás vagy további teendő:
+- nincs / ...
+```
+
+The wording may vary, but the completion response must be truthful, structured, and backed by canonical execution state and evidence.
+
+## 4. Scope
 
 ### In scope
 
-- Define a versioned proposal-review response contract for Sprint and Work Item proposals.
-- Return the canonical proposal summary immediately after proposal creation.
-- Surface deterministic policy outcome, unresolved questions, and approval eligibility.
-- Ask clarification questions when `clarification_required` is true.
-- Ask for explicit Product Owner approval when the proposal is eligible.
-- Bind a conversational approval to the exact scope identifier and immutable proposal version or hash.
-- Prevent stale, superseded, changed, rejected, or already-approved proposals from being approved accidentally.
-- Expose sufficient public MCP operations and schemas for a conversational client to complete the review and approval interaction without reading the database directly.
-- Preserve Django admin as a usable diagnostic and manual fallback surface.
+- Define a versioned conversational proposal-review response for Sprint and Work Item proposals.
+- Return the canonical proposal summary immediately after proposal creation or revision.
+- Surface deterministic policy outcome, unresolved questions, and confirmation eligibility.
+- Ask clarification questions when material ambiguity exists.
+- Ask `Jó lesz így?` only when the proposal is confirmation-eligible.
+- Bind one conversational confirmation to the exact scope identifier and immutable proposal version or hash.
+- Implement or complete a canonical orchestration service that executes the full governed lifecycle after confirmation.
+- Keep approval, publication, preparation, contract, consumption, execution, evidence, and closure as separate auditable transitions internally.
+- Provide safe idempotency and resumability for partial failures.
+- Prevent stale, superseded, changed, rejected, clarification-blocked, or already-terminal proposals from being confirmed accidentally.
+- Return running, blocked, failed, or completed state truthfully.
+- Return a final completion report with evidence and test instructions.
+- Preserve Django admin as a usable diagnostic, support, and manual recovery surface.
 - Add positive and negative end-to-end acceptance proofs.
 - Update canonical documentation, AKB current state, roadmap, MCP reference, and tests.
 
@@ -60,16 +160,16 @@ Django admin remains sufficient as the temporary operational and diagnostic inte
 
 - A new custom Product Owner web interface.
 - Orki meeting-room UI implementation.
-- Automatic contract consumption or repository mutation immediately after proposal approval.
-- Weakening durable Product Owner approval requirements.
+- Treating conversation history as canonical scope authority.
 - Treating free-form assistant text as execution authority.
-- Replacing the canonical Bridge scope record with conversation history.
+- Removing internal approval, publication, contract, execution, or evidence boundaries.
+- Allowing one confirmation to authorize work outside the displayed proposal.
+- Requiring the Product Owner to manually drive normal internal lifecycle transitions.
+- Hiding failures or claiming completion before evidence-backed closure.
 
-## 4. Required conversational behavior
+## 5. Proposal review contract
 
-### 4.1 Proposal response
-
-After successful proposal creation, the public response must contain enough information for an informed Product Owner decision.
+After successful proposal creation or revision, the public response must contain enough information for an informed Product Owner decision.
 
 Minimum semantic response:
 
@@ -95,66 +195,137 @@ proposal_review:
   rationale: []
   clarification_required: false
   clarification_questions: []
-  approval_eligible: true
-  approval_prompt: "Mehet?"
+  confirmation_eligible: true
+  confirmation_prompt: "Jó lesz így?"
 ```
 
-Equivalent field names are acceptable if versioned and documented.
+Equivalent versioned field names are acceptable.
 
-The response must not claim that approval, publication, contract issuance, or execution occurred when they did not.
+The response must not claim that approval, publication, contract issuance, execution, or completion has occurred when it has not.
 
-### 4.2 Clarification flow
+## 6. Clarification behavior
 
 When material business ambiguity exists:
 
 ```text
-proposal or classification
-→ CLARIFICATION_REQUIRED
-→ questions returned to Product Owner
+request
+→ semantic proposal
+→ deterministic policy result: CLARIFICATION_REQUIRED
+→ bounded questions returned to Product Owner
 → Product Owner answers
-→ existing proposal is revised or superseded deterministically
-→ updated proposal summary is returned
-→ explicit approval requested only after ambiguity is resolved
+→ proposal revised or superseded deterministically
+→ updated proposal summary returned
+→ "Jó lesz így?" asked only after ambiguity is resolved
 ```
 
-Questions must be limited to information that materially affects business intent, scope boundary, risk authorization, acceptance outcome, repository selection, or another governance decision.
+Questions must be limited to information that materially affects:
 
-Routine technical implementation details must remain autonomous inside the approved scope and must not generate unnecessary Product Owner questions.
+- business intent;
+- scope boundary;
+- acceptance outcome;
+- repository or project selection;
+- risk authorization;
+- external credentials or authority;
+- irreversible or production-impacting decisions.
 
-### 4.3 Approval flow
+Routine technical implementation details must remain autonomous inside the approved scope.
 
-A conversational approval must:
+## 7. Confirmation binding
+
+A conversational confirmation must:
 
 - be authenticated and auditable;
 - reference the exact `scope_identifier`;
 - reference the exact `proposal_version` or content hash shown to the Product Owner;
-- create or bind a durable Product Owner approval reference;
+- create or bind one durable Product Owner approval reference;
+- explicitly authorize full governed execution within that exact scope;
 - reject stale proposal versions;
 - be idempotent;
-- not publish automatically unless a separate explicitly governed orchestration operation is designed and documented to perform approval followed by publication;
-- return the new lifecycle state and next allowed action.
+- never authorize an amended or broader proposal implicitly.
 
-Recommended canonical sequence:
+Accepted user wording may include equivalents of:
 
 ```text
-work_item.propose
-→ proposal review response
-→ Product Owner: "Mehet"
-→ scope.approve
-→ approval result
-→ scope.publish
-→ publication result
+Igen.
+Jó lesz.
+Mehet.
+Rendben, csináld meg.
 ```
 
-A higher-level orchestration tool may combine approval and publication only if:
+Natural-language interpretation is advisory. The confirmation handler must resolve the currently pending exact proposal context and invoke the canonical governed confirmation operation with explicit identifiers and version binding.
 
-- the internal transitions remain separately audited;
-- the exact approved proposal version is bound;
-- partial failure is safe and visible;
-- retries are idempotent;
-- no execution preparation occurs before successful publication.
+Silence, the original request, unrelated positive language, assistant-authored wording, or an unbound generic acknowledgement must not create execution authority.
 
-## 5. Public MCP and service surface
+## 8. Governed execution orchestration
+
+Implement one canonical application-level orchestration capability equivalent to:
+
+```text
+scope.confirm_and_execute
+```
+
+The exact operation name may differ.
+
+The operation must receive or resolve at minimum:
+
+```yaml
+project_id: "..."
+scope_identifier: "..."
+proposal_version: "..."
+product_owner_identity: "auditable identity"
+confirmation_reference: "durable conversation or request reference"
+idempotency_key: "..."
+```
+
+It must orchestrate existing canonical domain services rather than duplicating their authority.
+
+Required internal sequence:
+
+1. validate Product Owner identity and authority;
+2. validate scope state and exact proposal version;
+3. bind durable approval;
+4. publish the approved scope;
+5. prepare execution from the published canonical scope;
+6. generate the Execution Contract;
+7. validate the contract;
+8. issue the contract;
+9. allow the execution provider to consume the issued contract;
+10. request execution start;
+11. track execution state;
+12. collect Release Gate results and evidence;
+13. complete or fail the execution truthfully;
+14. return the final structured result.
+
+Each transition must remain separately audited.
+
+The orchestration layer must not recreate approval, publication, contract, or execution rules in parallel. It must call the existing canonical services.
+
+### 8.1 Idempotency and resumability
+
+The orchestration operation must:
+
+- safely retry after network or provider interruption;
+- avoid duplicate approvals, publications, contracts, executions, or evidence records;
+- resume from the last valid durable state;
+- expose the current step and blocker;
+- preserve one correlation or orchestration identifier across the full lifecycle.
+
+### 8.2 Product Owner re-entry conditions
+
+AI Bridge may return to the Product Owner before completion only when:
+
+- a material clarification is required;
+- the scope must change materially;
+- a newly discovered risk requires approval;
+- external credentials, secret, payment, environment access, or legal authority are missing;
+- the target repository or branch has changed incompatibly;
+- the execution provider is unavailable and no safe retry path remains;
+- tests reveal a product decision rather than a technical defect;
+- an irreversible or production action requires separate explicit authority.
+
+A routine implementation detail, code choice, file layout decision, or fix inside the approved scope is not a reason to ask the Product Owner again.
+
+## 9. Public MCP and conversation adapter
 
 Inspect the current public registry before implementation. Reuse existing lifecycle tools where possible.
 
@@ -162,78 +333,89 @@ Capabilities must include:
 
 - propose a Work Item or Sprint;
 - retrieve a human-reviewable proposal summary;
-- retrieve clarification questions and approval eligibility;
-- submit clarification answers or a revised proposal;
-- approve an exact proposal version using a durable Product Owner approval reference;
-- retrieve approval result and next action;
-- publish an approved scope through the existing governed publication path.
+- retrieve clarification questions and confirmation eligibility;
+- submit clarification answers or create a revised proposal;
+- confirm and orchestrate one exact proposal version;
+- retrieve orchestration status;
+- retrieve final execution result, evidence locations, and test instructions.
 
-The implementation may add a read-only operation such as:
+Every identifier required by the next operation must be returned by the previous operation. The conversational client must not invent hidden identifiers.
 
-```text
-scope.get_review
-```
+The public `tools/list` schema and runtime argument validation must continue to derive from one canonical registry.
 
-or enrich existing `work_item.propose`, `sprint.propose`, and `scope.get` responses. Do not create duplicate sources of truth.
+The conversation adapter must:
 
-The public schema must be usable by ChatGPT without inventing hidden identifiers. Every identifier required by the next operation must be returned by the previous operation.
+- use canonical structured responses;
+- not scrape Markdown for authority;
+- preserve lifecycle truthfully;
+- present the proposal clearly;
+- ask questions only when necessary;
+- ask `Jó lesz így?` only when eligible;
+- map valid Product Owner confirmation to the exact pending proposal context;
+- invoke the canonical orchestration path;
+- report `IN_PROGRESS`, `BLOCKED`, `FAILED`, or `COMPLETED` truthfully;
+- produce the final evidence-backed completion message.
 
-## 6. Conversation adapter requirements
-
-If the conversational wording is produced outside the core domain service, implement a provider-independent adapter that maps canonical Bridge responses to user-facing review messages.
-
-The adapter must:
-
-- use the canonical structured response, not scrape rendered Markdown;
-- preserve status and authorization truthfully;
-- summarize without omitting approval-relevant constraints;
-- present clarification questions clearly;
-- ask for explicit approval only when `approval_eligible=true`;
-- avoid asking `Mehet?` after `REJECTED` or while clarification remains unresolved;
-- avoid automatically treating the original creation request as post-proposal approval;
-- produce deterministic enough output for automated acceptance assertions.
-
-The exact Hungarian wording may be configurable, but the default Product Owner experience must support Hungarian and should use a clear approval question equivalent to:
+Default Hungarian proposal wording should be equivalent to:
 
 ```text
-A javasolt munkatétel elkészült. Mehet a jóváhagyás és a publikálás?
+Ezt értettem meg, és ezt a tervet készítettem.
+...
+Jó lesz így?
 ```
 
-The system must not confuse approval with execution. The message must make clear what the next approved transition will do.
+Default Hungarian completion wording should be equivalent to:
 
-## 7. Lifecycle and invariants
+```text
+Főnök, kész!
+```
+
+## 10. Lifecycle invariants
 
 Enforce the following:
 
 1. `PROPOSED` means no execution authorization.
 2. Proposal review is read-only.
-3. Approval binds one exact proposal version.
-4. Editing approval-relevant content invalidates or supersedes earlier approval eligibility.
-5. A stale conversational approval is rejected with a deterministic error.
-6. A rejected proposal cannot be approved.
-7. A proposal with unresolved clarification cannot be approved.
-8. Duplicate affirmative messages do not create duplicate approvals.
-9. Approval does not equal publication unless a documented orchestration operation explicitly performs both transitions.
-10. Publication does not equal contract issuance.
-11. Contract issuance does not equal contract consumption or execution.
-12. Django admin actions must use the same domain services and invariants as MCP operations.
+3. One confirmation binds one exact proposal version.
+4. Editing approval-relevant content invalidates or supersedes earlier confirmation eligibility.
+5. A stale confirmation is rejected deterministically.
+6. A rejected or clarification-blocked proposal cannot be confirmed.
+7. Duplicate confirmation does not create duplicate approvals or executions.
+8. Approval remains a distinct internal lifecycle transition.
+9. Publication remains a distinct internal lifecycle transition.
+10. Contract issuance remains distinct from consumption and execution.
+11. The orchestration service may sequence these transitions but must not collapse their audit semantics.
+12. No repository mutation occurs before valid contract consumption and execution start.
+13. No completion claim occurs before Release Gates and required evidence are recorded.
+14. Material scope change requires a new proposal version and new Product Owner confirmation.
+15. Django admin actions must use the same canonical domain services and invariants as MCP operations.
+16. Direct field mutation must not bypass lifecycle validation.
 
 Recommended deterministic errors:
 
 ```text
 CLARIFICATION_REQUIRED
-PROPOSAL_NOT_APPROVAL_ELIGIBLE
+PROPOSAL_NOT_CONFIRMATION_ELIGIBLE
 STALE_PROPOSAL_VERSION
 SCOPE_ALREADY_APPROVED
+SCOPE_ALREADY_EXECUTING
 SCOPE_REJECTED
 APPROVAL_REFERENCE_REQUIRED
 APPROVAL_IDENTITY_REQUIRED
 INVALID_SCOPE_STATE
+PUBLICATION_FAILED
+CONTRACT_ISSUANCE_FAILED
+CONTRACT_CONSUMPTION_FAILED
+EXECUTION_PROVIDER_UNAVAILABLE
+EXECUTION_BLOCKED
+RECONFIRMATION_REQUIRED
 ```
 
-## 8. Django admin
+Equivalent documented codes are acceptable.
 
-Django admin remains the temporary operational interface.
+## 11. Django admin
+
+Django admin remains the temporary operational and recovery interface.
 
 Ensure the relevant admin views show at minimum:
 
@@ -245,18 +427,25 @@ Ensure the relevant admin views show at minimum:
 - execution authorization;
 - proposal version or content hash;
 - clarification state and questions;
-- approval eligibility;
+- confirmation eligibility;
 - approval reference;
-- published path;
-- created, updated, and approved timestamps.
+- published path and publication commit;
+- orchestration identifier and current step;
+- contract identifier and state;
+- execution run and provider state;
+- evidence root;
+- created, updated, approved, started, completed, and failed timestamps;
+- last blocker or failure reason.
 
-Any admin approval action must call the same approval service used by the public MCP path. Direct field mutation that bypasses lifecycle validation is prohibited.
+Any admin action must call the same canonical services used by the public MCP path.
 
-## 9. Required proving executions
+Manual recovery actions may resume a failed orchestration, but must not bypass approval, contract, or execution invariants.
 
-### 9.1 Positive proof — proposal returned and approval requested
+## 12. Required proving executions
 
-Use this exact Product Owner request:
+### 12.1 Positive proof — proposal review
+
+Use exactly:
 
 ```text
 Create a new Django app named storybook.
@@ -264,37 +453,47 @@ Create a new Django app named storybook.
 
 Prove:
 
-1. the request creates or resolves one `PROPOSED` Work Item;
-2. the response returns its exact identifier and immutable proposal version;
-3. the response includes title, requested outcome, scope, acceptance checks, release gates, risks, status, and authorization;
+1. one `PROPOSED` Work Item exists;
+2. the exact scope identifier and immutable proposal version are returned;
+3. the response includes requested outcome, in scope, out of scope, acceptance checks, Release Gates, risks, policy result, status, and authorization;
 4. `execution_authorization` remains `NONE`;
-5. no repository document is published;
-6. no contract is prepared or issued;
-7. the response explicitly requests Product Owner approval with `Mehet?` or its documented equivalent.
+5. no repository scope document is published yet;
+6. no contract is prepared or issued yet;
+7. the response asks `Jó lesz így?` or its documented equivalent.
 
-### 9.2 Positive proof — conversational approval binding
+### 12.2 Positive proof — one confirmation drives the complete lifecycle
 
 Continue the same scenario with an authenticated Product Owner response equivalent to:
 
 ```text
-Mehet.
+Igen.
 ```
 
-Prove:
+Prove the one confirmation:
 
-1. the approval references the exact Storybook Work Item identifier;
-2. the approval references the exact proposal version shown previously;
-3. one durable approval reference is created;
-4. the scope becomes approved according to the canonical lifecycle;
-5. repeated identical approval is idempotent;
-6. execution still does not begin;
-7. the result clearly reports the next allowed step.
+1. binds the exact Storybook Work Item identifier;
+2. binds the exact proposal version shown previously;
+3. creates one durable approval reference;
+4. publishes the approved scope document;
+5. records publication path, commit, and content hash;
+6. prepares execution from the published canonical scope;
+7. generates, validates, and issues one Execution Contract;
+8. is consumed by the execution provider;
+9. starts one execution run;
+10. creates the actual `storybook` Django app in the governed target repository;
+11. registers the app in the Django project;
+12. creates the required base files;
+13. runs the required Release Gates;
+14. writes evidence under the deterministic Work Item evidence root;
+15. completes the execution and binds the final commit or PR;
+16. returns a final evidence-backed `Főnök, kész!` response;
+17. includes clear instructions for how the Product Owner can test the result.
 
-Then invoke publication separately and prove the approved scope document appears at its deterministic repository path.
+Repeated delivery of the same confirmation or orchestration request must be idempotent and must not create duplicate work.
 
-### 9.3 Clarification proof
+### 12.3 Clarification proof
 
-Use a request with genuine business ambiguity, such as:
+Use:
 
 ```text
 Add the new customer feature to the application.
@@ -303,108 +502,92 @@ Add the new customer feature to the application.
 Prove:
 
 1. deterministic policy returns `CLARIFICATION_REQUIRED`;
-2. the response asks bounded material questions;
-3. no approval prompt is emitted;
-4. approval attempts are rejected while clarification remains unresolved;
-5. after answers are supplied, a revised or superseding proposal is generated and returned for review.
+2. bounded material questions are returned;
+3. `Jó lesz így?` is not emitted;
+4. confirmation is rejected while clarification remains unresolved;
+5. after answers, a revised or superseding proposal is returned;
+6. the Product Owner confirms only the revised exact version;
+7. no execution occurs from the obsolete version.
 
-### 9.4 Negative proof — stale approval
+### 12.4 Negative proof — stale confirmation
 
-1. Create a proposal and return version A.
-2. Revise approval-relevant scope content, creating version B.
-3. Attempt approval using version A.
+1. Create proposal version A.
+2. Change approval-relevant content, producing version B.
+3. Attempt confirmation using version A.
 4. Expected result:
 
 ```text
 REJECTED — STALE_PROPOSAL_VERSION
 ```
 
-No approval reference may be bound to version B through the stale request.
+No approval or execution may be attached to version B through the stale confirmation.
 
-### 9.5 Negative proof — no implicit approval
+### 12.5 Negative proof — no implicit execution authority
 
-Prove that these do not approve a proposal unless the dedicated governed approval operation is invoked with the required identifiers:
+Prove that these do not approve or execute a proposal:
 
 - the original request;
-- proposal generation success;
+- proposal creation success;
 - silence;
-- a generic acknowledgement not bound to the proposal;
-- an assistant-authored approval sentence;
-- direct database field modification outside the domain service.
+- unrelated positive language;
+- assistant-authored confirmation wording;
+- a confirmation that cannot resolve one exact pending proposal;
+- direct database modification outside canonical services.
 
-## 10. Tests
+### 12.6 Negative proof — material scope change during execution
+
+After valid confirmation, simulate discovery of a required change outside the approved scope.
+
+Expected behavior:
+
+```text
+execution pauses safely
+→ RECONFIRMATION_REQUIRED
+→ revised proposal version returned
+→ Product Owner review requested
+→ no out-of-scope mutation occurs before new confirmation
+```
+
+### 12.7 Recovery proof
+
+Simulate a safe interruption after publication, contract issuance, or provider start.
+
+Prove:
+
+- retry uses the same orchestration identity;
+- no duplicate publication, contract, or execution is created;
+- orchestration resumes from the last durable valid state;
+- the final completion result remains consistent.
+
+## 13. Tests
 
 Add or update tests covering at minimum:
 
-- proposal response schema;
-- Work Item and Sprint proposal review summaries;
+- proposal-review response schema;
+- Work Item and Sprint summaries;
 - clarification-required response;
-- approval eligibility calculation;
+- confirmation eligibility;
 - exact proposal-version binding;
-- stale approval rejection;
-- idempotent approval;
-- no implicit approval;
-- no publication before approval;
-- no execution preparation before publication;
-- Django admin lifecycle action using the canonical service;
+- stale confirmation rejection;
+- idempotent confirmation;
+- no implicit approval or execution;
+- approval, publication, contract, consumption, and execution remain separately audited;
+- full orchestration from one Product Owner confirmation;
+- partial-failure recovery and resume;
+- no duplicate execution on retry;
+- reconfirmation on material scope change;
+- no execution before publication and contract consumption;
+- no completion before gates and evidence;
+- Django admin canonical actions;
 - MCP `tools/list` and runtime-schema consistency;
-- remote HTTP/MCP acceptance for the Storybook scenario;
-- Hungarian conversational rendering, including the explicit approval question.
+- remote HTTP/MCP Storybook end-to-end acceptance;
+- Hungarian proposal rendering with `Jó lesz így?`;
+- Hungarian completion rendering with `Főnök, kész!`;
+- final result includes evidence and test instructions.
 
-## 11. Documentation obligations
+## 14. Release Gates
 
-Update as applicable:
-
-- `README.md` Product Owner flow;
-- MCP tool reference;
-- architecture documentation;
-- Constitution only if a permanent governance rule is not already covered;
-- `AGENTS.md` where executor or conversational-agent behavior changes;
-- `docs/akb/CURRENT_STATE.md`;
-- roadmap;
-- Django admin operational notes;
-- evidence index.
-
-Document this separation explicitly:
-
-```text
-Bridge DB = live lifecycle and canonical structured state
-Conversation = Product Owner review and decisions
-GitHub = approved published scope projection and audit history
-Django admin = temporary operational and recovery interface
-```
-
-## 12. Evidence requirements
-
-Create a Sprint-specific evidence root and include at minimum:
-
-```text
-docs/evidence/sprint-011/CONVERSATIONAL_REVIEW_MODEL.md
-docs/evidence/sprint-011/STORYBOOK_PROPOSAL_REVIEW_PROOF.md
-docs/evidence/sprint-011/CONVERSATIONAL_APPROVAL_PROOF.md
-docs/evidence/sprint-011/CLARIFICATION_AND_STALE_APPROVAL_PROOFS.md
-docs/evidence/sprint-011/acceptance-results.json
-```
-
-Evidence must bind:
-
-- original Product Owner request;
-- canonical proposal response;
-- scope identifier;
-- proposal version/hash;
-- clarification state;
-- approval message or approval command input;
-- authenticated requester;
-- durable approval reference;
-- audit events;
-- publication commit and path;
-- proof that execution did not start prematurely;
-- Release Gate results;
-- final implementation commit.
-
-## 13. Release Gates
-
-Run and record at minimum:
+At minimum run and record:
 
 ```text
 python manage.py makemigrations --check
@@ -417,44 +600,124 @@ mypy .
 git diff --check
 ```
 
-Also run the exact remote MCP Storybook acceptance scenario through the public tool surface, not through direct model or database calls.
+Also run the complete remote HTTP/MCP acceptance flow using the exact Storybook scenario and a real governed target repository or isolated repository that proves actual mutation, contract consumption, execution, tests, evidence, and final completion.
 
-## 14. Definition of Done
+Do not replace the acceptance proof with a fake payload, mocked successful provider, or pre-created Storybook app.
+
+## 15. Evidence requirements
+
+Create evidence under:
+
+```text
+docs/evidence/sprint-011/
+```
+
+At minimum:
+
+```text
+CONVERSATIONAL_PRODUCT_OWNER_MODEL.md
+SINGLE_CONFIRMATION_ORCHESTRATION_PROOF.md
+STORYBOOK_END_TO_END_EXECUTION_PROOF.md
+CLARIFICATION_AND_STALE_CONFIRMATION_PROOFS.md
+RECOVERY_AND_IDEMPOTENCY_PROOF.md
+FINAL_RESULT_REPORTING_PROOF.md
+acceptance-results.json
+```
+
+Evidence must bind:
+
+- original Product Owner request;
+- structured proposal;
+- deterministic policy result;
+- proposal version shown to the Product Owner;
+- Product Owner confirmation reference;
+- durable approval reference;
+- publication path, hash, and commit;
+- preparation and contract identifiers;
+- contract issue and consumption events;
+- execution run and provider identity;
+- changed files;
+- Release Gate results;
+- evidence root;
+- final commit or PR;
+- final user-facing completion response;
+- Product Owner test instructions;
+- interruption and recovery results where applicable.
+
+## 16. Documentation obligations
+
+Update as applicable:
+
+- `README.md` Product Owner flow;
+- MCP tool reference;
+- architecture documentation;
+- Constitution if this permanent operating principle is not already represented;
+- `AGENTS.md` for executor and conversational-agent behavior;
+- `docs/akb/CURRENT_STATE.md`;
+- roadmap;
+- Django admin operational and recovery notes;
+- evidence index.
+
+Document this separation explicitly:
+
+```text
+Bridge DB = live lifecycle and canonical structured state
+Conversation = Product Owner intent, review, clarification, confirmation, and result
+GitHub = approved published scope, implementation, and audit history
+Django admin = temporary operational, diagnostic, and recovery interface
+Execution Provider = bounded implementation under issued contract
+```
+
+Document the central Product Owner contract:
+
+> The Product Owner explains the outcome, reviews the exact generated plan, and confirms it once. AI Bridge then completes the governed lifecycle autonomously within that scope and returns evidence-backed results. The Product Owner is asked again only when a genuine new decision or authority is required.
+
+## 17. Definition of Done
 
 Sprint 011 is complete only when:
 
-- a conversationally initiated proposal is immediately returned to the Product Owner in human-reviewable form;
-- material clarification questions are returned and block approval;
-- eligible proposals explicitly ask for approval;
-- conversational approval binds the exact immutable proposal version through a durable governed operation;
-- stale and ambiguous approvals are rejected deterministically;
-- proposal creation does not implicitly approve, publish, contract, or execute work;
-- Django admin remains sufficient for inspection and recovery and uses canonical services for lifecycle actions;
-- the Storybook scenario passes end to end through proposal review, explicit approval, and separate publication;
-- the published Storybook scope appears in GitHub only after approval and publication;
-- no repository implementation of the Storybook Django app occurs as part of this Sprint's acceptance proof;
-- documentation, AKB, roadmap, tests, and evidence are synchronized;
-- all Release Gates pass.
+- a conversational request returns a complete reviewable proposal;
+- material clarification is requested only when necessary;
+- eligible proposals ask `Jó lesz így?`;
+- one authenticated Product Owner confirmation binds the exact proposal version;
+- the same confirmation authorizes full bounded governed orchestration;
+- approval, publication, contract, consumption, execution, evidence, and closure remain separately audited internally;
+- normal execution does not require additional Product Owner lifecycle commands;
+- genuine blockers and material scope changes safely return to the Product Owner;
+- the Storybook request completes through actual governed repository mutation;
+- required Release Gates pass and evidence is written;
+- the final response says, in substance, `Főnök, kész!` and includes evidence, repository result, and test instructions;
+- retries are idempotent and interrupted execution is resumable;
+- no stale, implicit, assistant-authored, or unbound confirmation can authorize execution;
+- Django admin supports inspection and canonical recovery without becoming a bypass;
+- documentation and AKB state are synchronized;
+- all Release Gates and required proofs pass.
 
-## 15. Final product outcome
+## 18. Required final implementation report
 
-The target Product Owner interaction is:
+The implementation report must include:
+
+- final assessment;
+- implementation commit SHA;
+- changed-file summary;
+- migration summary;
+- public MCP and service changes;
+- Storybook Work Item identifier;
+- proposal version and approval reference;
+- publication commit and path;
+- contract and execution identifiers;
+- target repository final commit or PR;
+- Release Gate results;
+- evidence paths;
+- exact final Product Owner completion message;
+- Product Owner test instructions;
+- remaining risks or limitations.
+
+Allowed terminal assessments:
 
 ```text
-Product Owner: "Create a new Django app named storybook."
-
-AI Bridge:
-- creates a PROPOSED Work Item;
-- returns what it understood and what it intends to authorize;
-- asks only material questions;
-- clearly states that execution is not yet authorized;
-- asks: "Mehet?"
-
-Product Owner: "Mehet."
-
-AI Bridge:
-- binds durable approval to the exact proposal version;
-- reports the approval result;
-- publishes only through the governed publication step;
-- continues toward contract issuance without bypassing any lifecycle boundary.
+PASS — READY FOR PRODUCT OWNER ACCEPTANCE
+FAIL — BLOCKED
 ```
+
+Do not report PASS when any required acceptance proof, actual repository mutation, provider consumption, Release Gate, evidence record, documentation obligation, recovery proof, or final result report is missing.
