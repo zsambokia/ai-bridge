@@ -1,6 +1,6 @@
 # Sprint 005 Generator Bootstrap Assessment
 
-**Baseline:** `a3ebbb594c898ca87b773b8e9325b2ad254d0a0f`  
+**Baseline:** `a3ebbb594c898ca87b773b8e9325b2ad254d0a0f`
 **Bootstrap contract:** `bridge:ai-bridge:sprint-005:foundation-bootstrap-2026-07-26` (consumed for this assessment and execution)
 
 ## Reused canonical components

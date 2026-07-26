@@ -1,8 +1,8 @@
 # AGENTS.md Application Acceptance
 
-**Date:** 2026-07-25  
-**Repository:** `zsambokia/ai-bridge`  
-**Branch:** `main`  
+**Date:** 2026-07-25
+**Repository:** `zsambokia/ai-bridge`
+**Branch:** `main`
 **Result:** FAIL — AZ AGENTS.md AUTOMATIKUS ALKALMAZÁSA NEM BIZONYÍTOTT
 
 ## Discovery and scope
