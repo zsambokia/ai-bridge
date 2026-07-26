@@ -17,7 +17,7 @@ from django.utils import timezone
 from .contract_policy import resolve_policy
 from .execution_context import build_execution_context
 from .models import ExecutionContract, Project
-from .services import _head_sha, _repository_identity
+from .services import _current_branch, _head_sha, _repository_identity
 
 
 def _normalized_hash(payload: dict[str, Any]) -> str:
@@ -30,6 +30,18 @@ def _normalized_hash(payload: dict[str, Any]) -> str:
 def _baseline_exists(repository_root: Path, baseline: str) -> bool:
     result = subprocess.run(
         ["git", "cat-file", "-e", f"{baseline}^{{commit}}"],
+        cwd=repository_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def _is_descendant_of(repository_root: Path, ancestor: str, head: str) -> bool:
+    """Return whether ``head`` contains ``ancestor`` without trusting refs."""
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, head],
         cwd=repository_root,
         check=False,
         capture_output=True,
@@ -139,7 +151,10 @@ def _payload_for(
             "approved_sprint_path": approved_sprint_path,
             "target_branch": context.target_branch,
             "baseline_commit": baseline,
-            "baseline_rule": "EXACT",
+            # An issued repository artifact necessarily creates a commit after
+            # this baseline.  DESCENDANT_OF keeps that immutable issuance
+            # publishable while still rejecting an unrelated history.
+            "baseline_rule": "DESCENDANT_OF",
         },
         "binding_documents": _binding_document_hashes(repository_root, binding_paths),
         "release_gates": {
@@ -240,12 +255,49 @@ def issue_execution_contract(contract: ExecutionContract) -> ExecutionContract:
     return contract
 
 
-def consume_execution_contract(contract: ExecutionContract) -> ExecutionContract:
+def validate_issued_execution_contract(
+    contract: ExecutionContract, repository_root: Path
+) -> None:
+    """Validate immutable issued inputs immediately before execution starts."""
+    if contract.contract_hash != _normalized_hash(contract.payload):
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:HASH_MISMATCH")
+    execution = contract.payload["execution"]
+    if (
+        _repository_identity(repository_root)
+        != contract.payload["project"]["repository"]
+    ):
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:REPOSITORY_MISMATCH")
+    current_branch = _current_branch(repository_root)
+    if current_branch != execution["target_branch"]:
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:BRANCH_MISMATCH")
+    expected_bindings = contract.payload["binding_documents"]
+    binding_paths = {name: item["path"] for name, item in expected_bindings.items()}
+    if _binding_document_hashes(repository_root, binding_paths) != expected_bindings:
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:BINDING_HASH_MISMATCH")
+    baseline = execution["baseline_commit"]
+    if not _baseline_exists(repository_root, baseline):
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:BASELINE_NOT_FOUND")
+    head = _head_sha(repository_root)
+    rule = execution.get("baseline_rule")
+    if rule == "EXACT" and head != baseline:
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:BASELINE_EXACT_MISMATCH")
+    if rule == "DESCENDANT_OF" and not _is_descendant_of(
+        repository_root, baseline, head
+    ):
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:BASELINE_NOT_ANCESTOR")
+    if rule not in {"EXACT", "DESCENDANT_OF"}:
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:BASELINE_RULE_INVALID")
+
+
+def consume_execution_contract(
+    contract: ExecutionContract, repository_root: Path
+) -> ExecutionContract:
     """Acknowledge one issued contract before mutation; an Epic is not code authority."""
     if contract.lifecycle != ExecutionContract.Lifecycle.ISSUED:
         raise ValueError("CONTRACT_NOT_ISSUED")
     if contract.payload["policy"]["child_contract_required"]:
         raise ValueError("EPIC_CHILD_CONTRACT_REQUIRED")
+    validate_issued_execution_contract(contract, repository_root)
     contract.lifecycle = ExecutionContract.Lifecycle.CONSUMED
     contract.consumed_at = timezone.now()
     contract.save(update_fields=["lifecycle", "consumed_at"])

@@ -67,3 +67,11 @@ DATABASES = {
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STATIC_URL = "static/"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in CLOUDFLARE_TUNNEL_HOSTS]
+MCP_PUBLIC_BASE_URL = os.environ.get(
+    "MCP_PUBLIC_BASE_URL", "https://stage.artificial-software-factory.com"
+).rstrip("/")
+MCP_AUTH_MODE = os.environ.get("MCP_AUTH_MODE", "bearer").strip().lower()
+MCP_API_TOKEN = os.environ.get("MCP_API_TOKEN", "")

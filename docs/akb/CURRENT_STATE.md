@@ -35,10 +35,13 @@ delete them outside the canonical bootstrap lifecycle.
 
 ## Implemented execution foundation
 
-Sprint 004 adds a lightweight, registered MCP transport at `POST /mcp/` to the
-canonical `projects` domain. It resolves only active ready Registry records,
-persists ambiguous-resolution candidate state behind a continuation token, and
-requires the caller to choose a listed `project_id` before continuation.
+Sprint 004's operation registry remains the canonical internal service surface
+for Project resolution and contract lifecycle. Sprint 006 replaces its former
+public proprietary `operation`/`payload` adapter with an authenticated remote
+MCP server at `POST /mcp/`. The public server implements the Streamable HTTP
+MCP lifecycle (`initialize`, `tools/list`, `tools/call`) and exposes only the
+read-only `factory.get_status` tool, backed by real Project data. It does not
+publish broad governance-write operations.
 
 The same domain now constructs a canonical, structured Execution Context from a
 Project, its valid Project Context, `.bridge/project.yaml`, and an explicit
@@ -66,10 +69,23 @@ hosts `stage.artificial-software-factory.com` and
 `app.artificial-software-factory.com`. Additional deployment hosts are opt-in
 through `DJANGO_ALLOWED_HOSTS`; wildcard configuration is rejected.
 
+The remote MCP endpoint uses a configured Bearer token (`MCP_API_TOKEN`) and
+fails closed if it is missing. It is deliberately CSRF-exempt for authenticated
+machine requests, returns JSON errors rather than HTML or login redirects,
+disables shared caching, and honors the Cloudflare forwarded HTTPS scheme.
+Staging connection instructions, token rotation, and the production OAuth
+direction are in `docs/integrations/CHATGPT_MCP_CONNECTION.md`.
+
+Sprint 006 also corrects contract lifecycle validation for repository-stored
+issued contracts. A committed issued artifact cannot keep an `EXACT` `HEAD`
+baseline because its own publication advances `HEAD`; generated repository
+contracts therefore use the canonical `DESCENDANT_OF` rule and retain the exact
+generation SHA. A regression test prevents recurrence.
+
 The scope intentionally does not add AKB indexing, vector search, Discovery,
 autonomous planning, or a large user interface.
 
 ## Next approved action
 
-Use the canonical Execution Contract Generator to issue the approved contract
-for the next sprint before its execution begins.
+Complete the issued Sprint 006 evidence and perform the remaining ChatGPT
+workspace UI tool-scan as the Product Owner acceptance step.

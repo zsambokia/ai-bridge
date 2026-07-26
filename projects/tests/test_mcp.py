@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from django.test import Client
 
 from projects.mcp import invoke_operation, registered_operations
 from projects.models import Project, ProjectResolutionContinuation
@@ -24,7 +23,7 @@ def _ready_project(project_id: str, repository: str) -> Project:
 
 
 @pytest.mark.django_db
-def test_mcp_operations_are_registered_and_http_reachable() -> None:
+def test_governance_operations_remain_registered_for_internal_services() -> None:
     assert {
         "continue_project_resolution",
         "generate_execution_context",
@@ -39,13 +38,6 @@ def test_mcp_operations_are_registered_and_http_reachable() -> None:
         "revoke_execution_contract",
         "resolve_project",
     } == set(registered_operations())
-    response = Client().post(
-        "/mcp/",
-        data='{"operation": "list_operations", "payload": {}}',
-        content_type="application/json",
-    )
-    assert response.status_code == 200
-    assert response.json()["operations"] == list(registered_operations())
 
 
 @pytest.mark.django_db

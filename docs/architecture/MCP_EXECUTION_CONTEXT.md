@@ -1,4 +1,4 @@
-# MCP Execution Context Foundation
+# MCP Execution Context and Remote Server
 
 Sprint 004 extends the canonical `projects` domain; it does not create a
 second Registry, Context store, or AKB system.
@@ -14,12 +14,31 @@ Project Registry + Project Context + .bridge/project.yaml + approved Sprint
                                  └── future agent context
 ```
 
-`POST /mcp/` is the small JSON transport adapter. `list_operations` exposes
-the registered operations. Alongside Project resolution and
-`generate_execution_context`, it exposes the contract lifecycle operations
-`generate_execution_contract`, `validate_execution_contract`,
-`issue_execution_contract`, `get_execution_contract`, and
-`render_execution_handoff`.
+The canonical `projects.mcp` operation registry remains an internal service
+surface for Project resolution, execution-context construction, and contract
+lifecycle work. It is not a public HTTP protocol and is deliberately not
+exposed as a ChatGPT tool surface.
+
+Sprint 006 replaces the public proprietary adapter at `POST /mcp/` with a
+stateless, JSON-RPC 2.0 MCP server using the 2025-03-26 protocol version and
+Streamable HTTP transport. It supports `initialize`, `notifications/initialized`,
+`tools/list`, and `tools/call`. Every protocol failure is a JSON response; the
+endpoint is CSRF-exempt because Bearer authentication, rather than browser
+cookies, is the security boundary. It returns `Cache-Control: no-store, private`
+and never redirects to a login page.
+
+The public registry currently contains exactly one least-privilege tool:
+`factory.get_status`. It reads real `Project` state and returns a deterministic
+summary. The tool has no input and cannot mutate Bridge state, repository state,
+or execution-contract lifecycle records. Write-capable governance operations
+remain internal until an approved Sprint defines their authorization model.
+
+At the Cloudflare boundary, Django accepts only configured hosts, trusts
+`X-Forwarded-Proto: https` for secure-request handling, and may use the
+forwarded host. `MCP_PUBLIC_BASE_URL`, `MCP_AUTH_MODE=bearer`, and
+`MCP_API_TOKEN` are deployment configuration; the token is never stored in the
+repository. The public staging URL and operator procedure are documented in
+`docs/integrations/CHATGPT_MCP_CONNECTION.md`.
 
 `resolve_project` only searches active, ready Registry records. A single match
 returns `PROJECT_RESOLVED`; multiple matches return `USER_INPUT_REQUIRED` with
@@ -40,8 +59,12 @@ project/sprint.
 `ExecutionContract` is the durable canonical handoff record. Generation resolves
 the current repository baseline, bindings and hashes; validation re-resolves
 those inputs; issuance makes the payload immutable and rejects evidence-root
-collisions. Human-readable handoff Markdown is rendered only from that stored
-payload, so it cannot drift from the issued contract.
+collisions. Repository-stored issued contracts use the deterministic
+`DESCENDANT_OF` baseline rule: publishing the contract itself necessarily makes
+the repository `HEAD` a descendant of the generation baseline, while preserving
+the exact immutable baseline SHA. `EXACT` remains available when an artifact is
+not committed into the governed repository. Human-readable handoff Markdown is
+rendered only from stored data, so it cannot drift from the issued contract.
 
 Sprint 005 makes the contract policy tiered and deterministic. Each contract
 stores a `HOTFIX`, `BUGFIX`, `TASK`, `SPRINT`, or `EPIC` execution level, task

@@ -1,0 +1,10 @@
+{
+  "mode": "Bearer token",
+  "secret_source": "MCP_API_TOKEN deployment environment / secret manager",
+  "valid_credential": "PASS (automated test only; secret redacted)",
+  "missing_credential": "PASS: HTTP 401 with JSON-RPC error and WWW-Authenticate",
+  "invalid_credential": "PASS: HTTP 401",
+  "missing_server_secret": "PASS: HTTP 503 fail-closed JSON-RPC error",
+  "authorization_scope": "factory.get_status only; read-only",
+  "secret_exposure": "PASS: no token is present in source, tests, or evidence"
+}

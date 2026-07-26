@@ -1,0 +1,15 @@
+{
+  "transport": "Streamable HTTP",
+  "protocol_version": "2025-03-26",
+  "endpoint": "/mcp/",
+  "automated_validation": {
+    "initialize": "PASS",
+    "initialized_notification": "PASS",
+    "tools_list": "PASS",
+    "tools_call": "PASS",
+    "json_rpc_parse_and_method_errors": "PASS",
+    "legacy_operation_payload_rejected": "PASS",
+    "html_or_login_redirect_on_protocol_surface": "PASS (absent)"
+  },
+  "test_module": "projects/tests/test_remote_mcp.py"
+}

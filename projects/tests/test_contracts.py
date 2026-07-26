@@ -15,6 +15,7 @@ from projects.contracts import (
     issue_execution_contract,
     render_execution_handoff,
     validate_execution_contract,
+    validate_issued_execution_contract,
 )
 from projects.mcp import invoke_operation, registered_operations
 from projects.models import ExecutionContract, Project
@@ -33,12 +34,16 @@ def contract_project(
     monkeypatch.setattr("projects.services._current_branch", lambda root: "main")
     monkeypatch.setattr("projects.services._head_sha", lambda root: "a" * 40)
     monkeypatch.setattr("projects.contracts._head_sha", lambda root: "a" * 40)
+    monkeypatch.setattr("projects.contracts._current_branch", lambda root: "main")
     monkeypatch.setattr(
         "projects.contracts._repository_identity",
         lambda root: "example/generic-project",
     )
     monkeypatch.setattr(
         "projects.contracts._baseline_exists", lambda root, baseline: True
+    )
+    monkeypatch.setattr(
+        "projects.contracts._is_descendant_of", lambda root, ancestor, head: True
     )
     assert bootstrap_project(definition, "docs/sprints/SPRINT_003.md", tmp_path).success
     return tmp_path, Project.objects.get(project_id="generic-project")
@@ -255,7 +260,7 @@ def test_risk_only_strengthens_and_epic_cannot_be_consumed(
     )
     epic = issue_execution_contract(validate_execution_contract(epic, root))
     with pytest.raises(ValueError, match="EPIC_CHILD_CONTRACT_REQUIRED"):
-        consume_execution_contract(epic)
+        consume_execution_contract(epic, root)
 
 
 @pytest.mark.django_db
@@ -272,9 +277,32 @@ def test_contract_completion_binds_final_commit(
         execution_level="BUGFIX",
     )
     contract = issue_execution_contract(validate_execution_contract(contract, root))
-    contract = consume_execution_contract(contract)
+    contract = consume_execution_contract(contract, root)
     completed = complete_execution_contract(
         contract, "b" * 40, "PASS â€” READY FOR PRODUCT OWNER REVIEW"
     )
     assert completed.final_commit_sha == "b" * 40
     assert completed.lifecycle == ExecutionContract.Lifecycle.COMPLETED
+
+
+@pytest.mark.django_db
+def test_issued_repository_contract_survives_its_own_publication_commit(
+    contract_project: tuple[Path, Project], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, project = contract_project
+    validated = validate_execution_contract(_draft(root, project), root)
+    contract = issue_execution_contract(validated)
+    assert contract.payload["execution"]["baseline_rule"] == "DESCENDANT_OF"
+
+    # The publication commit is a descendant of the validated baseline.  This
+    # is the exact case that made an EXACT contract unconsumable on publication.
+    monkeypatch.setattr("projects.contracts._head_sha", lambda root: "b" * 40)
+    monkeypatch.setattr(
+        "projects.contracts._is_descendant_of", lambda root, ancestor, head: True
+    )
+    validate_issued_execution_contract(contract, root)
+
+    contract.payload["execution"]["baseline_rule"] = "EXACT"
+    contract.contract_hash = _normalized_hash(contract.payload)
+    with pytest.raises(ValueError, match="BASELINE_EXACT_MISMATCH"):
+        validate_issued_execution_contract(contract, root)

@@ -149,6 +149,12 @@ Sprint 005 establishes tiered policy resolution and the full durable contract
 lifecycle. Subsequent work consumes the smallest sufficient contract level;
 Epic-level planning must be decomposed into child implementation contracts.
 
+Sprint 006 adds the first deliberately narrow remote MCP proof: a public,
+authenticated Streamable HTTP server that exposes only a read-only factory
+status tool while retaining governed Bridge services behind the canonical
+internal boundary. It also corrects repository-stored issued-contract baseline
+validation so issuance does not invalidate its own artifact.
+
 Canonical specification:
 
 ```text
@@ -240,11 +246,11 @@ These may remain part of the long-term product vision, but they must not distrac
 
 ## 6. Immediate next actions
 
-1. execute Sprint 003 to create and validate the Project Registry, onboarding readiness, and first Project Context foundation;
+1. complete Sprint 006 evidence and Product Owner ChatGPT workspace acceptance;
 2. keep `.bridge/project.yaml` as the static Project definition;
-3. use `STANDARD` Execution Contracts only after Sprint 003 has produced a valid Project Context;
+3. use the smallest sufficient tiered Execution Contract for each approved Sprint;
 4. prepare the dedicated Operational Capability State Sprint;
-5. implement the generic Handoff Generator only after Project Registry and Project Context are accepted;
+5. extend remote MCP tools only through explicit approved, authorization-aware Sprints;
 6. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop.
 
 ## 7. Roadmap success criterion

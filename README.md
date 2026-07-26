@@ -1,7 +1,7 @@
 # AI Bridge
 
-AI Bridge is a minimal Django foundation with a health endpoint and a lightweight
-MCP execution-context and immutable execution-contract transport.
+AI Bridge is a minimal Django foundation with a health endpoint, governed
+execution-contract services, and a standards-compliant remote MCP endpoint.
 
 ## Requirements and installation
 
@@ -30,10 +30,12 @@ The deployment-safe default allows the two approved Cloudflare tunnel hosts:
 `app.artificial-software-factory.com`. Deployments may add explicit host names
 with `DJANGO_ALLOWED_HOSTS` (comma-separated). Wildcard hosts are rejected.
 
-`POST /mcp/` accepts a JSON object with `operation` and `payload`. It exposes
-registered Project resolution, Execution Context, and Execution Contract
-operations; see
-[`docs/architecture/MCP_EXECUTION_CONTEXT.md`](docs/architecture/MCP_EXECUTION_CONTEXT.md).
+`POST /mcp/` is an authenticated Streamable HTTP MCP endpoint. It implements
+`initialize`, `tools/list`, and `tools/call`, and currently exposes the
+read-only `factory.get_status` tool. Configure `MCP_API_TOKEN` before starting
+the service; a missing token fails closed. See the
+[ChatGPT connection guide](docs/integrations/CHATGPT_MCP_CONNECTION.md) and
+[MCP architecture](docs/architecture/MCP_EXECUTION_CONTEXT.md).
 
 ## Verification
 

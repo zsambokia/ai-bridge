@@ -309,9 +309,8 @@ def _find_contract(payload: dict[str, Any]) -> ExecutionContract:
 
 @mcp_operation("consume_execution_contract")
 def consume_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
-    del repository_root
     try:
-        contract = consume_execution_contract(_find_contract(payload))
+        contract = consume_execution_contract(_find_contract(payload), repository_root)
     except ExecutionContract.DoesNotExist:
         return {
             "status": "CONTRACT_NOT_FOUND",

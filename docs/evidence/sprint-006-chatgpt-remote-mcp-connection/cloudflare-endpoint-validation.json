@@ -1,0 +1,17 @@
+{
+  "staging_endpoint": "https://stage.artificial-software-factory.com/mcp/",
+  "observed_at": "2026-07-26T09:31:53Z",
+  "external_reachability": "PASS: Cloudflare returned an application JSON response",
+  "observed_response_without_credential": {
+    "http_status": 503,
+    "content_type": "application/json",
+    "cache_control": "no-store, private",
+    "mcp_protocol_version": "2025-03-26",
+    "message": "MCP authentication is not configured."
+  },
+  "approved_hosts": "PASS in automated Django tests",
+  "forwarded_https": "PASS in automated Django tests",
+  "unapproved_host": "PASS: rejected in automated Django tests",
+  "deployment_blocker": "The staging deployment has no MCP_API_TOKEN. A deployment-secret update is required before an authenticated external ChatGPT scan can succeed.",
+  "production_endpoint": "https://app.artificial-software-factory.com/mcp/ (application configuration ready; external activation not performed)"
+}
