@@ -5,15 +5,24 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
 from django.conf import settings
 
 from .contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPES
+from .contracts import (
+    complete_execution_contract,
+    consume_execution_contract,
+    generate_scope_execution_contract,
+    issue_execution_contract,
+    validate_execution_contract,
+)
 from .execution import add_event, complete_run, provider, start_run
 from .mcp import invoke_operation
 from .models import (
+    ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
     ExecutionPreparation,
@@ -25,9 +34,15 @@ from .models import (
     McpIdempotencyRecord,
     Project,
 )
-from .scopes import approved_scope
+from .scopes import (
+    answer_clarifications,
+    approved_scope,
+    bind_approval,
+    publish_scope,
+    review_scope,
+)
 
-TOOL_SURFACE_VERSION = "2026-07-26.3"
+TOOL_SURFACE_VERSION = "2026-07-26.6"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -38,6 +53,12 @@ MUTATING = {
     APPROVAL_REQUIRED,
     LIFECYCLE_MUTATION,
     EXECUTION_BOUNDARY,
+}
+_PRODUCT_OWNER_CONFIRMATIONS = {
+    "igen",
+    "jo lesz igy",
+    "mehet",
+    "rendben csinald meg",
 }
 
 
@@ -347,6 +368,116 @@ _TOOLS.extend(
             READ_ONLY,
             {"scope_identifier": {"type": "string", "minLength": 1}},
             ["scope_identifier"],
+        ),
+        _tool(
+            "scope.review",
+            "Return the exact pending proposal and any clarification questions.",
+            READ_ONLY,
+            {**_PROJECT, "scope_identifier": {"type": "string", "minLength": 1}},
+            ["project_id", "scope_identifier"],
+        ),
+        _tool(
+            "scope.answer_clarifications",
+            "Record complete clarification answers and create a new proposal version.",
+            PREPARATORY_STATE,
+            {
+                **_PROJECT,
+                "scope_identifier": {"type": "string", "minLength": 1},
+                "answers": {"type": "object"},
+                **_IDEMPOTENCY,
+            },
+            ["project_id", "scope_identifier", "answers", "idempotency_key"],
+        ),
+        _tool(
+            "scope.confirm_and_execute",
+            "Confirm a reviewed proposal and dispatch its governed execution.",
+            EXECUTION_BOUNDARY,
+            {
+                **_PROJECT,
+                "scope_identifier": {"type": "string", "minLength": 1},
+                "proposal_version": {"type": "integer", "minimum": 1},
+                "proposal_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "product_owner_identity": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                },
+                "confirmation_reference": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                },
+                **_IDEMPOTENCY,
+            },
+            [
+                "project_id",
+                "scope_identifier",
+                "proposal_version",
+                "proposal_hash",
+                "product_owner_identity",
+                "confirmation_reference",
+                "idempotency_key",
+            ],
+        ),
+        _tool(
+            "conversation.confirm",
+            "Bind a Product Owner reply to the exact pending proposal.",
+            EXECUTION_BOUNDARY,
+            {
+                **_PROJECT,
+                "scope_identifier": {"type": "string", "minLength": 1},
+                "confirmation_text": {"type": "string", "minLength": 1},
+                "product_owner_identity": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                },
+                "confirmation_reference": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                },
+                **_IDEMPOTENCY,
+            },
+            [
+                "project_id",
+                "scope_identifier",
+                "confirmation_text",
+                "product_owner_identity",
+                "confirmation_reference",
+                "idempotency_key",
+            ],
+        ),
+        _tool(
+            "scope.orchestration_status",
+            "Read the durable state of a conversational confirmation flow.",
+            READ_ONLY,
+            {**_PROJECT, "scope_identifier": {"type": "string", "minLength": 1}},
+            ["project_id", "scope_identifier"],
+        ),
+        _tool(
+            "scope.complete_execution",
+            "Verify a finished provider run and record its evidence-backed result.",
+            EXECUTION_BOUNDARY,
+            {
+                **_PROJECT,
+                "scope_identifier": {"type": "string", "minLength": 1},
+                "orchestration_token": {"type": "string", "minLength": 36},
+                "final_commit_sha": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{40}$",
+                },
+                "completion_data": {"type": "object"},
+                **_IDEMPOTENCY,
+            },
+            [
+                "project_id",
+                "scope_identifier",
+                "orchestration_token",
+                "final_commit_sha",
+                "completion_data",
+                "idempotency_key",
+            ],
         ),
         _tool(
             "scope.contract.generate",
@@ -673,6 +804,304 @@ def _akb(project: Project, document_id: str) -> tuple[str, str]:
     )[:12000]
 
 
+def _orchestration_result(flow: ConversationOrchestration) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "status": flow.status,
+        "current_step": flow.current_step,
+        "orchestration_token": str(flow.token),
+        "scope_identifier": flow.scope.identifier,
+        "proposal_version": flow.proposal_version,
+    }
+    if flow.contract:
+        result["handoff_identifier"] = flow.contract.handoff_identifier
+        result["contract_lifecycle"] = flow.contract.lifecycle
+    if flow.run:
+        result["execution_token"] = str(flow.run.token)
+        result["execution_lifecycle"] = flow.run.lifecycle
+    if flow.failure_detail:
+        result["failure_detail"] = flow.failure_detail
+    return result
+
+
+def _transition(
+    flow: ConversationOrchestration, caller: str, step: str, outcome: str
+) -> None:
+    """Persist a separately-auditable lifecycle transition for one flow."""
+    flow.current_step = step
+    flow.status = outcome
+    flow.failure_detail = {}
+    flow.save(update_fields=["current_step", "status", "failure_detail", "updated_at"])
+    _audit(
+        caller,
+        "scope.confirm_and_execute",
+        flow.scope.project,
+        outcome,
+        {"orchestration_token": str(flow.token), "step": step},
+    )
+
+
+def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None:
+    """Resume only missing canonical transitions; never duplicate authority."""
+    scope = ExecutableScope.objects.get(pk=flow.scope_id)
+    root = Path(settings.BASE_DIR)
+    try:
+        if scope.status == ExecutableScope.Status.PROPOSED:
+            bind_approval(scope, flow.confirmation_reference)
+            _transition(flow, caller, "PUBLICATION", "APPROVED")
+            scope.refresh_from_db()
+        if scope.status != ExecutableScope.Status.APPROVED:
+            raise ValueError("INVALID_SCOPE_STATE")
+        if not scope.published_path:
+            publish_scope(scope, root)
+        _transition(flow, caller, "PREPARATION", "PUBLISHED")
+        if flow.preparation_id is None:
+            authorized = approved_scope(scope)
+            flow.preparation = ExecutionPreparation.objects.create(
+                project=scope.project,
+                sprint_path=authorized["path"],
+                preparation_data={
+                    "scope_identifier": scope.identifier,
+                    "approved_scope": authorized,
+                    "intent": scope.record["intent"],
+                    "resolved_policy": scope.record["policy"],
+                    "missing_product_owner_inputs": [],
+                },
+            )
+            flow.save(update_fields=["preparation", "updated_at"])
+        _transition(flow, caller, "CONTRACT", "EXECUTION_PREPARED")
+        if flow.contract_id is None:
+            flow.contract = generate_scope_execution_contract(scope, root)
+            flow.save(update_fields=["contract", "updated_at"])
+            _transition(flow, caller, "CONTRACT_VALIDATION", "CONTRACT_GENERATED")
+        contract = flow.contract
+        if contract is None:
+            raise ValueError("CONTRACT_GENERATION_REQUIRED")
+        if contract.lifecycle == ExecutionContract.Lifecycle.DRAFT:
+            validate_execution_contract(contract, root)
+            _transition(flow, caller, "CONTRACT_ISSUANCE", "CONTRACT_VALIDATED")
+        if contract.lifecycle == ExecutionContract.Lifecycle.VALIDATED:
+            issue_execution_contract(contract, root)
+            _transition(flow, caller, "CONTRACT_CONSUMPTION", "CONTRACT_ISSUED")
+        if contract.lifecycle == ExecutionContract.Lifecycle.ISSUED:
+            contract = consume_execution_contract(
+                contract,
+                root,
+                expected_hash=contract.contract_hash,
+                provider_identity="codex-cli",
+                observed_baseline=contract.payload["execution"]["baseline_commit"],
+                schema_version="2.0",
+                idempotency_key=f"conversation:{flow.token}",
+            )
+            _transition(flow, caller, "EXECUTION", "CONTRACT_CONSUMED")
+        if contract.lifecycle not in {
+            ExecutionContract.Lifecycle.CONSUMED,
+            ExecutionContract.Lifecycle.RUNNING,
+            ExecutionContract.Lifecycle.COMPLETED,
+        }:
+            raise ValueError("CONTRACT_LIFECYCLE_NOT_EXECUTABLE")
+        _transition(flow, caller, "EXECUTION", "CONTRACT_CONSUMED")
+        if flow.run_id is None:
+            request, _ = ExecutionStartRequest.objects.get_or_create(
+                contract=contract,
+                defaults={
+                    "approval": GovernanceApproval.objects.get(
+                        reference=flow.confirmation_reference, project=scope.project
+                    )
+                },
+            )
+            audit = McpAuditEvent.objects.create(
+                caller=caller,
+                tool_name="scope.confirm_and_execute",
+                project=scope.project,
+                outcome="DISPATCHING",
+                details={
+                    "orchestration_token": str(flow.token),
+                    "contract": contract.handoff_identifier,
+                },
+            )
+            flow.run = start_run(contract, request, root, audit_event_id=audit.pk)
+            request.status = "EXECUTION_STARTED"
+            request.next_action = "Provider result must be verified before completion."
+            request.save(update_fields=["status", "next_action"])
+            flow.save(update_fields=["run", "updated_at"])
+        _transition(flow, caller, "EXECUTION", "EXECUTION_STARTED")
+    except (OSError, ValueError) as exc:
+        flow.status = "BLOCKED"
+        flow.failure_detail = {"code": str(exc), "resume_available": True}
+        flow.save(update_fields=["status", "failure_detail", "updated_at"])
+        _audit(
+            caller,
+            "scope.confirm_and_execute",
+            scope.project,
+            "BLOCKED",
+            {"orchestration_token": str(flow.token), "code": str(exc)[:200]},
+        )
+
+
+def _confirm_and_execute(
+    arguments: dict[str, Any], project: Project, caller: str
+) -> dict[str, Any]:
+    """One durable orchestration, composed exclusively from canonical services."""
+    scope = ExecutableScope.objects.get(
+        project=project, identifier=arguments["scope_identifier"]
+    )
+    review = review_scope(scope)
+    existing = ConversationOrchestration.objects.filter(
+        scope=scope, confirmation_reference=arguments["confirmation_reference"]
+    ).first()
+    if existing:
+        if (
+            existing.proposal_hash != arguments["proposal_hash"]
+            or existing.proposal_version != arguments["proposal_version"]
+            or existing.product_owner_identity != arguments["product_owner_identity"]
+        ):
+            raise ValueError("CONFIRMATION_REFERENCE_REUSE_MISMATCH")
+        _advance_orchestration(existing, caller)
+        return _orchestration_result(existing)
+    if not review["confirmation_eligible"]:
+        raise ValueError("CLARIFICATION_REQUIRED")
+    if (
+        review["proposal_hash"] != arguments["proposal_hash"]
+        or review["proposal_version"] != arguments["proposal_version"]
+    ):
+        raise ValueError("STALE_PROPOSAL_VERSION")
+    approval, created = GovernanceApproval.objects.get_or_create(
+        reference=arguments["confirmation_reference"],
+        defaults={
+            "project": project,
+            "scope": scope,
+            "approved_action": "AUTHORIZE_EXECUTION",
+            "approved_by": arguments["product_owner_identity"],
+        },
+    )
+    if not created and (
+        approval.project_id != project.pk
+        or approval.approved_by != arguments["product_owner_identity"]
+        or approval.approved_action not in {"AUTHORIZE_EXECUTION", "ALL"}
+    ):
+        raise ValueError("CONFIRMATION_REFERENCE_REUSE_MISMATCH")
+    flow = ConversationOrchestration.objects.create(
+        scope=scope,
+        product_owner_identity=arguments["product_owner_identity"],
+        confirmation_reference=arguments["confirmation_reference"],
+        proposal_version=arguments["proposal_version"],
+        proposal_hash=arguments["proposal_hash"],
+    )
+    _advance_orchestration(flow, caller)
+    return _orchestration_result(flow)
+
+
+def _normalise_confirmation(value: str) -> str:
+    """Compare conversational confirmation without weakening its vocabulary."""
+    decomposed = unicodedata.normalize("NFKD", value)
+    without_accents = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+    return re.sub(r"[^a-z0-9]+", " ", without_accents.casefold()).strip()
+
+
+def _confirm_conversation(
+    arguments: dict[str, Any], project: Project, caller: str
+) -> dict[str, Any]:
+    """Map an accepted Product Owner phrase to the exact displayed proposal."""
+    if _normalise_confirmation(arguments["confirmation_text"]) not in (
+        _PRODUCT_OWNER_CONFIRMATIONS
+    ):
+        raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
+    scope = ExecutableScope.objects.get(
+        project=project, identifier=arguments["scope_identifier"]
+    )
+    review = review_scope(scope)
+    if not review["confirmation_eligible"]:
+        raise ValueError("CLARIFICATION_REQUIRED")
+    return _confirm_and_execute(
+        {
+            **arguments,
+            "proposal_version": review["proposal_version"],
+            "proposal_hash": review["proposal_hash"],
+        },
+        project,
+        caller,
+    )
+
+
+def _complete_orchestration(
+    arguments: dict[str, Any], project: Project, caller: str
+) -> dict[str, Any]:
+    """Accept completion after the real provider stops and evidence exists."""
+    scope = ExecutableScope.objects.get(
+        project=project, identifier=arguments["scope_identifier"]
+    )
+    flow = ConversationOrchestration.objects.get(
+        scope=scope, token=arguments["orchestration_token"]
+    )
+    if flow.status == "COMPLETED":
+        return _orchestration_result(flow)
+    if flow.run_id is None or flow.contract_id is None:
+        raise ValueError("EXECUTION_NOT_STARTED")
+    run = flow.run
+    contract = flow.contract
+    if run is None or contract is None:
+        raise ValueError("EXECUTION_NOT_STARTED")
+    if provider().status(run.provider_execution_id) != "FINISHED":
+        raise ValueError("EXECUTION_STILL_RUNNING")
+    completion_data = arguments["completion_data"]
+    required = {
+        "execution_result",
+        "gate_results",
+        "evidence_manifest",
+        "changed_files",
+        "failure_classification",
+    }
+    if required - set(completion_data):
+        raise ValueError("RUN_COMPLETION_EVIDENCE_REQUIRED")
+    gates = completion_data["gate_results"]
+    if not isinstance(gates, dict) or not gates or set(gates.values()) != {"PASS"}:
+        raise ValueError("RELEASE_GATES_NOT_PASSED")
+    if not completion_data["changed_files"]:
+        raise ValueError("EXECUTION_CHANGED_FILES_REQUIRED")
+    root = Path(settings.BASE_DIR)
+    manifest = completion_data["evidence_manifest"]
+    if not isinstance(manifest, dict) or not manifest:
+        raise ValueError("RUN_COMPLETION_EVIDENCE_INVALID")
+    if not all(
+        isinstance(path, str) and (root / path).is_file() for path in manifest.values()
+    ):
+        raise ValueError("EVIDENCE_MANIFEST_MISSING")
+    complete_run(run, arguments["final_commit_sha"], completion_data)
+    complete_execution_contract(
+        contract,
+        arguments["final_commit_sha"],
+        "PASS — READY FOR PRODUCT OWNER REVIEW",
+        completion_data,
+    )
+    flow.status = "COMPLETED"
+    flow.current_step = "COMPLETED"
+    flow.failure_detail = {}
+    flow.save(update_fields=["status", "current_step", "failure_detail", "updated_at"])
+    _audit(
+        caller,
+        "scope.complete_execution",
+        project,
+        "COMPLETED",
+        {
+            "orchestration_token": str(flow.token),
+            "final_commit": arguments["final_commit_sha"],
+        },
+    )
+    result = _orchestration_result(flow)
+    result.update(
+        {
+            "completion_message": "Főnök, kész!",
+            "evidence": manifest,
+            "test_instructions": (
+                "Review the changed files and rerun the recorded Release Gates."
+            ),
+        }
+    )
+    return result
+
+
 def invoke_public_tool(
     name: str, arguments: Any, caller: str = "bearer-token"
 ) -> dict[str, Any]:
@@ -780,6 +1209,52 @@ def invoke_public_tool(
                 Path(settings.BASE_DIR),
             )
             result["approved_scope"] = authorized
+        elif name == "scope.review":
+            assert project is not None
+            scope = ExecutableScope.objects.get(
+                identifier=arguments["scope_identifier"], project=project
+            )
+            result = {
+                "status": "PROPOSAL_REVIEW",
+                "proposal_review": review_scope(scope),
+            }
+        elif name == "scope.answer_clarifications":
+            assert project is not None
+            scope = ExecutableScope.objects.get(
+                identifier=arguments["scope_identifier"], project=project
+            )
+            updated = answer_clarifications(scope, arguments["answers"])
+            result = {
+                "status": "SCOPE_REVISED",
+                "proposal_review": review_scope(updated),
+            }
+        elif name == "scope.confirm_and_execute":
+            assert project is not None
+            result = _confirm_and_execute(arguments, project, caller)
+        elif name == "conversation.confirm":
+            assert project is not None
+            result = _confirm_conversation(arguments, project, caller)
+        elif name == "scope.orchestration_status":
+            assert project is not None
+            scope = ExecutableScope.objects.get(
+                identifier=arguments["scope_identifier"], project=project
+            )
+            flow = (
+                ConversationOrchestration.objects.filter(scope=scope)
+                .order_by("-created_at")
+                .first()
+            )
+            result = (
+                _orchestration_result(flow)
+                if flow
+                else {
+                    "status": "NO_CONFIRMATION_RECORDED",
+                    "scope_identifier": scope.identifier,
+                }
+            )
+        elif name == "scope.complete_execution":
+            assert project is not None
+            result = _complete_orchestration(arguments, project, caller)
         elif name == "akb.get_document":
             assert project is not None
             ident, content = _akb(project, arguments["document_id"])
@@ -958,6 +1433,10 @@ def invoke_public_tool(
                 "scope.approve": "scope.approve",
                 "scope.publish": "scope.publish",
                 "scope.get": "scope.get",
+                "scope.review": "scope.review",
+                "scope.answer_clarifications": "scope.answer_clarifications",
+                "scope.confirm_and_execute": "scope.confirm_and_execute",
+                "scope.orchestration_status": "scope.orchestration_status",
                 "scope.contract.generate": "scope.contract.generate",
                 "scope.complete": "scope.complete",
                 "scope.cancel": "scope.cancel",

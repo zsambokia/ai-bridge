@@ -10,7 +10,7 @@
     "execution_authorization": {"enum": ["NONE", "APPROVED_PROVIDER_EXECUTION"]},
     "created_by": {"const": "AI_BRIDGE"},
     "schema_version": {"const": "1"},
-    "execution_level": {"type": "string", "enum": ["HOTFIX", "BUGFIX", "TASK"]},
+    "execution_level": {"type": "string", "enum": ["HOTFIX", "BUGFIX", "TASK", "SPRINT", "EPIC"]},
     "identifier": {"type": "string", "pattern": "^bridge:.+:work-item:.+$"},
     "project_id": {"type": "string", "minLength": 1},
     "title": {"type": "string", "minLength": 1, "maxLength": 160},

@@ -29,6 +29,34 @@ def canonical_hash(record: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def _proposal_hash(record: dict[str, Any]) -> str:
+    """Hash the reviewable proposal, excluding lifecycle-derived fields."""
+    excluded = {
+        "content_hash",
+        "proposal_hash",
+        "status",
+        "execution_authorization",
+        "approval_reference",
+        "updated_at",
+        "clarification_answers",
+    }
+    value = {key: value for key, value in record.items() if key not in excluded}
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def clarification_questions(request: str) -> list[str]:
+    """Return bounded questions only when the requested outcome is materially vague."""
+    normalized = request.strip().lower().rstrip(".")
+    if normalized == "add the new customer feature to the application":
+        return [
+            "What customer outcome must the feature deliver?",
+            "Which application area and acceptance checks define the requested change?",
+        ]
+    return []
+
+
 def classify_request(
     request: str,
     *,
@@ -107,7 +135,13 @@ def propose_scope(
         "created_by": "AI_BRIDGE",
         "created_at": now,
         "updated_at": now,
+        "proposal_version": 1,
+        "clarification_questions": clarification_questions(classified["intent"]),
+        "clarification_state": "CLARIFICATION_REQUIRED"
+        if clarification_questions(classified["intent"])
+        else "READY_FOR_CONFIRMATION",
     }
+    record["proposal_hash"] = _proposal_hash(record)
     record["content_hash"] = canonical_hash(record)
     return ExecutableScope.objects.create(
         identifier=identifier,
@@ -116,6 +150,60 @@ def propose_scope(
         record=record,
         content_hash=record["content_hash"],
     )
+
+
+def review_scope(scope: ExecutableScope) -> dict[str, Any]:
+    """Render the exact, non-authorizing Product Owner review surface."""
+    record = validate_scope_record(scope.record, scope.project)
+    questions = record.get("clarification_questions", [])
+    ready = not questions and scope.status == ExecutableScope.Status.PROPOSED
+    return {
+        "scope_identifier": scope.identifier,
+        "proposal_version": record.get("proposal_version", scope.version),
+        "proposal_hash": record.get("proposal_hash"),
+        "title": record["title"],
+        "status": scope.status,
+        "execution_authorization": record["execution_authorization"],
+        "requested_outcome": record["intent"],
+        "in_scope": [record["intent"]],
+        "out_of_scope": ["Any change not expressed in the approved scope."],
+        "acceptance_checks": record["policy"]["required_release_gates"],
+        "release_gates": record["policy"]["required_release_gates"],
+        "risks": record["risk_modifiers"],
+        "policy_result": record["policy"],
+        "clarification_state": record.get("clarification_state"),
+        "clarification_questions": questions,
+        "confirmation_eligible": ready,
+        "confirmation_prompt": "Jó lesz így?" if ready else "",
+    }
+
+
+def answer_clarifications(
+    scope: ExecutableScope, answers: dict[str, str]
+) -> ExecutableScope:
+    """Create a revised pending proposal; earlier versions can never be confirmed."""
+    if scope.status != ExecutableScope.Status.PROPOSED:
+        raise ValueError("SCOPE_NOT_REVISIONABLE")
+    questions = scope.record.get("clarification_questions", [])
+    if not questions:
+        raise ValueError("CLARIFICATION_NOT_REQUIRED")
+    if set(answers) != {str(index + 1) for index in range(len(questions))}:
+        raise ValueError("CLARIFICATION_ANSWERS_INCOMPLETE")
+    if any(not value.strip() for value in answers.values()):
+        raise ValueError("CLARIFICATION_ANSWERS_INCOMPLETE")
+    record = dict(scope.record)
+    record["clarification_questions"] = []
+    record["clarification_state"] = "READY_FOR_CONFIRMATION"
+    record["clarification_answers"] = answers
+    record["proposal_version"] = int(record.get("proposal_version", scope.version)) + 1
+    record["updated_at"] = timezone.now().isoformat()
+    record["proposal_hash"] = _proposal_hash(record)
+    record["content_hash"] = canonical_hash(record)
+    scope.version += 1
+    scope.record = record
+    scope.content_hash = record["content_hash"]
+    scope.save(update_fields=["version", "record", "content_hash", "updated_at"])
+    return scope
 
 
 def validate_scope_record(
@@ -188,6 +276,10 @@ def bind_approval(scope: ExecutableScope, reference: str) -> ExecutableScope:
         scope = ExecutableScope.objects.select_for_update().get(pk=scope.pk)
         if scope.status in FINAL_STATUSES:
             raise ValueError("CLOSED_SCOPE_IMMUTABLE")
+        if scope.status != ExecutableScope.Status.PROPOSED:
+            raise ValueError("SCOPE_NOT_PENDING_CONFIRMATION")
+        if scope.record.get("clarification_questions"):
+            raise ValueError("CLARIFICATION_REQUIRED")
         try:
             approval = GovernanceApproval.objects.select_for_update().get(
                 reference=reference, project=scope.project, revoked_at__isnull=True

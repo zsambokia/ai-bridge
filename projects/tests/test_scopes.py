@@ -8,11 +8,13 @@ import pytest
 
 from projects.models import GovernanceApproval, Project
 from projects.scopes import (
+    answer_clarifications,
     bind_approval,
     parse_scope_document,
     propose_scope,
     publish_scope,
     render_scope,
+    review_scope,
     validate_scope_record,
 )
 
@@ -71,3 +73,24 @@ def test_closed_scope_is_immutable(project: Project) -> None:
     scope.save(update_fields=["status"])
     with pytest.raises(ValueError, match="CLOSED_SCOPE_IMMUTABLE"):
         bind_approval(scope, "missing")
+
+
+@pytest.mark.django_db
+def test_clarifications_create_a_new_confirmable_proposal_version(
+    project: Project,
+) -> None:
+    scope = propose_scope(
+        project, "Add the new customer feature to the application", kind="WORK_ITEM"
+    )
+    initial = review_scope(scope)
+    assert initial["clarification_state"] == "CLARIFICATION_REQUIRED"
+    assert initial["confirmation_eligible"] is False
+    assert initial["confirmation_prompt"] == ""
+
+    revised = answer_clarifications(
+        scope, {"1": "Retention", "2": "Dashboard and tests"}
+    )
+    review = review_scope(revised)
+    assert review["confirmation_eligible"] is True
+    assert review["proposal_hash"] != initial["proposal_hash"]
+    assert review["confirmation_prompt"] == "Jó lesz így?"

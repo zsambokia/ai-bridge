@@ -14,6 +14,7 @@ from projects.governed_mcp import (
     public_tools,
 )
 from projects.models import (
+    ConversationOrchestration,
     ExecutionContract,
     GovernanceApproval,
     McpAuditEvent,
@@ -182,6 +183,56 @@ def test_scope_proposal_schema_matches_policy_vocabulary() -> None:
                 "request": "Create a new Django application named storybook.",
                 "risk_modifiers": ["UNKNOWN"],
                 "idempotency_key": "invalid-risk-value-123",
+            },
+        )
+
+
+@pytest.mark.django_db
+def test_conversational_confirmation_binds_the_current_exact_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="conversation-project",
+        display_name="Conversation Project",
+        repository_full_name="example/conversation-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(
+        project, "Create a new Django application named storybook.", kind="WORK_ITEM"
+    )
+    review = invoke_public_tool(
+        "scope.review",
+        {"project_id": project.project_id, "scope_identifier": scope.identifier},
+    )["proposal_review"]
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", lambda *_: None)
+
+    result = invoke_public_tool(
+        "conversation.confirm",
+        {
+            "project_id": project.project_id,
+            "scope_identifier": scope.identifier,
+            "confirmation_text": "Igen.",
+            "product_owner_identity": "Product Owner",
+            "confirmation_reference": "PO-conversation-1",
+            "idempotency_key": "conversation-confirm-123",
+        },
+    )
+
+    flow = ConversationOrchestration.objects.get(scope=scope)
+    assert result["orchestration_token"] == str(flow.token)
+    assert flow.proposal_hash == review["proposal_hash"]
+    assert flow.proposal_version == review["proposal_version"]
+    with pytest.raises(ValueError, match="PRODUCT_OWNER_CONFIRMATION_REQUIRED"):
+        invoke_public_tool(
+            "conversation.confirm",
+            {
+                "project_id": project.project_id,
+                "scope_identifier": scope.identifier,
+                "confirmation_text": "Maybe later",
+                "product_owner_identity": "Product Owner",
+                "confirmation_reference": "PO-conversation-2",
+                "idempotency_key": "conversation-reject-123",
             },
         )
 

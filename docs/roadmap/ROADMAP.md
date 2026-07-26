@@ -291,7 +291,9 @@ These may remain part of the long-term product vision, but they must not distrac
 
 1. complete the Sprint 007 staging migration recovery and authenticated live MCP tool-call proof;
 2. refresh and rescan the Bridge app in ChatGPT Business;
-3. implement the Bridge Conversation Orchestrator as the next approved orchestration Sprint;
+3. use Sprint 011's conversational Product Owner confirmation flow as the normal
+   entry point for new Work Items and Sprints; its one-time Sprint bootstrap is
+   retired after the canonical Sprint record is closed;
 4. review the completed Sprint 009 autonomous execution and repair-loop evidence;
 5. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop;
 6. keep `.bridge/project.yaml` as the static Project definition;

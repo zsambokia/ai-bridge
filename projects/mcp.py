@@ -28,11 +28,13 @@ from .models import (
     ProjectResolutionContinuation,
 )
 from .scopes import (
+    answer_clarifications,
     bind_approval,
     classify_request,
     close_scope,
     propose_scope,
     publish_scope,
+    review_scope,
     validate_scope_record,
 )
 
@@ -418,7 +420,14 @@ def _propose(payload: dict[str, Any], root: Path, kind: str) -> dict[str, Any]:
             execution_level=str(payload.get("execution_level", "TASK")),
             risk_modifiers=list(payload.get("risk_modifiers", [])),
         )
-        return {"status": "SCOPE_PROPOSED", "scope": scope.record}
+        review = review_scope(scope)
+        return {
+            "status": review["clarification_state"]
+            if review["clarification_state"] == "CLARIFICATION_REQUIRED"
+            else "SCOPE_PROPOSED",
+            "scope": scope.record,
+            "proposal_review": review,
+        }
     except Project.DoesNotExist:
         return {"status": "PROJECT_NOT_FOUND"}
     except ValueError as exc:
@@ -494,9 +503,40 @@ def scope_get(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
             "status": "SCOPE_RETRIEVED",
             "scope": scope.record,
             "published_path": scope.published_path,
+            "proposal_review": review_scope(scope),
         }
     except ExecutableScope.DoesNotExist:
         return {"status": "SCOPE_NOT_FOUND"}
+
+
+@mcp_operation("scope.review")
+def scope_review(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        return {
+            "status": "PROPOSAL_REVIEW",
+            "proposal_review": review_scope(_scope(payload)),
+        }
+    except ExecutableScope.DoesNotExist:
+        return {"status": "SCOPE_NOT_FOUND"}
+
+
+@mcp_operation("scope.answer_clarifications")
+def scope_answer_clarifications(
+    payload: dict[str, Any], repository_root: Path
+) -> dict[str, Any]:
+    del repository_root
+    try:
+        scope = answer_clarifications(_scope(payload), dict(payload.get("answers", {})))
+        return {
+            "status": "SCOPE_REVISED",
+            "scope": scope.record,
+            "proposal_review": review_scope(scope),
+        }
+    except ExecutableScope.DoesNotExist:
+        return {"status": "SCOPE_NOT_FOUND"}
+    except ValueError as exc:
+        return {"status": str(exc)}
 
 
 @mcp_operation("scope.contract.generate")

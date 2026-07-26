@@ -15,6 +15,11 @@ provides one Project Registry model, onboarding readiness (`PENDING`, `READY`,
 `bootstrap_project` command, and Project Context validation (`VALID`,
 `INVALID`, `STALE`).
 
+The registered `storybook` Django app provides the standard, intentionally
+empty application foundation (`admin`, `apps`, `models`, `tests`, `views`, and
+the migrations package) for future Storybook behaviour. It currently has no
+models, routes, or public interface.
+
 The Project Definition is static configuration. Lifecycle, onboarding, Context,
 and capability state are runtime data and are not written back to YAML.
 
@@ -137,3 +142,10 @@ approval, publication, preparation, contract generation, validation, and
 issuance; preparation cannot authorize a direct repository mutation. The
 verification record is under
 `docs/evidence/execution-prepare-schema-bugfix/`.
+
+## Sprint 011 conversational Product Owner confirmation
+
+Sprint 011 introduces a durable conversational Product Owner confirmation path.
+The one-time external bootstrap authority applies only to Sprint 011 itself. The
+Storybook Work Item followed its own exact proposal-hash confirmation and the
+ordinary approval, publication, contract, provider, evidence, and completion flow.

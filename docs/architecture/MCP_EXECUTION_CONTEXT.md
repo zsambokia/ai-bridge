@@ -33,11 +33,12 @@ endpoint is CSRF-exempt because Bearer authentication, rather than browser
 cookies, is the security boundary. It returns `Cache-Control: no-store, private`
 and never redirects to a login page.
 
-The public registry currently contains exactly one least-privilege tool:
-`factory.get_status`. It reads real `Project` state and returns a deterministic
-summary. The tool has no input and cannot mutate Bridge state, repository state,
-or execution-contract lifecycle records. Write-capable governance operations
-remain internal until an approved Sprint defines their authorization model.
+The public registry is a versioned least-privilege surface. It includes
+discovery, Project and AKB reads, deterministic scope and contract lifecycle
+operations, and Sprint 011's constrained conversational review operations.
+Each write schema is validated by the same registry used for `tools/list`;
+idempotency and audit records are enforced at the public boundary. A Bearer
+token alone is never execution authority.
 
 At the Cloudflare boundary, Django accepts only configured hosts, trusts
 `X-Forwarded-Proto: https` for secure-request handling, and may use the
@@ -98,6 +99,20 @@ repository/implementation) and enter `REPAIRING`; unavailable providers and
 reserved Product Owner decisions do not masquerade as automatic repairs. A
 future gate runner may extend this controller, but it must preserve the same
 contract, event, retry, evidence and terminal-state ownership.
+
+Sprint 011 adds `ConversationOrchestration`, a durable coordinator rather than
+a replacement lifecycle. A review exposes the exact proposal version and hash.
+One Product Owner confirmation binds those values and advances canonical
+approval, publication, preparation, contract, consumption, and dispatch
+services. Every transition remains separately auditable; retries resume the
+same orchestration, contract, and run. Completion requires a stopped provider,
+all Release Gates, and recorded evidence.
+
+Bridge DB is live lifecycle and canonical structured state; conversation is
+Product Owner intent, review, clarification, confirmation, and result; GitHub
+is the projection, implementation, and audit history; Django admin is the
+temporary diagnostic/recovery surface; and the execution provider performs
+only issued-contract work.
 
 ## Sprint 010 canonical scope authority
 

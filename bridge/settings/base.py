@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "core",
     "projects",
+    "storybook.apps.StorybookConfig",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

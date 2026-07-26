@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from dataclasses import dataclass
@@ -119,12 +120,17 @@ def add_event(
 
 
 def _prompt(contract: ExecutionContract) -> str:
-    execution = contract.payload["execution"]
+    """Give the provider the immutable, issued authority rather than a hint."""
     return (
-        "Execute only the consumed Bridge contract below. Preserve unrelated work, "
-        "run the specified validation, and never expose credentials.\n"
-        f"Contract: {contract.handoff_identifier}\nIntent: {execution['intent']}\n"
-        f"Evidence root: {contract.payload['evidence']['root']}"
+        "Execute only this consumed AI Bridge contract. The JSON payload is the "
+        "complete authority: do not expand its scope or modify unrelated work. "
+        "Read the binding documents named by the contract before mutation, "
+        "implement the approved intent, run every listed Release Gate, and write "
+        "truthful evidence under the contract evidence root; never expose "
+        "credentials. Do not claim completion unless the repository state and "
+        "evidence support it.\n\n"
+        "ISSUED_CONTRACT_JSON:\n"
+        + json.dumps(contract.payload, ensure_ascii=False, indent=2, sort_keys=True)
     )
 
 

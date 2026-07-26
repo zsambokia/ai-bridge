@@ -372,3 +372,53 @@ class ExecutionProgressEvent(models.Model):
             )
         ]
         ordering = ["sequence"]
+
+
+class ConversationOrchestration(models.Model):
+    """Durable state for a conversational Product Owner confirmation flow."""
+
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    scope = models.ForeignKey(
+        ExecutableScope, on_delete=models.PROTECT, related_name="orchestrations"
+    )
+    product_owner_identity = models.CharField(max_length=255)
+    confirmation_reference = models.CharField(max_length=255)
+    proposal_version = models.PositiveIntegerField()
+    proposal_hash = models.CharField(max_length=64)
+    status = models.CharField(max_length=64, default="CONFIRMATION_RECEIVED")
+    current_step = models.CharField(max_length=64, default="APPROVAL")
+    preparation = models.ForeignKey(
+        ExecutionPreparation,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="conversation_orchestrations",
+    )
+    contract = models.ForeignKey(
+        ExecutionContract,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="conversation_orchestrations",
+    )
+    run = models.ForeignKey(
+        ExecutionRun,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="conversation_orchestrations",
+    )
+    failure_detail = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scope", "confirmation_reference"],
+                name="unique_conversation_confirmation",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scope.identifier}:{self.status}"

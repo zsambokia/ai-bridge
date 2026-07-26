@@ -59,6 +59,16 @@ then issues provider-neutral contracts and records hash-bound provider
 consumption. Historical Sprint documents remain readable but cannot authorize
 new work.
 
+## Conversational Product Owner flow
+
+Sprint 011 adds the normal Product Owner path: state the outcome, review the
+versioned proposal (including its exact hash), and confirm once. The
+conversation adapter binds that confirmation to the displayed proposal; Bridge
+then independently records approval, publication, preparation, contract
+generation, validation, issuance, consumption, provider dispatch, and
+completion. It asks again only for a material change, a real blocker, or new
+authority. See the [tool reference](docs/integrations/BRIDGE_MCP_TOOL_REFERENCE.md).
+
 ## Verification
 
 ```powershell

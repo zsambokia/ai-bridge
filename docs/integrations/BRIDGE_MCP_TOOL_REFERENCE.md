@@ -15,6 +15,7 @@ raw Django mutation APIs.
 | Execution boundary | `execution.request_start`, `execution.cancel` | execution boundary | start or cancel an owned run |
 | Execution observability | `execution.get_run_status`, `execution.list_events`, `execution.evidence_summary` | read-only | monitor the returned execution token |
 | Canonical scope | `scope.classify`, `sprint.propose`, `work_item.propose`, `scope.validate`, `scope.approve`, `scope.publish`, `scope.get`, `scope.contract.generate`, `scope.complete`, `scope.cancel`, `scope.supersede` | canonical planning and lifecycle | bind approval and publish before contract generation |
+| Conversational review | `scope.review`, `scope.answer_clarifications`, `conversation.confirm`, `scope.confirm_and_execute`, `scope.orchestration_status`, `scope.complete_execution` | review, execution boundary, and read-only status | review the exact version; one confirmation drives the bounded lifecycle |
 
 `project.resolve` returns `PROJECT_RESOLVED`, `USER_INPUT_REQUIRED`, or
 `PROJECT_NOT_FOUND`; never select an ambiguous project silently.
@@ -64,3 +65,21 @@ the scope terminal; no terminal scope can generate, issue, consume or start a
 new contract. `contract.complete` requires final commit, allowed closure state,
 execution result, non-empty gates and evidence manifest, changed files and a
 failure classification from a matching terminal execution run.
+
+## Conversational confirmation (Sprint 011)
+
+`scope.review` returns the complete pending proposal, immutable version and
+SHA-256 hash, policy, acceptance checks, and Release Gates. Clarification
+answers are recorded through `scope.answer_clarifications`; a material answer
+creates a new version and hash. `conversation.confirm` accepts a documented
+Product Owner affirmative phrase and binds the exact current review. Clients
+that already displayed the values may call `scope.confirm_and_execute` with the
+exact version and hash. Both require Product Owner identity, confirmation
+reference, and idempotency key; stale versions, unresolved clarification, and
+unbound confirmation are rejected.
+
+The orchestrator records separate approval, publication, preparation, contract,
+consumption, and run records. `scope.orchestration_status` is read-only.
+`scope.complete_execution` requires a stopped provider, all-PASS gates,
+non-empty evidence manifest, changed files, and final commit SHA before it
+returns the evidence-backed completion message `Főnök, kész!`.
