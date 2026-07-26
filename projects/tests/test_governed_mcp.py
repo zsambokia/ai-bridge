@@ -6,7 +6,13 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from projects.governed_mcp import TOOL_SURFACE_VERSION, invoke_public_tool, public_tools
+from projects.contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPES
+from projects.governed_mcp import (
+    TOOL_SURFACE_VERSION,
+    TOOLS,
+    invoke_public_tool,
+    public_tools,
+)
 from projects.models import (
     ExecutionContract,
     GovernanceApproval,
@@ -75,8 +81,109 @@ def test_preparation_is_idempotent_and_audited() -> None:
 def test_unknown_properties_and_unknown_tools_are_rejected() -> None:
     with pytest.raises(ValueError, match="UNKNOWN_TOOL"):
         invoke_public_tool("system.shell", {})
-    with pytest.raises(ValueError, match="INVALID_ARGUMENTS"):
+    with pytest.raises(
+        ValueError, match="INVALID_ARGUMENTS: unknown property: untrusted"
+    ):
         invoke_public_tool("factory.get_status", {"untrusted": True})
+
+
+@pytest.mark.django_db
+def test_execution_prepare_schema_and_runtime_validator_share_one_registry() -> None:
+    published = next(
+        tool for tool in public_tools() if tool["name"] == "execution.prepare"
+    )
+    assert published["inputSchema"] == TOOLS["execution.prepare"]["inputSchema"]
+
+    with pytest.raises(ValueError, match="missing required property: scope_identifier"):
+        invoke_public_tool(
+            "execution.prepare",
+            {"project_id": "ai-bridge", "idempotency_key": "prepare-123"},
+        )
+    with pytest.raises(ValueError, match="unknown property: sprint_path"):
+        invoke_public_tool(
+            "execution.prepare",
+            {
+                "project_id": "ai-bridge",
+                "scope_identifier": "scope-123",
+                "idempotency_key": "prepare-123",
+                "sprint_path": "docs/sprints/legacy.md",
+            },
+        )
+    with pytest.raises(ValueError, match="project_id: expected string"):
+        invoke_public_tool(
+            "execution.prepare",
+            {
+                "project_id": 123,
+                "scope_identifier": "scope-123",
+                "idempotency_key": "prepare-123",
+            },
+        )
+
+
+@pytest.mark.django_db
+def test_scope_proposal_schema_matches_policy_vocabulary() -> None:
+    project = Project.objects.create(
+        project_id="policy-project",
+        display_name="Policy Project",
+        repository_full_name="example/policy-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    for execution_level in EXECUTION_LEVELS:
+        result = invoke_public_tool(
+            "work_item.propose",
+            {
+                "project_id": project.project_id,
+                "request": "Create a new Django application named storybook.",
+                "execution_level": execution_level,
+                "risk_modifiers": [],
+                "idempotency_key": f"level-{execution_level.lower()}-123",
+            },
+        )
+        assert result["status"] == "SCOPE_PROPOSED"
+    for task_type in TASK_TYPES:
+        result = invoke_public_tool(
+            "work_item.propose",
+            {
+                "project_id": project.project_id,
+                "request": "Create a new Django application named storybook.",
+                "task_type": task_type,
+                "risk_modifiers": sorted(RISK_MODIFIERS),
+                "idempotency_key": f"task-{task_type.lower()}-123",
+            },
+        )
+        assert result["status"] == "SCOPE_PROPOSED"
+
+    with pytest.raises(ValueError, match="task_type: unsupported value"):
+        invoke_public_tool(
+            "work_item.propose",
+            {
+                "project_id": project.project_id,
+                "request": "Create a new Django application named storybook.",
+                "task_type": "UNKNOWN",
+                "idempotency_key": "invalid-task-123",
+            },
+        )
+    with pytest.raises(ValueError, match="risk_modifiers: expected array"):
+        invoke_public_tool(
+            "work_item.propose",
+            {
+                "project_id": project.project_id,
+                "request": "Create a new Django application named storybook.",
+                "risk_modifiers": "SECURITY_RELEVANT",
+                "idempotency_key": "invalid-risk-123",
+            },
+        )
+    with pytest.raises(ValueError, match="risk_modifiers\\[0\\]: unsupported value"):
+        invoke_public_tool(
+            "work_item.propose",
+            {
+                "project_id": project.project_id,
+                "request": "Create a new Django application named storybook.",
+                "risk_modifiers": ["UNKNOWN"],
+                "idempotency_key": "invalid-risk-value-123",
+            },
+        )
 
 
 @pytest.mark.django_db

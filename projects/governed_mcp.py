@@ -10,6 +10,7 @@ from typing import Any
 
 from django.conf import settings
 
+from .contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPES
 from .execution import add_event, complete_run, provider, start_run
 from .mcp import invoke_operation
 from .models import (
@@ -26,7 +27,7 @@ from .models import (
 )
 from .scopes import approved_scope
 
-TOOL_SURFACE_VERSION = "2026-07-26.2"
+TOOL_SURFACE_VERSION = "2026-07-26.3"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -43,10 +44,18 @@ MUTATING = {
 def _schema(
     properties: dict[str, Any] | None = None, required: list[str] | None = None
 ) -> dict[str, Any]:
+    properties = properties or {}
+    required = required or []
+    unknown_required = set(required).difference(properties)
+    if unknown_required:
+        raise ValueError(
+            "MCP_SCHEMA_INVALID: required properties are not declared: "
+            + ", ".join(sorted(unknown_required))
+        )
     return {
         "type": "object",
-        "properties": properties or {},
-        "required": required or [],
+        "properties": properties,
+        "required": required,
         "additionalProperties": False,
     }
 
@@ -291,9 +300,16 @@ _TOOLS.extend(
                     **_PROJECT,
                     "request": {"type": "string", "minLength": 1, "maxLength": 4000},
                     "title": {"type": "string", "maxLength": 160},
-                    "task_type": {"type": "string", "maxLength": 32},
-                    "execution_level": {"type": "string", "maxLength": 16},
-                    "risk_modifiers": {"type": "array", "maxItems": 16},
+                    "task_type": {"type": "string", "enum": sorted(TASK_TYPES)},
+                    "execution_level": {
+                        "type": "string",
+                        "enum": sorted(EXECUTION_LEVELS),
+                    },
+                    "risk_modifiers": {
+                        "type": "array",
+                        "maxItems": len(RISK_MODIFIERS),
+                        "items": {"type": "string", "enum": sorted(RISK_MODIFIERS)},
+                    },
                     **_IDEMPOTENCY,
                 },
                 ["project_id", "request", "idempotency_key"],
@@ -472,6 +488,72 @@ def public_tools() -> list[dict[str, Any]]:
     ]
 
 
+def _validate_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> None:
+    """Apply the public JSON-schema subset used by the governed tool registry."""
+    properties = schema["properties"]
+    unknown = sorted(set(arguments).difference(properties))
+    missing = sorted(key for key in schema["required"] if key not in arguments)
+    errors = [f"unknown property: {key}" for key in unknown]
+    errors.extend(f"missing required property: {key}" for key in missing)
+    if errors:
+        raise ValueError("INVALID_ARGUMENTS: " + "; ".join(errors))
+
+    expected_types = {
+        "string": str,
+        "array": list,
+        "integer": int,
+        "object": dict,
+        "boolean": bool,
+    }
+    for key, value in arguments.items():
+        definition = properties[key]
+        expected = definition.get("type")
+        expected_type = expected_types.get(expected)
+        invalid_integer = expected == "integer" and isinstance(value, bool)
+        if expected_type is not None and (
+            not isinstance(value, expected_type) or invalid_integer
+        ):
+            raise ValueError(f"INVALID_ARGUMENT_TYPE: {key}: expected {expected}")
+        if "const" in definition and value != definition["const"]:
+            raise ValueError(
+                f"INVALID_ARGUMENT_VALUE: {key}: expected {definition['const']!r}"
+            )
+        if "enum" in definition and value not in definition["enum"]:
+            raise ValueError(f"INVALID_ARGUMENT_VALUE: {key}: unsupported value")
+        if isinstance(value, list):
+            if len(value) > definition.get("maxItems", 2**31):
+                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key}: too many items")
+            item_definition = definition.get("items", {})
+            item_type = item_definition.get("type")
+            item_python_type = expected_types.get(item_type)
+            for index, item in enumerate(value):
+                if item_python_type is not None and not isinstance(
+                    item, item_python_type
+                ):
+                    raise ValueError(
+                        f"INVALID_ARGUMENT_TYPE: {key}[{index}]: expected {item_type}"
+                    )
+                if "enum" in item_definition and item not in item_definition["enum"]:
+                    raise ValueError(
+                        f"INVALID_ARGUMENT_VALUE: {key}[{index}]: unsupported value"
+                    )
+        if isinstance(value, str):
+            if len(value) < definition.get("minLength", 0):
+                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key}: too short")
+            if len(value) > definition.get("maxLength", 2**31):
+                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key}: too long")
+            if (
+                "pattern" in definition
+                and re.fullmatch(definition["pattern"], value) is None
+            ):
+                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key}: invalid format")
+        if isinstance(value, int) and not isinstance(value, bool):
+            if value < definition.get("minimum", -(2**31)):
+                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key}: too small")
+            if value > definition.get("maximum", 2**31):
+                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key}: too large")
+
+
 def _project(arguments: dict[str, Any]) -> Project:
     try:
         return Project.objects.get(
@@ -601,50 +683,7 @@ def invoke_public_tool(
         raise ValueError("ARGUMENTS_OBJECT_REQUIRED")
     tool = TOOLS[name]
     schema = tool["inputSchema"]
-    unknown = set(arguments).difference(schema["properties"])
-    missing = [key for key in schema["required"] if key not in arguments]
-    if unknown or missing:
-        raise ValueError(
-            "INVALID_ARGUMENTS: remove unknown properties and provide "
-            "required properties"
-        )
-    for key, value in arguments.items():
-        definition = schema["properties"][key]
-        expected = definition.get("type")
-        if expected == "string" and not isinstance(value, str):
-            raise ValueError(f"INVALID_ARGUMENT_TYPE: {key} must be a string")
-        if expected == "array" and not isinstance(value, list):
-            raise ValueError(f"INVALID_ARGUMENT_TYPE: {key} must be an array")
-        if expected == "integer" and (
-            not isinstance(value, int) or isinstance(value, bool)
-        ):
-            raise ValueError(f"INVALID_ARGUMENT_TYPE: {key} must be an integer")
-        if "enum" in definition and value not in definition["enum"]:
-            raise ValueError(f"INVALID_ARGUMENT_VALUE: {key} is not an allowed value")
-        if isinstance(value, list):
-            if len(value) > definition.get("maxItems", 2**31):
-                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key} has too many items")
-            item_definition = definition.get("items", {})
-            item_enum = item_definition.get("enum")
-            if item_enum is not None and any(item not in item_enum for item in value):
-                raise ValueError(
-                    f"INVALID_ARGUMENT_VALUE: {key} contains an invalid item"
-                )
-        if isinstance(value, str):
-            if len(value) < definition.get("minLength", 0):
-                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key} is too short")
-            if len(value) > definition.get("maxLength", 2**31):
-                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key} is too long")
-            if (
-                "pattern" in definition
-                and re.fullmatch(definition["pattern"], value) is None
-            ):
-                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key} has invalid format")
-        if isinstance(value, int) and not isinstance(value, bool):
-            if value < definition.get("minimum", -(2**31)):
-                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key} is too small")
-            if value > definition.get("maximum", 2**31):
-                raise ValueError(f"INVALID_ARGUMENT_VALUE: {key} is too large")
+    _validate_arguments(schema, arguments)
     replay = _idempotent(caller, name, arguments)
     if replay is not None:
         return {**replay, "idempotent_replay": True}

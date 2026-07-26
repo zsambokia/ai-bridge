@@ -124,3 +124,16 @@ gate/evidence data, and the allowed closure state.
 
 The governed MCP registry exposes the end-to-end scope and contract lifecycle;
 the final repository evidence is under `docs/evidence/sprint-010/`.
+
+## `execution.prepare` schema integrity
+
+The governed registry now uses its published `tools/list` input schema as the
+single runtime argument-validation source. `execution.prepare` therefore
+accepts only `project_id`, `scope_identifier`, and `idempotency_key`, while
+proposal tools constrain execution-level, task-type, and risk-modifier
+vocabulary to the canonical contract-policy constants. Natural-language work
+such as creating `storybook` must pass through proposal, validation, durable
+approval, publication, preparation, contract generation, validation, and
+issuance; preparation cannot authorize a direct repository mutation. The
+verification record is under
+`docs/evidence/execution-prepare-schema-bugfix/`.

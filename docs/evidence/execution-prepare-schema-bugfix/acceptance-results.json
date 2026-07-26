@@ -1,0 +1,8 @@
+{
+  "assessment": "execution.prepare MCP schema and runtime validation repair",
+  "acceptance_request": "Create a new Django application named \"storybook\".",
+  "acceptance_flow": ["tools/list", "work_item.propose", "scope.validate", "scope.approve", "scope.publish", "execution.prepare", "execution.get_status", "execution.render_handoff", "contract.generate", "contract.validate", "contract.issue"],
+  "stopped_before": ["contract.consume", "execution.request_start", "repository mutation"],
+  "assertions": {"published_runtime_schema_shared": true, "missing_unknown_type_enum_errors_specific": true, "all_execution_levels_task_types_risk_modifiers_covered": true, "legacy_field_rejected": true, "storybook_application_created": false, "issued_contract_generated_by": "AI_BRIDGE"},
+  "automated_test": "projects/tests/test_remote_mcp.py::test_storybook_request_flows_from_http_mcp_to_issued_contract"
+}

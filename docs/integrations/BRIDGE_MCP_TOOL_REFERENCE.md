@@ -40,6 +40,17 @@ context”, “Search accepted knowledge for release gates”, and “Prepare Sp
 to invent identifiers, hashes or approvals: it must use values returned by prior
 tools.
 
+## `execution.prepare` input contract
+
+The published `tools/list` schema and the runtime validator both consume the
+same governed registry declaration. `execution.prepare` requires exactly
+`project_id`, `scope_identifier`, and `idempotency_key`; it does not accept a
+natural-language `request`, a legacy `sprint_path`, or a Markdown document as
+authority. Send natural language to `work_item.propose` or `sprint.propose`,
+then validate, bind durable approval, publish, and pass the returned canonical
+scope identifier to preparation. Invalid calls identify the specific missing
+or unknown property, type, or enum violation.
+
 ## Canonical scope authority (Sprint 010)
 
 Internal Bridge operations are `scope.classify`, `sprint.propose`,
