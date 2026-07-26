@@ -1,0 +1,37 @@
+{
+  "sprint_scope": "bridge:ai-bridge:sprint:f203d416-1760-4eff-b120-e8028c061dee",
+  "storybook_scope": "bridge:ai-bridge:work-item:059a1ad5-24df-4e4d-978a-6b9d87b20781",
+  "storybook_confirmation": {
+    "reference": "PO-STORYBOOK-S011-20260726",
+    "proposal_version": 1,
+    "proposal_hash": "7f758752849d5ecbc8f1bedabf5473238f7aa8c5e9209ab44f53d3adeb55074a"
+  },
+  "storybook_lifecycle": {
+    "orchestration": "df8a1150-2dac-44d2-b746-02fb00ff5882",
+    "contract": "bridge:ai-bridge:contract:6ba8151f-b3ac-4635-a5d2-4bd86c899429",
+    "execution_run": "f92b4953-eba5-49e3-bacf-4b81abf78e57",
+    "provider": "codex-cli",
+    "result": "PASS — READY FOR PRODUCT OWNER REVIEW",
+    "completion_message": "Főnök, kész!"
+  },
+  "bootstrap": {
+    "reference": "PO-BOOTSTRAP-SPRINT-011-2026-07-26",
+    "used_for": "Sprint 011 external bootstrap only",
+    "used_for_storybook": false,
+    "retired": true
+  },
+  "final_gate_run": {
+    "makemigrations_check": "PASS",
+    "migrate_check": "PASS",
+    "validate_scopes": "PASS",
+    "pytest": "PASS — 46 passed",
+    "ruff_check": "PASS",
+    "ruff_format_check": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "completion_bindings": {
+    "storybook": "53b777488bfa09918609d63e4331018eb52b903c",
+    "sprint": "1572e7b420b8eff83cf7edd0b0364c05dcf7c373"
+  }
+}

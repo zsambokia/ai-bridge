@@ -34,6 +34,7 @@ from .scopes import (
     close_scope,
     propose_scope,
     publish_scope,
+    render_scope,
     review_scope,
     validate_scope_record,
 )
@@ -558,9 +559,15 @@ def scope_contract_generate(
         return {"status": str(exc)}
 
 
-def _close_scope(payload: dict[str, Any], status: str) -> dict[str, Any]:
+def _close_scope(
+    payload: dict[str, Any], status: str, repository_root: Path
+) -> dict[str, Any]:
     try:
         scope = close_scope(_scope(payload), status)
+        if scope.published_path:
+            (repository_root / scope.published_path).write_text(
+                render_scope(scope), encoding="utf-8"
+            )
         return {"status": f"SCOPE_{status}", "scope": scope.record}
     except ExecutableScope.DoesNotExist:
         return {"status": "SCOPE_NOT_FOUND"}
@@ -570,17 +577,14 @@ def _close_scope(payload: dict[str, Any], status: str) -> dict[str, Any]:
 
 @mcp_operation("scope.complete")
 def scope_complete(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
-    del repository_root
-    return _close_scope(payload, "COMPLETED")
+    return _close_scope(payload, "COMPLETED", repository_root)
 
 
 @mcp_operation("scope.cancel")
 def scope_cancel(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
-    del repository_root
-    return _close_scope(payload, "CANCELLED")
+    return _close_scope(payload, "CANCELLED", repository_root)
 
 
 @mcp_operation("scope.supersede")
 def scope_supersede(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
-    del repository_root
-    return _close_scope(payload, "SUPERSEDED")
+    return _close_scope(payload, "SUPERSEDED", repository_root)

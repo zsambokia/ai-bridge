@@ -15,6 +15,7 @@ from projects.contracts import (
     issue_execution_contract,
     validate_execution_contract,
 )
+from projects.mcp import scope_complete
 from projects.models import (
     ContractConsumption,
     ExecutableScope,
@@ -142,6 +143,20 @@ def test_closed_scope_cannot_create_a_contract(
     close_scope(scope, "COMPLETED")
     with pytest.raises(ValueError, match="CLOSED_SCOPE_IMMUTABLE"):
         generate_scope_execution_contract(scope, root)
+
+
+@pytest.mark.django_db
+def test_scope_completion_synchronizes_its_published_projection(
+    canonical_scope: tuple[Path, Project, ExecutableScope],
+) -> None:
+    root, _project, scope = canonical_scope
+
+    result = scope_complete({"scope_identifier": scope.identifier}, root)
+
+    assert result["status"] == "SCOPE_COMPLETED"
+    rendered = (root / scope.published_path).read_text(encoding="utf-8")
+    assert "status: COMPLETED" in rendered
+    assert "execution_authorization: NONE" in rendered
 
 
 @pytest.mark.django_db

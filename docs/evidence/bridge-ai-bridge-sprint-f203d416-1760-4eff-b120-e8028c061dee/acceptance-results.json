@@ -16,5 +16,7 @@
     "mypy": "PASS",
     "git_diff_check": "PASS"
   },
-  "terminal_state": "PENDING_CANONICAL_COMPLETION"
+  "terminal_state": "PASS — READY FOR PRODUCT OWNER REVIEW",
+  "final_commit_sha": "1572e7b420b8eff83cf7edd0b0364c05dcf7c373",
+  "bootstrap_retired": true
 }

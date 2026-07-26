@@ -3,7 +3,8 @@
 ## Current result
 
 **PASS — READY FOR PRODUCT OWNER REVIEW** is recorded through the normal
-conversational completion operation after the implementation commit is created.
+conversational completion operation, bound to implementation commit
+`53b777488bfa09918609d63e4331018eb52b903c`.
 
 The governing identifiers are:
 
