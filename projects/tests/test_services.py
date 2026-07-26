@@ -93,6 +93,21 @@ def test_valid_definition_loads_and_bootstrap_creates_ready_valid_context(
 
 
 @pytest.mark.django_db
+def test_bootstrap_accepts_markdown_approved_sprint_status(
+    project_root: tuple[Path, Path],
+) -> None:
+    root, definition_path = project_root
+    (root / "docs/sprints/SPRINT_003.md").write_text(
+        "# Sprint\n\n**Status:** APPROVED FOR CODEX EXECUTION\n",
+        encoding="utf-8",
+    )
+
+    result = bootstrap_project(definition_path, "docs/sprints/SPRINT_003.md", root)
+
+    assert result.success is True
+
+
+@pytest.mark.django_db
 def test_repeated_bootstrap_is_idempotent(project_root: tuple[Path, Path]) -> None:
     root, definition_path = project_root
     first = bootstrap_project(definition_path, "docs/sprints/SPRINT_003.md", root)

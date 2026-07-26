@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -292,10 +293,9 @@ def bootstrap_project(
             "execution branch is missing or is not a configured branch"
         )
     sprint_document = repository_root / sprint_path
-    if (
-        not sprint_document.is_file()
-        or "Status: APPROVED FOR CODEX EXECUTION"
-        not in sprint_document.read_text(encoding="utf-8")
+    if not sprint_document.is_file() or not re.search(
+        r"(?:\*\*)?Status:(?:\*\*)?\s*APPROVED FOR CODEX EXECUTION",
+        sprint_document.read_text(encoding="utf-8"),
     ):
         readiness_errors.append("approved Sprint specification is unavailable")
     existing_by_repository = Project.objects.filter(

@@ -25,11 +25,16 @@ def _ready_project(project_id: str, repository: str) -> Project:
 
 @pytest.mark.django_db
 def test_mcp_operations_are_registered_and_http_reachable() -> None:
-    assert registered_operations() == (
+    assert {
         "continue_project_resolution",
         "generate_execution_context",
+        "generate_execution_contract",
+        "validate_execution_contract",
+        "issue_execution_contract",
+        "get_execution_contract",
+        "render_execution_handoff",
         "resolve_project",
-    )
+    } == set(registered_operations())
     response = Client().post(
         "/mcp/",
         data='{"operation": "list_operations", "payload": {}}',

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from django.db import models
 
@@ -81,3 +82,64 @@ class ProjectResolutionContinuation(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class ExecutionContract(models.Model):
+    """Durable lifecycle record for one canonical execution handoff."""
+
+    class Lifecycle(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        VALIDATED = "VALIDATED", "Validated"
+        ISSUED = "ISSUED", "Issued"
+        CONSUMED = "CONSUMED", "Consumed"
+        COMPLETED = "COMPLETED", "Completed"
+        SUPERSEDED = "SUPERSEDED", "Superseded"
+        REVOKED = "REVOKED", "Revoked"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="execution_contracts"
+    )
+    handoff_identifier = models.CharField(max_length=255, unique=True)
+    approved_sprint_path = models.CharField(max_length=255)
+    lifecycle = models.CharField(
+        max_length=16, choices=Lifecycle.choices, default=Lifecycle.DRAFT
+    )
+    payload = models.JSONField(default=dict)
+    contract_hash = models.CharField(max_length=64)
+    validation_errors = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    issued_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Issued machine payloads are append-only; lifecycle may advance."""
+        if self.pk:
+            original = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values(
+                    "lifecycle",
+                    "payload",
+                    "contract_hash",
+                    "handoff_identifier",
+                    "project_id",
+                    "approved_sprint_path",
+                )
+                .first()
+            )
+            if (
+                original
+                and original["lifecycle"] == self.Lifecycle.ISSUED
+                and (
+                    original["payload"] != self.payload
+                    or original["contract_hash"] != self.contract_hash
+                    or original["handoff_identifier"] != self.handoff_identifier
+                    or original["project_id"] != self.project_id
+                    or original["approved_sprint_path"] != self.approved_sprint_path
+                )
+            ):
+                raise ValueError("ISSUED_CONTRACT_IMMUTABLE")
+        super().save(*args, **kwargs)

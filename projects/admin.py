@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from projects.models import Project, ProjectContext
+from projects.models import ExecutionContract, Project, ProjectContext
 
 
 @admin.register(Project)
@@ -82,5 +82,45 @@ class ProjectContextAdmin(admin.ModelAdmin):
 
     def has_delete_permission(
         self, request: object, obj: ProjectContext | None = None
+    ) -> bool:
+        return False
+
+
+@admin.register(ExecutionContract)
+class ExecutionContractAdmin(admin.ModelAdmin):
+    """Provide read-only diagnostic access to immutable contract records."""
+
+    list_display = (
+        "handoff_identifier",
+        "project",
+        "lifecycle",
+        "contract_hash",
+        "issued_at",
+    )
+    list_filter = ("lifecycle",)
+    search_fields = ("handoff_identifier", "project__project_id", "contract_hash")
+    readonly_fields = (
+        "project",
+        "handoff_identifier",
+        "approved_sprint_path",
+        "lifecycle",
+        "payload",
+        "contract_hash",
+        "validation_errors",
+        "created_at",
+        "validated_at",
+        "issued_at",
+    )
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: ExecutionContract | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: ExecutionContract | None = None
     ) -> bool:
         return False

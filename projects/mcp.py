@@ -8,8 +8,14 @@ from typing import Any
 
 from django.utils import timezone
 
+from .contracts import (
+    generate_execution_contract,
+    issue_execution_contract,
+    render_execution_handoff,
+    validate_execution_contract,
+)
 from .execution_context import build_execution_context
-from .models import Project, ProjectResolutionContinuation
+from .models import ExecutionContract, Project, ProjectResolutionContinuation
 
 McpHandler = Callable[[dict[str, Any], Path], dict[str, Any]]
 _OPERATIONS: dict[str, McpHandler] = {}
@@ -163,4 +169,121 @@ def generate_execution_context(
         # handoff format. The explicit alias is the representation consumed
         # by Codex today; other renderings can be derived later.
         "codex_execution_package": package,
+    }
+
+
+def _contract_view(contract: ExecutionContract) -> dict[str, Any]:
+    return {
+        "handoff_identifier": contract.handoff_identifier,
+        "lifecycle": contract.lifecycle,
+        "contract_hash": contract.contract_hash,
+        "payload": contract.payload,
+    }
+
+
+@mcp_operation("generate_execution_contract")
+def generate_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    """Generate a contract draft only from explicit Project and Sprint inputs."""
+    project_id = str(payload.get("project_id", "")).strip()
+    sprint_path = str(payload.get("approved_sprint_path", "")).strip()
+    task_type = str(payload.get("task_type", "")).strip()
+    intent = str(payload.get("intent", "")).strip()
+    if not all((project_id, sprint_path, task_type, intent)):
+        return {
+            "status": "USER_INPUT_REQUIRED",
+            "prompt": (
+                "Provide project_id, approved_sprint_path, task_type, and intent."
+            ),
+        }
+    try:
+        project = Project.objects.get(project_id=project_id)
+        contract = generate_execution_contract(
+            project, sprint_path, task_type, intent, repository_root
+        )
+    except Project.DoesNotExist:
+        return {"status": "PROJECT_NOT_FOUND", "error": "Project is not registered."}
+    except ValueError as exc:
+        return {"status": str(exc), "error": "Execution Contract cannot be generated."}
+    return {
+        "status": "EXECUTION_CONTRACT_GENERATED",
+        "execution_contract": _contract_view(contract),
+    }
+
+
+@mcp_operation("validate_execution_contract")
+def validate_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    """Validate a generated draft before its immutable issuance."""
+    identifier = str(payload.get("handoff_identifier", "")).strip()
+    try:
+        contract = ExecutionContract.objects.get(handoff_identifier=identifier)
+        contract = validate_execution_contract(contract, repository_root)
+    except ExecutionContract.DoesNotExist:
+        return {
+            "status": "CONTRACT_NOT_FOUND",
+            "error": "Handoff identifier is unknown.",
+        }
+    except ValueError as exc:
+        return {"status": str(exc), "error": "Execution Contract cannot be validated."}
+    return {
+        "status": "EXECUTION_CONTRACT_VALIDATED",
+        "execution_contract": _contract_view(contract),
+    }
+
+
+@mcp_operation("issue_execution_contract")
+def issue_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    """Issue a validated contract; no request input can alter its payload."""
+    del repository_root
+    identifier = str(payload.get("handoff_identifier", "")).strip()
+    try:
+        contract = issue_execution_contract(
+            ExecutionContract.objects.get(handoff_identifier=identifier)
+        )
+    except ExecutionContract.DoesNotExist:
+        return {
+            "status": "CONTRACT_NOT_FOUND",
+            "error": "Handoff identifier is unknown.",
+        }
+    except ValueError as exc:
+        return {"status": str(exc), "error": "Execution Contract cannot be issued."}
+    return {
+        "status": "EXECUTION_CONTRACT_ISSUED",
+        "execution_contract": _contract_view(contract),
+    }
+
+
+@mcp_operation("get_execution_contract")
+def get_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    """Retrieve the durable machine-readable contract by its identifier."""
+    del repository_root
+    identifier = str(payload.get("handoff_identifier", "")).strip()
+    try:
+        contract = ExecutionContract.objects.get(handoff_identifier=identifier)
+    except ExecutionContract.DoesNotExist:
+        return {
+            "status": "CONTRACT_NOT_FOUND",
+            "error": "Handoff identifier is unknown.",
+        }
+    return {
+        "status": "EXECUTION_CONTRACT_RETRIEVED",
+        "execution_contract": _contract_view(contract),
+    }
+
+
+@mcp_operation("render_execution_handoff")
+def render_contract(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    """Render the stored payload without a second handoff representation."""
+    del repository_root
+    identifier = str(payload.get("handoff_identifier", "")).strip()
+    try:
+        contract = ExecutionContract.objects.get(handoff_identifier=identifier)
+    except ExecutionContract.DoesNotExist:
+        return {
+            "status": "CONTRACT_NOT_FOUND",
+            "error": "Handoff identifier is unknown.",
+        }
+    return {
+        "status": "EXECUTION_HANDOFF_RENDERED",
+        "handoff_identifier": contract.handoff_identifier,
+        "rendered_handoff": render_execution_handoff(contract),
     }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -61,8 +62,9 @@ def build_execution_context(
     sprint_document = repository_root / approved_sprint_path
     if not sprint_document.is_file():
         raise ValueError("SPRINT_NOT_FOUND")
-    if "Status: APPROVED FOR CODEX EXECUTION" not in sprint_document.read_text(
-        encoding="utf-8"
+    sprint_text = sprint_document.read_text(encoding="utf-8")
+    if not re.search(
+        r"(?:\*\*)?Status:(?:\*\*)?\s*APPROVED FOR CODEX EXECUTION", sprint_text
     ):
         raise ValueError("SPRINT_NOT_APPROVED")
 
