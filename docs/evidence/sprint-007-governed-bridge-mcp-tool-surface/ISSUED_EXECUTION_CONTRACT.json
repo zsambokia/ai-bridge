@@ -1,0 +1,61 @@
+{
+  "contract_hash": "f962c3d49a762f02ab2e53b95b4a6420ebedc10c5228c332326ead95497428ab",
+  "contract_id": 7,
+  "handoff_identifier": "bridge:ai-bridge:sprint_007_governed_bridge_mcp_tool_surface:d9ea9d6b-bc78-409d-986a-1207c0c58322",
+  "issued_at": "2026-07-26T09:59:10.931362+00:00",
+  "lifecycle": "ISSUED",
+  "payload": {
+    "allowed_terminal_states": [
+      "PASS \u2014 READY FOR PRODUCT OWNER REVIEW",
+      "BLOCKED \u2014 BUSINESS DECISION REQUIRED",
+      "BLOCKED \u2014 REQUIRED EXTERNAL INPUT UNAVAILABLE"
+    ],
+    "binding_documents": {
+      "agents_path": {"path": "AGENTS.md", "sha256": "178ed7108e7228a8d080c89fb2ef46f79e54ba8e95cb16867b8c5fff4b4d8361"},
+      "akb_current_state_path": {"path": "docs/akb/CURRENT_STATE.md", "sha256": "7920fd4ad3d65caa3a6dc78855905f861b6ec2c19bc80163c43415d9aecf095c"},
+      "approved_sprint_path": {"path": "docs/sprints/SPRINT_007_GOVERNED_BRIDGE_MCP_TOOL_SURFACE.md", "sha256": "6a59afeb0fe2c3a1a9112b22e98fdfa59128056288813a89553152b3abe30e70"},
+      "constitution_path": {"path": "docs/constitution/BRIDGE_CONSTITUTION.md", "sha256": "304343d2b7edbf8363ceb2e3aca65a79b3c135d4791498f34f2108e95736cd65"},
+      "handoff_contract_path": {"path": "docs/contracts/HANDOFF_EXECUTION_CONTRACT.md", "sha256": "ce4a5d997ccd2be90eb93c91155d7d52fea1b1d4290ec33b4d9a1ca061b657b9"},
+      "roadmap_path": {"path": "docs/roadmap/ROADMAP.md", "sha256": "5977efe94a69bb96542e159fb85e610e3f88ce832c4daa571653a3bd593b271b"},
+      "workflow_path": {"path": "docs/workflows/EVIDENCE_DRIVEN_SPRINT.md", "sha256": "4bbd5682c8e6fabc491123903c110a9fbf9a59549fb2416686754a1cb868d0cc"}
+    },
+    "evidence": {
+      "closure_report": "docs/evidence/sprint-007-governed-bridge-mcp-tool-surface/CLOSURE_REPORT.md",
+      "machine_results": "docs/evidence/sprint-007-governed-bridge-mcp-tool-surface/acceptance-results.json",
+      "root": "docs/evidence/sprint-007-governed-bridge-mcp-tool-surface"
+    },
+    "execution": {
+      "approved_sprint_path": "docs/sprints/SPRINT_007_GOVERNED_BRIDGE_MCP_TOOL_SURFACE.md",
+      "baseline_commit": "26b0de7321f9d9904470a373a2c2002a7069e79c",
+      "baseline_rule": "DESCENDANT_OF",
+      "child_contract_identifiers": [],
+      "execution_level": "SPRINT",
+      "intent": "Implement the approved Sprint 007 governed bridge MCP tool surface using canonical project, contract, AKB, execution, authorization, audit, and idempotency services.",
+      "risk_modifiers": ["AUTHENTICATION_OR_AUTHORIZATION", "CROSS_REPOSITORY", "EXTERNAL_INTEGRATION", "IRREVERSIBLE_OPERATION", "PUBLIC_API_OR_PROTOCOL"],
+      "target_branch": "main",
+      "task_type": "FEATURE"
+    },
+    "handoff_identifier": "bridge:ai-bridge:sprint_007_governed_bridge_mcp_tool_surface:d9ea9d6b-bc78-409d-986a-1207c0c58322",
+    "policy": {
+      "child_contract_required": false,
+      "omission_justifications": [],
+      "profile_version": "1.0",
+      "required_assessment_depth": "extended",
+      "required_documentation_updates": ["architecture", "akb", "roadmap"],
+      "required_evidence_artifacts": ["acceptance-results", "assessment", "authorization-validation", "closure-report", "compatibility-validation", "cross-repository-coordination", "explicit-risk-review", "integration-validation", "machine-results", "rollback-assessment"],
+      "required_release_gates": ["backend-tests", "lint", "sprint-specific", "type-check"],
+      "resolved_profile": "sprint-feature",
+      "review_requirements": ["authorization-validation", "compatibility-validation", "cross-repository-coordination", "explicit-risk-review", "integration-validation", "rollback-assessment"]
+    },
+    "project": {"definition_source": ".bridge/project.yaml", "id": "ai-bridge", "repository": "zsambokia/ai-bridge"},
+    "release_gates": {
+      "repository_wide": [
+        {"command": "pytest", "id": "backend-tests", "required": true},
+        {"command": "ruff check .", "id": "lint", "required": true},
+        {"command": "mypy .", "id": "type-check", "required": true}
+      ],
+      "sprint_specific": []
+    },
+    "schema_version": "1.1"
+  }
+}
