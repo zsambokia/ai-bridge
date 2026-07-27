@@ -1002,7 +1002,11 @@ def _recover_incomplete_contract_binding(
     )
     add_event(run, "CONTRACT_SUPERSEDED", reason="missing approved scope content")
     replacement = generate_scope_execution_contract(flow.scope, root)
-    supersede_execution_contract(contract, replacement)
+    supersede_execution_contract(
+        contract,
+        replacement,
+        allow_running_binding_repair=True,
+    )
     flow.contract = replacement
     flow.run = None
     flow.failure_detail = {}

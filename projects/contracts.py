@@ -381,13 +381,18 @@ def complete_execution_contract(
 
 
 def supersede_execution_contract(
-    contract: ExecutionContract, replacement: ExecutionContract
+    contract: ExecutionContract,
+    replacement: ExecutionContract,
+    *,
+    allow_running_binding_repair: bool = False,
 ) -> ExecutionContract:
-    if contract.lifecycle not in {
+    allowed_lifecycles = {
         ExecutionContract.Lifecycle.ISSUED,
         ExecutionContract.Lifecycle.VALIDATED,
-        ExecutionContract.Lifecycle.RUNNING,
-    }:
+    }
+    if allow_running_binding_repair:
+        allowed_lifecycles.add(ExecutionContract.Lifecycle.RUNNING)
+    if contract.lifecycle not in allowed_lifecycles:
         raise ValueError("CONTRACT_NOT_SUPERSEDABLE")
     if replacement.project_id != contract.project_id:
         raise ValueError("CONTRACT_PROJECT_MISMATCH")
