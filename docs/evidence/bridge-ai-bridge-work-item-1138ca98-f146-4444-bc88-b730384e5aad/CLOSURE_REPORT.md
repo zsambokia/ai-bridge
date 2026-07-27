@@ -1,46 +1,46 @@
-# Closure report — local OpenAI provider environment binding
+# Closure report
 
-- Scope: `bridge:ai-bridge:work-item:1138ca98-f146-4444-bc88-b730384e5aad`
+## Binding
+
 - Contract: `bridge:ai-bridge:contract:f1d54c2e-f53b-439f-ab76-69a98c917eee`
+- Handoff: `bridge:ai-bridge:contract:f1d54c2e-f53b-439f-ab76-69a98c917eee`
+- Scope: `docs/work-items/1138ca98-f146-4444-bc88-b730384e5aad-configure-local-openai-provider-environment-bind.md`
+- Scope hash: `94d7152c8a2679d1c2ed1f88f152d37da35164b3dad240fb870437da904a0984`
+- Repository: `zsambokia/ai-bridge`
 - Branch: `main`
 - Baseline: `89ef0c1342e1017aac73da0b39153c3d9f34807a`
-- Final commit: bound by the governed completion record after this evidence is committed
+- Validated implementation commit: `7a4fa67`
 
-## Delivered behaviour
+## Result
 
-`bridge.settings.local` now loads an optional repository-root `.env` before
-shared settings without adding a production dependency. Existing process
-environment values take precedence. `.env` is ignored, `.env.example` remains
-secret-free, and the local OpenAI provider setup is documented in the Django
-admin runbook.
-
-## Assessment and reuse
-
-The existing `ExecutionProvider` registry and `credential_value` runtime
-boundary were reused. No provider record, migration, secret value, or remote
-OpenAI request was created. The local pre-existing `.env` was deliberately
-left untouched.
+Implemented the approved local-only OpenAI provider environment support.
+Repository-root `.env` is ignored, `.env.example` is secret-free, and local
+settings load the optional file before shared Django settings without replacing
+process values. The seeded OpenAI provider receives the non-secret
+`OPENAI_API_KEY` binding through a forward migration. Validation and runtime
+resolution prohibit any other OpenAI environment reference. Administrator
+activation guidance and current-state documentation are synchronized.
 
 ## Validation
 
-| Check | Result |
-| --- | --- |
-| `manage.py makemigrations --check --dry-run` | PASS — No changes detected |
-| `manage.py migrate --check` | PASS |
-| `manage.py validate_scopes` | PASS — all canonical scopes valid |
-| `pytest -q` | PASS — 56 passed |
-| `ruff check .` | PASS |
-| `ruff format --check .` | PASS — 215 files formatted |
-| `mypy .` | PASS — no issues in 76 source files |
-| `git diff --check` | PASS |
+All required release gates passed:
 
-## Documentation and evidence
+- `pytest` — 57 passed
+- `ruff check .` — passed
+- `mypy .` — passed, 77 source files
+- `python manage.py validate_scopes` — passed
 
-`docs/operations/DJANGO_ADMIN.md` contains the local and secret-manager
-configuration procedure. `docs/akb/CURRENT_STATE.md` records the behaviour.
-The assessment, acceptance, and security evidence is stored alongside this
-report. No blocker is known.
+Additional scope checks passed: `python manage.py makemigrations --check` and
+the focused environment/provider test selection (6 passed).
+
+## Commit and working-tree boundary
+
+The approved local-settings, documentation, and initial evidence changes were
+committed on `main` as `01f5f218ec864584c3d1817574a07acf6d73159e`. The
+provider-binding enforcement and forward migration were validated and committed
+as `7a4fa67`. Unrelated untracked work-item files and the local `.env` remain
+outside this scope. The local `.env` was neither read nor included in evidence.
 
 ## Terminal state
 
-`PASS — READY FOR PRODUCT OWNER REVIEW`
+PASS — READY FOR PRODUCT OWNER REVIEW

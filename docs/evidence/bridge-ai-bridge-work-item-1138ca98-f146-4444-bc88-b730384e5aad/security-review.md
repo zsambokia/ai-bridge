@@ -10,3 +10,7 @@ placeholder only. No credential value is persisted in Django, emitted to
 evidence, or logged. Django admin stores only the `OPENAI_API_KEY` reference in
 `credential_binding`; health checks report readiness without making an OpenAI
 request.
+
+The forward migration binds the seeded OpenAI provider to that reference. Both
+Django model validation and dispatch-time resolution reject a different OpenAI
+binding, including for a record that bypassed admin validation.

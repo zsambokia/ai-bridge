@@ -1,19 +1,45 @@
 {
-  "scope_identifier": "bridge:ai-bridge:work-item:1138ca98-f146-4444-bc88-b730384e5aad",
-  "baseline": "89ef0c1342e1017aac73da0b39153c3d9f34807a",
-  "scenarios": [
+  "contract_id": "bridge:ai-bridge:contract:f1d54c2e-f53b-439f-ab76-69a98c917eee",
+  "approved_scope_hash": "94d7152c8a2679d1c2ed1f88f152d37da35164b3dad240fb870437da904a0984",
+  "branch": "main",
+  "baseline_commit": "89ef0c1342e1017aac73da0b39153c3d9f34807a",
+  "results": [
     {
-      "name": "local environment loading",
-      "command": ".\\.venv\\Scripts\\python.exe -m pytest core/tests/test_local_environment.py projects/tests/test_providers.py -q",
-      "result": "PASS",
-      "evidence": "5 passed"
+      "id": "migration-schema-check",
+      "command": "python manage.py makemigrations --check",
+      "status": "PASS",
+      "summary": "No changes detected."
     },
     {
-      "name": "provider secret reference is not publicly projected",
-      "command": ".\\.venv\\Scripts\\python.exe -m pytest projects/tests/test_providers.py -q",
-      "result": "PASS",
-      "evidence": "covered by the focused suite"
+      "id": "focused-environment-provider-tests",
+      "command": "pytest core/tests/test_local_environment.py projects/tests/test_providers.py",
+      "status": "PASS",
+      "summary": "6 passed."
+    },
+    {
+      "id": "backend-tests",
+      "command": "pytest",
+      "status": "PASS",
+      "summary": "57 passed."
+    },
+    {
+      "id": "lint",
+      "command": "ruff check .",
+      "status": "PASS",
+      "summary": "All checks passed."
+    },
+    {
+      "id": "type-check",
+      "command": "mypy .",
+      "status": "PASS",
+      "summary": "Success: no issues found in 77 source files."
+    },
+    {
+      "id": "scope-schema",
+      "command": "python manage.py validate_scopes",
+      "status": "PASS",
+      "summary": "All canonical scopes are valid."
     }
   ],
-  "secret_values_recorded": false
+  "terminal_state": "PASS — READY FOR PRODUCT OWNER REVIEW"
 }
