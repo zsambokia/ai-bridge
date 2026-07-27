@@ -47,6 +47,14 @@ remain unavailable until an operator configures a non-secret credential binding
 and validates their adapter. The execution lifecycle still dispatches only the
 exact provider identity recorded in the consumed contract.
 
+Local Django settings optionally load the Git-ignored repository-root `.env`
+file before shared settings. The tracked `.env.example` is secret-free and
+documents `OPENAI_API_KEY`; process environment values take precedence. The
+OpenAI provider retains only the `OPENAI_API_KEY` binding name, while staging
+and production must inject the actual value through their platform secret
+manager. The operational configuration steps are in
+`docs/operations/DJANGO_ADMIN.md`.
+
 Sprint 004's operation registry remains the canonical internal service surface
 for Project resolution and contract lifecycle. Sprint 006 replaces its former
 public proprietary `operation`/`payload` adapter with an authenticated remote

@@ -25,3 +25,26 @@ Completion is operationally valid only after the provider has stopped, every
 Release Gate has passed, evidence paths exist, and the final commit is known.
 Record completion through `scope.complete_execution`; it binds the run and
 contract rather than relying on an admin field edit.
+
+## Local OpenAI model provider configuration
+
+Use this procedure only in local development. The application does not store a
+credential value in Django or in the provider configuration.
+
+1. Copy `.env.example` to `.env` if it does not already exist, then set
+   `OPENAI_API_KEY` to a valid locally issued key. `.env` is Git-ignored; do
+   not paste its contents into tickets, commits, logs, or the Django admin.
+2. Start Django with `bridge.settings.local` (the default for `manage.py`). It
+   reads `.env` before shared settings, without overriding an already supplied
+   process environment variable. A process/secret-manager value therefore has
+   precedence.
+3. In Django admin, open `/admin/projects/executionprovider/`, select the
+   OpenAI provider, set **Credential binding** to `OPENAI_API_KEY`, and save.
+   This field stores only the reference name.
+4. Confirm the provider is **Active** and enable it only when it is intended
+   for use. Use **Run non-mutating provider health check** from the provider
+   list to verify that the reference resolves; it does not call OpenAI.
+
+For staging and production, do not deploy `.env`; inject `OPENAI_API_KEY`
+through the environment or the platform secret manager and retain the same
+`credential_binding` reference.

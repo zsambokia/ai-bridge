@@ -1,0 +1,19 @@
+{
+  "scope_identifier": "bridge:ai-bridge:work-item:1138ca98-f146-4444-bc88-b730384e5aad",
+  "baseline": "89ef0c1342e1017aac73da0b39153c3d9f34807a",
+  "scenarios": [
+    {
+      "name": "local environment loading",
+      "command": ".\\.venv\\Scripts\\python.exe -m pytest core/tests/test_local_environment.py projects/tests/test_providers.py -q",
+      "result": "PASS",
+      "evidence": "5 passed"
+    },
+    {
+      "name": "provider secret reference is not publicly projected",
+      "command": ".\\.venv\\Scripts\\python.exe -m pytest projects/tests/test_providers.py -q",
+      "result": "PASS",
+      "evidence": "covered by the focused suite"
+    }
+  ],
+  "secret_values_recorded": false
+}
