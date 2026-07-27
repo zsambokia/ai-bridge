@@ -66,6 +66,10 @@ and production must inject the actual value through their platform secret
 manager. The operational configuration steps are in
 `docs/operations/DJANGO_ADMIN.md`.
 
+For local conversational MCP E2E authentication, the existing settings loader
+reads `MCP_TEST_API_TOKEN` from the ignored local `.env` and binds it only to
+the MCP bearer runtime setting; the token is neither persisted nor logged.
+
 Sprint 004's operation registry remains the canonical internal service surface
 for Project resolution and contract lifecycle. Sprint 006 replaces its former
 public proprietary `operation`/`payload` adapter with an authenticated remote
