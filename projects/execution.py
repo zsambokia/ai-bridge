@@ -114,11 +114,23 @@ def start_run(
 
     validate_issued_execution_contract(contract, root)
     execution = contract.payload["execution"]
-    if ExecutionRun.objects.filter(
+    recoverable_run = (
+        ExecutionRun.objects.filter(
+            contract=contract,
+            lifecycle=ExecutionRun.Lifecycle.STARTING,
+            provider_execution_id="",
+        )
+        .order_by("id")
+        .first()
+    )
+    active_runs = ExecutionRun.objects.filter(
         contract__project=contract.project,
         branch=execution["target_branch"],
         lifecycle__in=ACTIVE_STATES,
-    ).exists():
+    )
+    if recoverable_run is not None:
+        active_runs = active_runs.exclude(pk=recoverable_run.pk)
+    if active_runs.exists():
         raise ValueError("CONFLICTING_ACTIVE_EXECUTION")
     selected_provider = provider(receipt.provider_identity)
     provider_record = ExecutionProviderRecord.objects.get(
@@ -127,27 +139,31 @@ def start_run(
     if provider_record.first_used_at is None:
         provider_record.first_used_at = timezone.now()
         provider_record.save(update_fields=["first_used_at", "updated_at"])
-    run = ExecutionRun.objects.create(
-        contract=contract,
-        start_request=request,
-        repository=contract.payload["project"]["repository"],
-        branch=execution["target_branch"],
-        baseline_commit=execution["baseline_commit"],
-        contract_hash=contract.contract_hash,
-        workspace_identifier=str(root),
-        provider_name=selected_provider.name,
-        audit_event_id=audit_event_id,
-        lifecycle=ExecutionRun.Lifecycle.STARTING,
-        current_phase="STARTING",
-        evidence_root=contract.payload["evidence"]["root"],
-        started_at=timezone.now(),
-    )
-    add_event(
-        run, "PREFLIGHT_COMPLETED", branch=run.branch, baseline=run.baseline_commit
-    )
+    if recoverable_run is None:
+        run = ExecutionRun.objects.create(
+            contract=contract,
+            start_request=request,
+            repository=contract.payload["project"]["repository"],
+            branch=execution["target_branch"],
+            baseline_commit=execution["baseline_commit"],
+            contract_hash=contract.contract_hash,
+            workspace_identifier=str(root),
+            provider_name=selected_provider.name,
+            audit_event_id=audit_event_id,
+            lifecycle=ExecutionRun.Lifecycle.STARTING,
+            current_phase="STARTING",
+            evidence_root=contract.payload["evidence"]["root"],
+            started_at=timezone.now(),
+        )
+        add_event(
+            run, "PREFLIGHT_COMPLETED", branch=run.branch, baseline=run.baseline_commit
+        )
+    else:
+        run = recoverable_run
+        add_event(run, "START_RECOVERED", reason="unbound starting run")
     try:
         started = selected_provider.start(repository=root, prompt=_prompt(contract))
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
         run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
         run.current_blocker = {
             "category": "unavailable external input",

@@ -17,8 +17,9 @@ provides one Project Registry model, onboarding readiness (`PENDING`, `READY`,
 
 The registered `storybook` Django app provides the standard, intentionally
 empty application foundation (`admin`, `apps`, `models`, `tests`, `views`, and
-the migrations package) for future Storybook behaviour. It currently has no
-models, routes, or public interface.
+the migrations package) for future Storybook behaviour. A targeted Django app
+registry test verifies that its configured application loads. It currently has
+no models, routes, or public interface.
 
 The Project Definition is static configuration. Lifecycle, onboarding, Context,
 and capability state are runtime data and are not written back to YAML.

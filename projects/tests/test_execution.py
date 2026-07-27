@@ -105,6 +105,41 @@ def test_provider_starts_only_after_consumption(
 
 
 @pytest.mark.django_db
+def test_start_recovers_an_unbound_starting_run(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    stale_run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository=contract.payload["project"]["repository"],
+        branch=contract.payload["execution"]["target_branch"],
+        baseline_commit=contract.payload["execution"]["baseline_commit"],
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.STARTING,
+        current_phase="STARTING",
+        evidence_root=contract.payload["evidence"]["root"],
+        started_at=None,
+    )
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+
+    run = start_run(contract, request, root)
+
+    assert run.pk == stale_run.pk
+    assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert ExecutionRun.objects.filter(contract=contract).count() == 1
+    assert list(run.events.values_list("sequence", "event_type")) == [
+        (1, "START_RECOVERED"),
+        (2, "EXECUTOR_STARTED"),
+    ]
+
+
+@pytest.mark.django_db
 def test_completion_requires_a_real_completed_run(
     consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,
