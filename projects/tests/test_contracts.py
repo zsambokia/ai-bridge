@@ -100,6 +100,20 @@ def test_only_bridge_bound_canonical_scope_can_issue_and_consume(
 
 
 @pytest.mark.django_db
+def test_contract_hash_binds_the_rendered_scope_for_a_separate_workspace(
+    canonical_scope: tuple[Path, Project, ExecutableScope],
+) -> None:
+    root, _project, scope = canonical_scope
+
+    contract = generate_scope_execution_contract(scope, root)
+
+    assert contract.payload["approved_scope"]["content"] == (
+        root / scope.published_path
+    ).read_text(encoding="utf-8")
+    assert contract.contract_hash == _normalized_hash(contract.payload)
+
+
+@pytest.mark.django_db
 def test_contract_uses_registered_target_for_baseline_and_platform_for_scope(
     canonical_scope: tuple[Path, Project, ExecutableScope],
     tmp_path: Path,

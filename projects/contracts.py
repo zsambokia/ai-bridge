@@ -86,10 +86,20 @@ def _scope_for_contract(contract: ExecutionContract) -> ExecutableScope:
         )
     except (ExecutableScope.DoesNotExist, KeyError) as exc:
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_AUTHORITY_MISSING") from exc
-    authorized = approved_scope(scope)
+    authorized = {
+        **approved_scope(scope),
+        # The projection itself is published in the Bridge repository, while a
+        # provider executes in the registered project workspace.  Persist the
+        # exact projection inside the hash-bound contract so the provider can
+        # verify and execute the approved authority without assuming the two
+        # repositories share a filesystem.
+        "content": render_scope(scope),
+    }
     for key in ("identifier", "path", "content_hash", "approval_reference"):
         if declared.get(key) != authorized.get(key):
             raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_BINDING_MISMATCH")
+    if declared.get("content") != render_scope(scope):
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_CONTENT_MISMATCH")
     return scope
 
 
@@ -105,7 +115,10 @@ def generate_scope_execution_contract(
     """Generate a provider-neutral contract from Bridge-managed scope authority."""
     if issuer != "AI_BRIDGE":
         raise ValueError("CONTRACT_AUTHORITY_REQUIRED")
-    authorized = approved_scope(scope)
+    authorized = {
+        **approved_scope(scope),
+        "content": render_scope(scope),
+    }
     if not authorized["path"]:
         raise ValueError("SCOPE_NOT_PUBLISHED")
     handoff_identifier = f"bridge:{scope.project.project_id}:contract:{uuid4()}"
@@ -373,6 +386,7 @@ def supersede_execution_contract(
     if contract.lifecycle not in {
         ExecutionContract.Lifecycle.ISSUED,
         ExecutionContract.Lifecycle.VALIDATED,
+        ExecutionContract.Lifecycle.RUNNING,
     }:
         raise ValueError("CONTRACT_NOT_SUPERSEDABLE")
     if replacement.project_id != contract.project_id:

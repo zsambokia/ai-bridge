@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+from django.utils import timezone
 
 from .contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPES
 from .contracts import (
@@ -17,6 +18,7 @@ from .contracts import (
     consume_execution_contract,
     generate_scope_execution_contract,
     issue_execution_contract,
+    supersede_execution_contract,
     validate_execution_contract,
 )
 from .execution import add_event, complete_run, provider, start_run
@@ -43,7 +45,7 @@ from .scopes import (
     publish_scope,
     review_scope,
 )
-from .services import project_repository_root
+from .services import _head_sha, project_repository_root
 
 TOOL_SURFACE_VERSION = "2026-07-27.1"
 READ_ONLY = "READ_ONLY"
@@ -958,6 +960,55 @@ def _transition(
     )
 
 
+def _recover_incomplete_contract_binding(
+    flow: ConversationOrchestration, root: Path
+) -> None:
+    """Replace only an exited, pre-fix contract that lacked scope authority.
+
+    Older contracts named the Bridge-side projection but did not carry its
+    contents.  A provider running in a separately registered workspace cannot
+    verify that projection.  Once that provider has exited without a commit,
+    superseding it is safe and retains the same conversation confirmation.
+    """
+    contract = flow.contract
+    run = flow.run
+    if (
+        contract is None
+        or run is None
+        or contract.lifecycle != ExecutionContract.Lifecycle.RUNNING
+        or "content" in contract.payload.get("approved_scope", {})
+        or provider(run.provider_name).status(run.provider_execution_id) != "FINISHED"
+    ):
+        return
+    workspace_root = project_repository_root(contract.project, root)
+    if _head_sha(workspace_root) != contract.payload["execution"]["baseline_commit"]:
+        raise ValueError("LEGACY_CONTRACT_RECOVERY_MUTATION_DETECTED")
+
+    run.lifecycle = ExecutionRun.Lifecycle.FAILED_GOVERNANCE
+    run.current_phase = "CONTRACT_BINDING_REPAIRED"
+    run.current_blocker = {
+        "category": "contract binding defect",
+        "evidence": "Issued contract omitted approved scope content.",
+    }
+    run.ended_at = timezone.now()
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "ended_at",
+            "updated_at",
+        ]
+    )
+    add_event(run, "CONTRACT_SUPERSEDED", reason="missing approved scope content")
+    replacement = generate_scope_execution_contract(flow.scope, root)
+    supersede_execution_contract(contract, replacement)
+    flow.contract = replacement
+    flow.run = None
+    flow.failure_detail = {}
+    flow.save(update_fields=["contract", "run", "failure_detail", "updated_at"])
+
+
 def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None:
     """Resume only missing canonical transitions; never duplicate authority."""
     scope = ExecutableScope.objects.get(pk=flow.scope_id)
@@ -972,6 +1023,7 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
         if not scope.published_path:
             publish_scope(scope, root)
         _transition(flow, caller, "PREPARATION", "PUBLISHED")
+        _recover_incomplete_contract_binding(flow, root)
         if flow.preparation_id is None:
             authorized = approved_scope(scope)
             flow.preparation = ExecutionPreparation.objects.create(
@@ -1261,7 +1313,7 @@ def invoke_public_tool(
                 scope__project=replay_project,
                 confirmation_reference=arguments["confirmation_reference"],
             ).first()
-            if flow is not None and flow.status == "BLOCKED":
+            if flow is not None and flow.status in {"BLOCKED", "EXECUTION_STARTED"}:
                 _advance_orchestration(flow, caller)
                 resumed = _orchestration_result(flow)
                 McpIdempotencyRecord.objects.filter(

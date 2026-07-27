@@ -305,6 +305,43 @@ def test_conversation_confirmation_retries_a_persisted_blocked_flow(
 
 
 @pytest.mark.django_db
+def test_conversation_confirmation_retries_a_started_durable_flow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="conversation-started-project",
+        display_name="Conversation Started Project",
+        repository_full_name="example/conversation-started-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Resume an exited provider.", kind="WORK_ITEM")
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", lambda *_: None)
+    arguments = {
+        "project_id": project.project_id,
+        "scope_identifier": scope.identifier,
+        "confirmation_text": "igen",
+    }
+    invoke_public_tool("conversation.confirm", arguments, caller="started-caller")
+    flow = ConversationOrchestration.objects.get(scope=scope)
+    flow.status = "EXECUTION_STARTED"
+    flow.save(update_fields=["status"])
+    resumed: list[ConversationOrchestration] = []
+
+    def advance(candidate: ConversationOrchestration, caller: str) -> None:
+        resumed.append(candidate)
+
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", advance)
+    result = invoke_public_tool(
+        "conversation.confirm", arguments, caller="started-caller"
+    )
+
+    assert result["idempotent_replay"] is True
+    assert result["resumed"] is True
+    assert resumed == [flow]
+
+
+@pytest.mark.django_db
 def test_review_routes_an_eligible_product_owner_to_simple_confirmation() -> None:
     project = Project.objects.create(
         project_id="review-routing-project",
