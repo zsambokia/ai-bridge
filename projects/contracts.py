@@ -24,7 +24,12 @@ from .models import (
     Project,
 )
 from .scopes import approved_scope, render_scope
-from .services import _current_branch, _head_sha, _repository_identity
+from .services import (
+    _current_branch,
+    _head_sha,
+    _repository_identity,
+    project_repository_root,
+)
 
 
 def _normalized_hash(payload: dict[str, Any]) -> str:
@@ -95,7 +100,7 @@ def _assert_scope_publication(scope: ExecutableScope, repository_root: Path) -> 
 
 
 def generate_scope_execution_contract(
-    scope: ExecutableScope, repository_root: Path, *, issuer: str = "AI_BRIDGE"
+    scope: ExecutableScope, platform_root: Path, *, issuer: str = "AI_BRIDGE"
 ) -> ExecutionContract:
     """Generate a provider-neutral contract from Bridge-managed scope authority."""
     if issuer != "AI_BRIDGE":
@@ -105,8 +110,9 @@ def generate_scope_execution_contract(
         raise ValueError("SCOPE_NOT_PUBLISHED")
     handoff_identifier = f"bridge:{scope.project.project_id}:contract:{uuid4()}"
     context = build_execution_context(
-        scope.project, authorized["path"], repository_root
+        scope.project, authorized["path"], platform_root
     )
+    repository_root = project_repository_root(scope.project, platform_root)
     baseline = _head_sha(repository_root)
     record = scope.record
     selected_provider = provider().name
@@ -207,7 +213,7 @@ def issue_execution_contract(
 
 
 def validate_issued_execution_contract(
-    contract: ExecutionContract, repository_root: Path
+    contract: ExecutionContract, platform_root: Path
 ) -> None:
     """Validate immutable issued inputs immediately before execution starts."""
     if contract.payload.get("schema_version") != "2.0":
@@ -215,6 +221,7 @@ def validate_issued_execution_contract(
     if contract.contract_hash != _normalized_hash(contract.payload):
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:HASH_MISMATCH")
     execution = contract.payload["execution"]
+    repository_root = project_repository_root(contract.project, platform_root)
     if (
         _repository_identity(repository_root)
         != contract.payload["project"]["repository"]
@@ -223,7 +230,7 @@ def validate_issued_execution_contract(
     current_branch = _current_branch(repository_root)
     if current_branch != execution["target_branch"]:
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:BRANCH_MISMATCH")
-    _assert_scope_publication(_scope_for_contract(contract), repository_root)
+    _assert_scope_publication(_scope_for_contract(contract), platform_root)
     baseline = execution["baseline_commit"]
     if not _baseline_exists(repository_root, baseline):
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:BASELINE_NOT_FOUND")

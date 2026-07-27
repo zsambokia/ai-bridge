@@ -141,6 +141,19 @@ def load_project_definition(path: Path, repository_root: Path) -> ProjectDefinit
     )
 
 
+def project_repository_root(project: Project, platform_root: Path) -> Path:
+    """Resolve the registered local workspace without inventing a registry."""
+    configured_root = project.repository_root or str(platform_root)
+    root = Path(configured_root).expanduser()
+    try:
+        root = root.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("PROJECT_REPOSITORY_ROOT_UNAVAILABLE") from exc
+    if not (root / project.definition_path).is_file():
+        raise ValueError("PROJECT_DEFINITION_UNAVAILABLE")
+    return root
+
+
 def _command_resolvable(command: str) -> bool:
     tokens = shlex.split(command, posix=False)
     if not tokens:
@@ -313,6 +326,7 @@ def bootstrap_project(
                     "display_name": definition.display_name,
                     "repository_full_name": definition.repository_full_name,
                     "definition_path": definition.definition_path,
+                    "repository_root": str(repository_root.resolve()),
                     "lifecycle": Project.Lifecycle.ACTIVE,
                     "onboarding_status": (
                         Project.OnboardingStatus.INVALID

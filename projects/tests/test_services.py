@@ -11,6 +11,7 @@ from projects.services import (
     bootstrap_project,
     create_project_context,
     load_project_definition,
+    project_repository_root,
     refresh_context_status,
 )
 
@@ -90,6 +91,19 @@ def test_valid_definition_loads_and_bootstrap_creates_ready_valid_context(
     assert context.validation_status == ProjectContext.ValidationStatus.VALID
     assert context.constitution_path.endswith("BRIDGE_CONSTITUTION.md")
     assert context.release_gate_configuration[0]["command"] == "python -m pytest"
+    assert project.repository_root == str(root.resolve())
+
+
+@pytest.mark.django_db
+def test_registered_repository_root_is_used_instead_of_platform_root(
+    project_root: tuple[Path, Path], tmp_path: Path
+) -> None:
+    root, definition_path = project_root
+    result = bootstrap_project(definition_path, "docs/sprints/SPRINT_003.md", root)
+    assert result.success
+    project = Project.objects.get(project_id="generic-project")
+
+    assert project_repository_root(project, tmp_path) == root.resolve()
 
 
 @pytest.mark.django_db

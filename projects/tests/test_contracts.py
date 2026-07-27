@@ -100,6 +100,39 @@ def test_only_bridge_bound_canonical_scope_can_issue_and_consume(
 
 
 @pytest.mark.django_db
+def test_contract_uses_registered_target_for_baseline_and_platform_for_scope(
+    canonical_scope: tuple[Path, Project, ExecutableScope],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_root, project, scope = canonical_scope
+    platform_root = tmp_path / "platform"
+    publication = platform_root / scope.published_path
+    publication.parent.mkdir(parents=True)
+    publication.write_text(
+        (target_root / scope.published_path).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    project.repository_root = str(target_root.resolve())
+    project.save(update_fields=["repository_root"])
+    observed_roots: list[Path] = []
+
+    def record_baseline(root: Path) -> str:
+        observed_roots.append(root.resolve())
+        return "a" * 40
+
+    monkeypatch.setattr(
+        "projects.contracts._head_sha",
+        record_baseline,
+    )
+
+    contract = generate_scope_execution_contract(scope, platform_root)
+
+    assert contract.payload["execution"]["baseline_commit"] == "a" * 40
+    assert observed_roots == [target_root.resolve()]
+
+
+@pytest.mark.django_db
 def test_contract_revalidates_scope_publication_before_issuance(
     canonical_scope: tuple[Path, Project, ExecutableScope],
 ) -> None:

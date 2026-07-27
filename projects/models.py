@@ -26,6 +26,7 @@ class Project(models.Model):
     display_name = models.CharField(max_length=255)
     repository_full_name = models.CharField(max_length=255, unique=True)
     definition_path = models.CharField(max_length=255)
+    repository_root = models.CharField(max_length=512, blank=True, default="")
     lifecycle = models.CharField(
         max_length=16, choices=Lifecycle.choices, default=Lifecycle.ACTIVE
     )

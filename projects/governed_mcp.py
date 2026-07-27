@@ -43,6 +43,7 @@ from .scopes import (
     publish_scope,
     review_scope,
 )
+from .services import project_repository_root
 
 TOOL_SURFACE_VERSION = "2026-07-27.1"
 READ_ONLY = "READ_ONLY"
@@ -1046,7 +1047,12 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
                 },
             )
             try:
-                flow.run = start_run(contract, request, root, audit_event_id=audit.pk)
+                flow.run = start_run(
+                    contract,
+                    request,
+                    project_repository_root(scope.project, root),
+                    audit_event_id=audit.pk,
+                )
             except (OSError, ValueError):
                 flow.run = ExecutionRun.objects.filter(contract=contract).first()
                 if flow.run is not None:
@@ -1192,7 +1198,7 @@ def _complete_orchestration(
         raise ValueError("RELEASE_GATES_NOT_PASSED")
     if not completion_data["changed_files"]:
         raise ValueError("EXECUTION_CHANGED_FILES_REQUIRED")
-    root = Path(settings.BASE_DIR)
+    root = project_repository_root(project, Path(settings.BASE_DIR))
     manifest = completion_data["evidence_manifest"]
     if not isinstance(manifest, dict) or not manifest:
         raise ValueError("RUN_COMPLETION_EVIDENCE_INVALID")
@@ -1535,7 +1541,7 @@ def invoke_public_tool(
             run = start_run(
                 contract,
                 req,
-                Path(settings.BASE_DIR),
+                project_repository_root(contract.project, Path(settings.BASE_DIR)),
                 audit_event_id=dispatch_audit.pk,
             )
             req.status = "EXECUTION_STARTED"

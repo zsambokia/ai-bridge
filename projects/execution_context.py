@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from .models import ExecutableScope, Project, ProjectContext
 from .scopes import approved_scope
-from .services import load_project_definition
+from .services import load_project_definition, project_repository_root
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ def _sprint_slug(sprint_path: str) -> str:
 
 
 def build_execution_context(
-    project: Project, approved_sprint_path: str, repository_root: Path
+    project: Project, approved_sprint_path: str, platform_root: Path
 ) -> ExecutionContext:
     """Build one context without guessing Project, Sprint, or repository inputs."""
     if project.lifecycle != Project.Lifecycle.ACTIVE:
@@ -50,6 +50,7 @@ def build_execution_context(
     if context is None:
         raise ValueError("PROJECT_CONTEXT_NOT_VALID")
 
+    repository_root = project_repository_root(project, platform_root)
     definition = load_project_definition(
         repository_root / project.definition_path, repository_root
     )
