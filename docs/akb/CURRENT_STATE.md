@@ -40,6 +40,13 @@ delete them outside the canonical bootstrap lifecycle.
 
 ## Implemented execution foundation
 
+Sprint 014 adds a provider-neutral `ExecutionProvider` registry and append-only
+provider audit history. Codex CLI is seeded as the active execution agent;
+OpenAI, Claude, GitHub, and BigQuery are explicit provider kinds/roles that
+remain unavailable until an operator configures a non-secret credential binding
+and validates their adapter. The execution lifecycle still dispatches only the
+exact provider identity recorded in the consumed contract.
+
 Sprint 004's operation registry remains the canonical internal service surface
 for Project resolution and contract lifecycle. Sprint 006 replaces its former
 public proprietary `operation`/`payload` adapter with an authenticated remote

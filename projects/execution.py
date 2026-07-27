@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -20,6 +18,10 @@ from .models import (
     ExecutionRun,
     ExecutionStartRequest,
 )
+from .models import (
+    ExecutionProvider as ExecutionProviderRecord,
+)
+from .providers import CodexCliAdapter, ProviderStart, adapter_for, select_provider
 
 ACTIVE_STATES = {
     ExecutionRun.Lifecycle.REQUESTED,
@@ -33,12 +35,6 @@ ACTIVE_STATES = {
 SECRET_MARKERS = ("token", "secret", "password", "authorization", "bearer")
 
 
-@dataclass(frozen=True)
-class ProviderStart:
-    execution_id: str
-    workspace_identifier: str
-
-
 class ExecutionProvider(Protocol):
     name: str
 
@@ -47,50 +43,16 @@ class ExecutionProvider(Protocol):
     def cancel(self, execution_id: str) -> None: ...
 
 
-class CodexCliProvider:
-    """Codex CLI adapter; command arguments are fixed and no secret is persisted."""
-
-    name = "codex-cli"
-
-    def start(self, *, repository: Path, prompt: str) -> ProviderStart:
-        executable = os.environ.get("BRIDGE_CODEX_EXECUTABLE", "codex")
-        process = subprocess.Popen(  # noqa: S603
-            [
-                executable,
-                "exec",
-                "--json",
-                "--sandbox",
-                "workspace-write",
-                "-C",
-                str(repository),
-                prompt,
-            ],
-            cwd=repository,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            shell=False,
-        )
-        return ProviderStart(str(process.pid), str(repository))
-
-    def status(self, execution_id: str) -> str:
-        try:
-            os.kill(int(execution_id), 0)
-        except OSError:
-            return "FINISHED"
-        return "RUNNING"
-
-    def cancel(self, execution_id: str) -> None:
-        os.kill(int(execution_id), 15)
+CodexCliProvider = CodexCliAdapter
 
 
 def provider(identity: str | None = None) -> ExecutionProvider:
     """Return the explicitly selected operational provider; never fall back."""
     configured = getattr(settings, "BRIDGE_EXECUTOR_PROVIDER", "codex-cli")
     selected = identity or configured
-    if configured != "codex-cli" or selected != configured:
+    if selected != configured:
         raise ValueError("EXECUTOR_PROVIDER_UNAVAILABLE")
-    return CodexCliProvider()
+    return adapter_for(select_provider(selected))
 
 
 def _safe_details(details: dict[str, object]) -> dict[str, object]:
@@ -159,6 +121,12 @@ def start_run(
     ).exists():
         raise ValueError("CONFLICTING_ACTIVE_EXECUTION")
     selected_provider = provider(receipt.provider_identity)
+    provider_record = ExecutionProviderRecord.objects.get(
+        provider_id=receipt.provider_identity
+    )
+    if provider_record.first_used_at is None:
+        provider_record.first_used_at = timezone.now()
+        provider_record.save(update_fields=["first_used_at", "updated_at"])
     run = ExecutionRun.objects.create(
         contract=contract,
         start_request=request,

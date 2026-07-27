@@ -1,0 +1,17 @@
+{
+  "contract_id": "bridge:ai-bridge:contract:e817fd6b-dd40-4fed-a876-6b911c8d3d17",
+  "state": "PASS — READY FOR PRODUCT OWNER REVIEW",
+  "verified_at": "2026-07-27",
+  "release_gates": {
+    "pytest -q": "PASS: 54 passed",
+    "ruff check .": "PASS",
+    "ruff format --check .": "PASS",
+    "mypy .": "PASS",
+    "python manage.py makemigrations --check": "PASS: no changes detected",
+    "python manage.py migrate --check": "PASS",
+    "python manage.py validate_scopes": "PASS",
+    "git diff --check": "PASS"
+  },
+  "external_provider_status": "No external credentials or safe proof targets were supplied. OpenAI, Claude, GitHub, and BigQuery remain DRAFT and disabled; no remote success is claimed.",
+  "repository_binding": "The final commit is created locally. Canonical completion will bind its exact SHA after push and remote verification."
+}

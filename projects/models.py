@@ -422,3 +422,99 @@ class ConversationOrchestration(models.Model):
 
     def __str__(self) -> str:
         return f"{self.scope.identifier}:{self.status}"
+
+
+class ExecutionProvider(models.Model):
+    """Non-secret registry entry for a governed execution provider."""
+
+    class Kind(models.TextChoices):
+        CODEX = "CODEX", "Codex CLI"
+        OPENAI = "OPENAI", "OpenAI"
+        CLAUDE = "CLAUDE", "Claude"
+        GITHUB = "GITHUB", "GitHub"
+        BIGQUERY = "BIGQUERY", "BigQuery"
+
+    class Role(models.TextChoices):
+        EXECUTION_AGENT = "EXECUTION_AGENT", "Execution agent"
+        MODEL_API = "MODEL_API", "Model API"
+        REPOSITORY_SERVICE = "REPOSITORY_SERVICE", "Repository service"
+        DATA_SERVICE = "DATA_SERVICE", "Data service"
+
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        ACTIVE = "ACTIVE", "Active"
+        DISABLED = "DISABLED", "Disabled"
+        UNAVAILABLE = "UNAVAILABLE", "Unavailable"
+        MISCONFIGURED = "MISCONFIGURED", "Misconfigured"
+        DEPRECATED = "DEPRECATED", "Deprecated"
+
+    class HealthStatus(models.TextChoices):
+        UNKNOWN = "UNKNOWN", "Unknown"
+        HEALTHY = "HEALTHY", "Healthy"
+        DEGRADED = "DEGRADED", "Degraded"
+        UNAVAILABLE = "UNAVAILABLE", "Unavailable"
+        MISCONFIGURED = "MISCONFIGURED", "Misconfigured"
+
+    provider_id = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=128)
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    role = models.CharField(max_length=32, choices=Role.choices)
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.DRAFT
+    )
+    adapter_key = models.CharField(max_length=64, unique=True)
+    enabled = models.BooleanField(default=False)
+    priority = models.PositiveIntegerField(default=100)
+    configuration = models.JSONField(default=dict, blank=True)
+    # This is an environment/backend reference only, never a credential value.
+    credential_binding = models.CharField(max_length=128, blank=True)
+    capabilities = models.JSONField(default=list, blank=True)
+    health_status = models.CharField(
+        max_length=32, choices=HealthStatus.choices, default=HealthStatus.UNKNOWN
+    )
+    health = models.JSONField(default=dict, blank=True)
+    last_health_at = models.DateTimeField(null=True, blank=True)
+    last_test_result = models.JSONField(default=dict, blank=True)
+    first_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["priority", "provider_id"]
+
+    def clean(self) -> None:
+        import re
+
+        from django.core.exceptions import ValidationError
+
+        expected_roles = {
+            str(self.Kind.CODEX): str(self.Role.EXECUTION_AGENT),
+            str(self.Kind.OPENAI): str(self.Role.MODEL_API),
+            str(self.Kind.CLAUDE): str(self.Role.MODEL_API),
+            str(self.Kind.GITHUB): str(self.Role.REPOSITORY_SERVICE),
+            str(self.Kind.BIGQUERY): str(self.Role.DATA_SERVICE),
+        }
+        if self.role != expected_roles.get(self.kind):
+            raise ValidationError("PROVIDER_KIND_ROLE_MISMATCH")
+        if self.credential_binding and not re.fullmatch(
+            r"[A-Z][A-Z0-9_]{2,127}", self.credential_binding
+        ):
+            raise ValidationError("CREDENTIAL_BINDING_REFERENCE_INVALID")
+        if not isinstance(self.configuration, dict) or not isinstance(
+            self.capabilities, list
+        ):
+            raise ValidationError("PROVIDER_CONFIGURATION_INVALID")
+
+
+class ProviderAuditEvent(models.Model):
+    """Append-only, secret-free history of provider configuration and checks."""
+
+    provider = models.ForeignKey(
+        ExecutionProvider, on_delete=models.PROTECT, related_name="audit_events"
+    )
+    action = models.CharField(max_length=64)
+    details = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]

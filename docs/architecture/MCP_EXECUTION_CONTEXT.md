@@ -148,3 +148,13 @@ Bridge rechecks approval, scope state and exact publication at validation,
 issue, consume and start. Completion accepts only a matching terminal run at
 the checked-out final commit with non-empty gates and evidence manifest;
 Markdown is never an authorization input.
+
+## Sprint 014 provider registry
+
+Provider selection is now registry-backed and exact: a consumed contract may use
+only its recorded provider identity, with an enabled `ACTIVE` execution-agent
+record that declares `CODE_EXECUTION`. There is no priority fallback. Provider
+configuration and credential-binding references remain private; the public MCP
+surface exposes only `provider.list`, `provider.get`, `provider.capabilities`,
+and `provider.health` safe projections. Credentials are supplied by a configured
+environment/backend reference and are never persisted in the Django database.

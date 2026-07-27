@@ -1,14 +1,93 @@
 """Read-only operational visibility for canonical Project runtime records."""
 
+from django import forms
 from django.contrib import admin
+from django.db.models import QuerySet
 
 from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
+    ExecutionProvider,
     Project,
     ProjectContext,
+    ProviderAuditEvent,
 )
+from projects.providers import check_health
+
+
+class ProviderAdminForm(forms.ModelForm):
+    """Only an environment/backend reference is persisted, never a secret."""
+
+    class Meta:
+        model = ExecutionProvider
+        fields = "__all__"
+        help_texts = {
+            "credential_binding": (
+                "Environment/backend secret reference only; "
+                "Django never stores a value."
+            )
+        }
+
+
+class ProviderAuditInline(admin.TabularInline):
+    model = ProviderAuditEvent
+    extra = 0
+    can_delete = False
+    readonly_fields = ("action", "details", "created_at")
+
+    def has_add_permission(self, request: object, obj: object | None = None) -> bool:
+        return False
+
+
+@admin.register(ExecutionProvider)
+class ExecutionProviderAdmin(admin.ModelAdmin):
+    form = ProviderAdminForm
+    list_display = (
+        "provider_id",
+        "name",
+        "kind",
+        "role",
+        "status",
+        "health_status",
+        "enabled",
+        "priority",
+        "credential_status",
+        "last_health_at",
+    )
+    list_filter = ("kind", "role", "status", "enabled")
+    search_fields = ("provider_id", "name", "adapter_key")
+    inlines = (ProviderAuditInline,)
+    actions = ("run_health_check",)
+
+    def get_readonly_fields(
+        self, request: object, obj: ExecutionProvider | None = None
+    ) -> tuple[str, ...]:
+        base = (
+            "last_health_at",
+            "health_status",
+            "health",
+            "last_test_result",
+            "first_used_at",
+            "created_at",
+            "updated_at",
+        )
+        return base + (
+            ("provider_id", "kind", "role", "adapter_key")
+            if obj and obj.first_used_at
+            else ()
+        )
+
+    @admin.display(description="Credential status")
+    def credential_status(self, obj: ExecutionProvider) -> str:
+        return "BOUND" if obj.credential_binding else "NOT_CONFIGURED"
+
+    @admin.action(description="Run non-mutating provider health check")
+    def run_health_check(
+        self, request: object, queryset: QuerySet[ExecutionProvider]
+    ) -> None:
+        for entry in queryset:
+            check_health(entry)
 
 
 @admin.register(Project)

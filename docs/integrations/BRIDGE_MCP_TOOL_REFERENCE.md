@@ -107,3 +107,10 @@ eligible identity. `contract.consume` rejects a different identity, and
 execution resolves the receipted identity for start, status, and cancellation.
 Names that appear only in documentation are not advertised as operational
 providers.
+
+## Provider visibility
+
+The read-only public tools `provider.list`, `provider.get`,
+`provider.capabilities`, and `provider.health` expose provider identity, role,
+capabilities, status, and safe health state. They never return configuration,
+credential bindings, secret values, or raw external responses.

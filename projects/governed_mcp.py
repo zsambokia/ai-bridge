@@ -27,6 +27,7 @@ from .models import (
     ExecutionContract,
     ExecutionPreparation,
     ExecutionProgressEvent,
+    ExecutionProvider,
     ExecutionRun,
     ExecutionStartRequest,
     GovernanceApproval,
@@ -34,6 +35,7 @@ from .models import (
     McpIdempotencyRecord,
     Project,
 )
+from .providers import public_provider
 from .scopes import (
     answer_clarifications,
     approved_scope,
@@ -120,6 +122,32 @@ _TOOLS = [
         "factory.list_capabilities",
         "List the versioned governed MCP capabilities available to this caller.",
         READ_ONLY,
+    ),
+    _tool(
+        "provider.list",
+        "List safe provider registry summaries; no configuration or credentials.",
+        READ_ONLY,
+    ),
+    _tool(
+        "provider.get",
+        "Get one safe provider registry summary.",
+        READ_ONLY,
+        {"provider_id": {"type": "string", "minLength": 1, "maxLength": 64}},
+        ["provider_id"],
+    ),
+    _tool(
+        "provider.capabilities",
+        "Get published capabilities for one provider.",
+        READ_ONLY,
+        {"provider_id": {"type": "string", "minLength": 1, "maxLength": 64}},
+        ["provider_id"],
+    ),
+    _tool(
+        "provider.health",
+        "Get the last safe, non-secret provider health projection.",
+        READ_ONLY,
+        {"provider_id": {"type": "string", "minLength": 1, "maxLength": 64}},
+        ["provider_id"],
     ),
     _tool(
         "project.list",
@@ -1207,6 +1235,32 @@ def invoke_public_tool(
                 "tool_surface_version": TOOL_SURFACE_VERSION,
                 "project_count": len(projects),
                 "projects": projects,
+            }
+        elif name == "provider.list":
+            result = {
+                "providers": [
+                    public_provider(item)
+                    for item in ExecutionProvider.objects.order_by(
+                        "priority", "provider_id"
+                    )
+                ]
+            }
+        elif name == "provider.get":
+            result = public_provider(
+                ExecutionProvider.objects.get(provider_id=arguments["provider_id"])
+            )
+        elif name == "provider.capabilities":
+            item = ExecutionProvider.objects.get(provider_id=arguments["provider_id"])
+            result = {
+                "provider_id": item.provider_id,
+                "capabilities": item.capabilities,
+            }
+        elif name == "provider.health":
+            item = ExecutionProvider.objects.get(provider_id=arguments["provider_id"])
+            result = {
+                "provider_id": item.provider_id,
+                "health": public_provider(item)["health"],
+                "last_health_at": public_provider(item)["last_health_at"],
             }
         elif name == "factory.list_capabilities":
             result = {

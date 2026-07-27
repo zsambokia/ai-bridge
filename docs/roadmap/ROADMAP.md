@@ -70,6 +70,14 @@ Sprint 003 establishes this boundary for Project lifecycle, onboarding, and Cont
 
 ## 4. Milestone sequence
 
+### Sprint 014 — Execution provider platform and secure configuration
+
+Implemented under its approved Sprint: a provider-neutral registry, safe
+read-only MCP provider discovery, role/capability validation, non-secret
+credential references, provider audit events, and exact contract-bound Codex
+execution selection. Remote providers require separately configured external
+credentials and are not treated as available merely because a record exists.
+
 ## Milestone 1 — Project Bootstrap and Onboarding
 
 **Implemented foundation awaiting Product Owner review:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
