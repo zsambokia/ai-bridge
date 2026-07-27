@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from .contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPES
@@ -1262,11 +1263,29 @@ def _complete_orchestration(
         isinstance(path, str) and (root / path).is_file() for path in manifest.values()
     ):
         raise ValueError("EVIDENCE_MANIFEST_MISSING")
-    complete_run(run, arguments["final_commit_sha"], completion_data)
+    pass_closure_state = next(
+        (
+            state
+            for state in contract.payload["allowed_terminal_states"]
+            if state.startswith("PASS ")
+        ),
+        None,
+    )
+    if pass_closure_state is None:
+        raise ValueError("PASS_CLOSURE_STATE_NOT_ALLOWED")
+    with transaction.atomic():
+        if run.lifecycle == ExecutionRun.Lifecycle.RUNNING:
+            complete_run(run, arguments["final_commit_sha"], completion_data)
+        elif (
+            run.lifecycle != ExecutionRun.Lifecycle.COMPLETED
+            or run.final_commit_sha != arguments["final_commit_sha"]
+            or run.completion_data != completion_data
+        ):
+            raise ValueError("RUN_COMPLETION_NOT_RECOVERABLE")
     complete_execution_contract(
         contract,
         arguments["final_commit_sha"],
-        "PASS — READY FOR PRODUCT OWNER REVIEW",
+        pass_closure_state,
         completion_data,
     )
     flow.status = "COMPLETED"
