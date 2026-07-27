@@ -51,6 +51,18 @@ scope_authority:
     work_item: "docs/work-items"
   approval_required_for_execution: true
   provider_may_issue_contracts: false
+  work_types:
+    - FEATURE
+    - BUGFIX
+    - MIGRATION
+    - RECOVERY
+    - DOCUMENTATION
+    - RELEASE
+    - SELF_DEVELOPMENT
+    - ONBOARDING
+    - SECURITY
+    - CONFIGURATION
+    - AUDIT
 
 technology:
   language_runtime:

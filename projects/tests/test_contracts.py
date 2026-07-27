@@ -89,7 +89,7 @@ def test_only_bridge_bound_canonical_scope_can_issue_and_consume(
         issued,
         root,
         expected_hash=issued.contract_hash,
-        provider_identity="provider-a",
+        provider_identity="codex-cli",
         observed_baseline="a" * 40,
         schema_version="2.0",
         idempotency_key="receipt-010",
@@ -128,7 +128,7 @@ def test_revoked_approval_blocks_an_issued_contract_from_consumption(
             contract,
             root,
             expected_hash=contract.contract_hash,
-            provider_identity="provider-a",
+            provider_identity="codex-cli",
             observed_baseline="a" * 40,
             schema_version="2.0",
             idempotency_key="revoked-010",
@@ -143,6 +143,58 @@ def test_closed_scope_cannot_create_a_contract(
     close_scope(scope, "COMPLETED")
     with pytest.raises(ValueError, match="CLOSED_SCOPE_IMMUTABLE"):
         generate_scope_execution_contract(scope, root)
+
+
+@pytest.mark.django_db
+def test_contract_rejects_an_unselected_provider(
+    canonical_scope: tuple[Path, Project, ExecutableScope],
+) -> None:
+    root, _project, scope = canonical_scope
+    issued = issue_execution_contract(
+        validate_execution_contract(
+            generate_scope_execution_contract(scope, root), root
+        ),
+        root,
+    )
+    assert (
+        issued.payload["provider_policy"]["selected_provider_identity"] == "codex-cli"
+    )
+    with pytest.raises(ValueError, match="PROVIDER_NOT_ELIGIBLE"):
+        consume_execution_contract(
+            issued,
+            root,
+            expected_hash=issued.contract_hash,
+            provider_identity="documentation-only-provider",
+            observed_baseline="a" * 40,
+            schema_version="2.0",
+            idempotency_key="provider-negative-proof",
+        )
+
+
+@pytest.mark.django_db
+def test_audit_contract_carries_work_type_and_bounded_audit_policy(
+    canonical_scope: tuple[Path, Project, ExecutableScope],
+) -> None:
+    root, project, _scope = canonical_scope
+    audit = propose_scope(
+        project,
+        "Audit the provider boundary without repository repairs.",
+        kind="WORK_ITEM",
+        work_type="AUDIT",
+        mutation_policy="READ_ONLY",
+        audit_target="projects.execution",
+    )
+    approval = GovernanceApproval.objects.create(
+        reference="PO-013-audit-contract",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="Product Owner",
+    )
+    contract = generate_scope_execution_contract(
+        publish_scope(bind_approval(audit, approval.reference), root), root
+    )
+    assert contract.payload["execution"]["work_type"] == "AUDIT"
+    assert contract.payload["execution"]["audit"]["mutation_policy"] == "READ_ONLY"
 
 
 @pytest.mark.django_db

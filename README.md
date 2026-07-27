@@ -69,6 +69,12 @@ confirmation reference, and retry key, then records approval, publication,
 preparation, contract generation, validation, issuance, consumption, provider
 dispatch, and completion. `scope.approve` is not a conversational entry point:
 it binds an already-existing durable approval reference.
+
+Sprint 013 adds `AUDIT` as a work type on the existing `SPRINT` and `WORK_ITEM`
+scope kinds; it does not add an executable hierarchy. The currently operational
+provider boundary is deliberately explicit: issued contracts select and allow
+only `codex-cli`, consumption receipts bind that identity before dispatch, and
+an unavailable identity is rejected without a silent fallback.
 `scope.confirm_and_execute` remains the explicit structured entry point for a
 client that has already displayed the exact proposal version and hash. See the
 [tool reference](docs/integrations/BRIDGE_MCP_TOOL_REFERENCE.md).

@@ -9,6 +9,7 @@ from typing import Iterator
 import pytest
 
 from projects.contracts import (
+    _normalized_hash,
     consume_execution_contract,
     generate_scope_execution_contract,
     issue_execution_contract,
@@ -76,7 +77,7 @@ def consumed_contract(
         contract,
         tmp_path,
         expected_hash=contract.contract_hash,
-        provider_identity="provider-a",
+        provider_identity="codex-cli",
         observed_baseline="a" * 40,
         schema_version="2.0",
         idempotency_key="run-010",
@@ -91,7 +92,9 @@ def test_provider_starts_only_after_consumption(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root, contract, request = consumed_contract
-    monkeypatch.setattr("projects.execution.provider", lambda: StubProvider())
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
     run = start_run(contract, request, root)
     assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
     assert contract.lifecycle == "RUNNING"
@@ -107,7 +110,9 @@ def test_completion_requires_a_real_completed_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root, contract, request = consumed_contract
-    monkeypatch.setattr("projects.execution.provider", lambda: StubProvider())
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
     run = start_run(contract, request, root)
     completion: dict[str, object] = {
         "execution_result": "PASS",
@@ -123,6 +128,30 @@ def test_completion_requires_a_real_completed_run(
     completed = complete_run(run, "b" * 40, completion)
     assert completed.lifecycle == ExecutionRun.Lifecycle.COMPLETED
     assert completed.completion_data == completion
+
+
+@pytest.mark.django_db
+def test_read_only_audit_cannot_report_a_repository_mutation(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    contract.payload["execution"]["audit"] = {"mutation_policy": "READ_ONLY"}
+    contract.contract_hash = _normalized_hash(contract.payload)
+    contract.save(update_fields=["contract_hash"])
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    completion: dict[str, object] = {
+        "execution_result": "PASS",
+        "gate_results": {"pytest": "PASS"},
+        "evidence_manifest": {"closure_report": "report"},
+        "changed_files": ["projects/execution.py"],
+        "failure_classification": None,
+    }
+    with pytest.raises(ValueError, match="READ_ONLY_AUDIT_MUTATION_REJECTED"):
+        complete_run(run, "b" * 40, completion)
 
 
 def test_secret_filter_removes_credential_named_fields() -> None:

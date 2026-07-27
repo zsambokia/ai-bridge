@@ -84,9 +84,11 @@ class CodexCliProvider:
         os.kill(int(execution_id), 15)
 
 
-def provider() -> ExecutionProvider:
+def provider(identity: str | None = None) -> ExecutionProvider:
+    """Return the explicitly selected operational provider; never fall back."""
     configured = getattr(settings, "BRIDGE_EXECUTOR_PROVIDER", "codex-cli")
-    if configured != "codex-cli":
+    selected = identity or configured
+    if configured != "codex-cli" or selected != configured:
         raise ValueError("EXECUTOR_PROVIDER_UNAVAILABLE")
     return CodexCliProvider()
 
@@ -143,7 +145,8 @@ def start_run(
     """Persist authorization and ownership before an external start is active."""
     if contract.lifecycle != ExecutionContract.Lifecycle.CONSUMED:
         raise ValueError("CONTRACT_NOT_CONSUMED")
-    if not ContractConsumption.objects.filter(contract=contract).exists():
+    receipt = ContractConsumption.objects.filter(contract=contract).first()
+    if receipt is None:
         raise ValueError("CONSUMPTION_RECEIPT_REQUIRED")
     from .contracts import validate_issued_execution_contract
 
@@ -155,6 +158,7 @@ def start_run(
         lifecycle__in=ACTIVE_STATES,
     ).exists():
         raise ValueError("CONFLICTING_ACTIVE_EXECUTION")
+    selected_provider = provider(receipt.provider_identity)
     run = ExecutionRun.objects.create(
         contract=contract,
         start_request=request,
@@ -163,7 +167,7 @@ def start_run(
         baseline_commit=execution["baseline_commit"],
         contract_hash=contract.contract_hash,
         workspace_identifier=str(root),
-        provider_name=provider().name,
+        provider_name=selected_provider.name,
         audit_event_id=audit_event_id,
         lifecycle=ExecutionRun.Lifecycle.STARTING,
         current_phase="STARTING",
@@ -174,7 +178,7 @@ def start_run(
         run, "PREFLIGHT_COMPLETED", branch=run.branch, baseline=run.baseline_commit
     )
     try:
-        started = provider().start(repository=root, prompt=_prompt(contract))
+        started = selected_provider.start(repository=root, prompt=_prompt(contract))
     except (OSError, subprocess.SubprocessError) as exc:
         run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
         run.current_blocker = {
@@ -238,6 +242,15 @@ def complete_run(
         or not isinstance(completion_data["failure_classification"], (str, type(None)))
     ):
         raise ValueError("RUN_COMPLETION_EVIDENCE_INVALID")
+    audit = run.contract.payload.get("execution", {}).get("audit")
+    if audit and audit.get("mutation_policy") == "READ_ONLY":
+        allowed_prefix = run.evidence_root.rstrip("/") + "/"
+        changed_files = completion_data["changed_files"]
+        if any(
+            not isinstance(path, str) or not path.startswith(allowed_prefix)
+            for path in changed_files
+        ):
+            raise ValueError("READ_ONLY_AUDIT_MUTATION_REJECTED")
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=run.workspace_identifier,

@@ -62,6 +62,7 @@ def classify_request(
     *,
     requested_kind: str | None = None,
     proposed_task_type: str | None = None,
+    proposed_work_type: str | None = None,
 ) -> dict[str, str]:
     """Validate a structured semantic proposal without inferring from keywords.
 
@@ -75,7 +76,13 @@ def classify_request(
     kind = (requested_kind or "WORK_ITEM").upper()
     if kind not in {"SPRINT", "WORK_ITEM"}:
         raise ValueError("SCOPE_KIND_INVALID")
-    task_type = (proposed_task_type or "FEATURE").upper()
+    if (
+        proposed_task_type
+        and proposed_work_type
+        and proposed_task_type.upper() != proposed_work_type.upper()
+    ):
+        raise ValueError("WORK_TYPE_MISMATCH")
+    task_type = (proposed_work_type or proposed_task_type or "FEATURE").upper()
     if task_type not in {
         "FEATURE",
         "BUGFIX",
@@ -87,9 +94,15 @@ def classify_request(
         "ONBOARDING",
         "SECURITY",
         "CONFIGURATION",
+        "AUDIT",
     }:
         raise ValueError("TASK_TYPE_INVALID")
-    return {"kind": kind, "task_type": task_type, "intent": text}
+    return {
+        "kind": kind,
+        "task_type": task_type,
+        "work_type": task_type,
+        "intent": text,
+    }
 
 
 def _identifier(project: Project, kind: str) -> str:
@@ -104,17 +117,26 @@ def propose_scope(
     kind: str | None = None,
     title: str | None = None,
     task_type: str | None = None,
+    work_type: str | None = None,
     execution_level: str = "TASK",
     risk_modifiers: list[str] | None = None,
+    audit_target: str | None = None,
+    audit_questions: list[str] | None = None,
+    required_inventory: list[str] | None = None,
+    required_classifications: list[str] | None = None,
+    mutation_policy: str | None = None,
+    repair_rule: str | None = None,
+    acceptance_checks: list[str] | None = None,
 ) -> ExecutableScope:
     classified = classify_request(
-        request, requested_kind=kind, proposed_task_type=task_type
+        request,
+        requested_kind=kind,
+        proposed_task_type=task_type,
+        proposed_work_type=work_type,
     )
     scope_kind = classified["kind"]
     level = "SPRINT" if scope_kind == "SPRINT" else execution_level.upper()
-    policy = resolve_policy(
-        level, (task_type or classified["task_type"]).upper(), risk_modifiers or []
-    )
+    policy = resolve_policy(level, classified["work_type"], risk_modifiers or [])
     identifier = _identifier(project, scope_kind)
     now = timezone.now().isoformat()
     record: dict[str, Any] = {
@@ -128,6 +150,7 @@ def propose_scope(
         "execution_authorization": "NONE",
         "execution_level": level,
         "task_type": (task_type or classified["task_type"]).upper(),
+        "work_type": classified["work_type"],
         "intent": classified["intent"],
         "risk_modifiers": sorted({item.upper() for item in risk_modifiers or []}),
         "policy": policy,
@@ -141,6 +164,27 @@ def propose_scope(
         if clarification_questions(classified["intent"])
         else "READY_FOR_CONFIRMATION",
     }
+    if classified["work_type"] == "AUDIT":
+        audit = {
+            "audit_target": audit_target or request.strip(),
+            "audit_questions": audit_questions or [],
+            "required_inventory": required_inventory or [],
+            "required_classifications": required_classifications or [],
+            "mutation_policy": (mutation_policy or "READ_ONLY").upper(),
+            "repair_rule": repair_rule
+            or "No repair without explicit REPAIR_ALLOWED policy.",
+            "acceptance_checks": acceptance_checks or [],
+        }
+        if audit["mutation_policy"] not in {"READ_ONLY", "REPAIR_ALLOWED"}:
+            raise ValueError("AUDIT_MUTATION_POLICY_INVALID")
+        if not all(
+            isinstance(item, str) and item.strip()
+            for key, value in audit.items()
+            if isinstance(value, list)
+            for item in value
+        ):
+            raise ValueError("AUDIT_CONFIGURATION_INVALID")
+        record["audit"] = audit
     record["proposal_hash"] = _proposal_hash(record)
     record["content_hash"] = canonical_hash(record)
     return ExecutableScope.objects.create(

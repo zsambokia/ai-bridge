@@ -298,6 +298,12 @@ These may remain part of the long-term product vision, but they must not distrac
    then prove a fresh Work Item through `conversation.confirm` rather than
    `scope.approve`;
 5. review the completed Sprint 009 autonomous execution and repair-loop evidence;
+
+6. Sprint 013: retain `SPRINT` and `WORK_ITEM` as the executable hierarchy,
+   introduce `AUDIT` as a governed work type, and make the existing `codex-cli`
+   provider binding explicit from contract generation through consumption and
+   dispatch. Dynamic provider management remains out of scope unless a later
+   assessment proves a genuine gap.
 6. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop;
 7. keep `.bridge/project.yaml` as the static Project definition;
 8. use the smallest sufficient tiered Execution Contract for every implementation, repair, migration, and recovery task.

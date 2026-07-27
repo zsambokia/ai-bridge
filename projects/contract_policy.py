@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 EXECUTION_LEVELS = frozenset({"HOTFIX", "BUGFIX", "TASK", "SPRINT", "EPIC"})
-TASK_TYPES = frozenset(
+WORK_TYPES = frozenset(
     {
         "FEATURE",
         "BUGFIX",
@@ -18,8 +18,12 @@ TASK_TYPES = frozenset(
         "ONBOARDING",
         "SECURITY",
         "CONFIGURATION",
+        "AUDIT",
     }
 )
+# ``task_type`` is the legacy persisted/API spelling.  New scopes expose the
+# canonical ``work_type`` as well, while retaining this alias for old records.
+TASK_TYPES = WORK_TYPES
 RISK_MODIFIERS = frozenset(
     {
         "PRODUCTION_IMPACT",

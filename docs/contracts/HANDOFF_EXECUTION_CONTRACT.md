@@ -608,6 +608,13 @@ The lifecycle is durable: `ISSUED → CONSUMED → COMPLETED`, with explicit
 `SUPERSEDED` and `REVOKED` alternatives. Completion binds the exact final commit
 SHA and one allowed closure state; it cannot be inferred from a passing test.
 
+For an Audit, `execution.work_type` is `AUDIT` and `execution.audit` preserves
+the approved audit target, questions, inventory, classifications, mutation
+policy, repair rule, and acceptance checks. This does not change the executable
+scope kind. The `provider_policy` object contains a selected provider identity
+and its eligible identities; a consumer must use the selected eligible identity
+and the durable consumption receipt binds that identity before dispatch.
+
 ## Sprint 010 provider-neutral contract authority
 
 For canonical Bridge scopes, schema `2.0` contracts contain the issuing system,

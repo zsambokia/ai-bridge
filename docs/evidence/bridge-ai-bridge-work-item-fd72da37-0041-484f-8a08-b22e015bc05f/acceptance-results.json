@@ -1,0 +1,19 @@
+{
+  "contract_id": "bridge:ai-bridge:contract:b88fcd0f-9120-43a2-968b-4dbdf6373511",
+  "scope": {
+    "identifier": "bridge:ai-bridge:work-item:fd72da37-0041-484f-8a08-b22e015bc05f",
+    "proposal_version": 1,
+    "content_hash": "b21723cbec900b01f71f464aa7f2611160f61960d869b0397b6b359e8fd4ae32",
+    "work_type": "AUDIT"
+  },
+  "assessment": {
+    "canonical_confirmation_path": "conversation.confirm",
+    "operational_provider_identities": ["codex-cli"],
+    "classification": "EXECUTION_PROVIDER_IS_HARD_CODED",
+    "provider_identity_bound_before_dispatch": true,
+    "unsupported_provider_fallback": false
+  },
+  "baseline": "0707aca6d8b1484e099128aa2d8d8c741b307d5e",
+  "target_branch": "main",
+  "terminal_state": "Provider execution finished; governed closure is submitted after final commit binding."
+}

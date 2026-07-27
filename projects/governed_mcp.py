@@ -323,6 +323,23 @@ _TOOLS.extend(
                     "request": {"type": "string", "minLength": 1, "maxLength": 4000},
                     "title": {"type": "string", "maxLength": 160},
                     "task_type": {"type": "string", "enum": sorted(TASK_TYPES)},
+                    "work_type": {"type": "string", "enum": sorted(TASK_TYPES)},
+                    "audit_target": {"type": "string", "maxLength": 4000},
+                    "audit_questions": {"type": "array", "items": {"type": "string"}},
+                    "required_inventory": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "required_classifications": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "mutation_policy": {
+                        "type": "string",
+                        "enum": ["READ_ONLY", "REPAIR_ALLOWED"],
+                    },
+                    "repair_rule": {"type": "string", "maxLength": 1000},
+                    "acceptance_checks": {"type": "array", "items": {"type": "string"}},
                     "execution_level": {
                         "type": "string",
                         "enum": sorted(EXECUTION_LEVELS),
@@ -937,7 +954,9 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
                 contract,
                 root,
                 expected_hash=contract.contract_hash,
-                provider_identity="codex-cli",
+                provider_identity=contract.payload["provider_policy"][
+                    "selected_provider_identity"
+                ],
                 observed_baseline=contract.payload["execution"]["baseline_commit"],
                 schema_version="2.0",
                 idempotency_key=f"conversation:{flow.token}",
@@ -1093,7 +1112,7 @@ def _complete_orchestration(
     contract = flow.contract
     if run is None or contract is None:
         raise ValueError("EXECUTION_NOT_STARTED")
-    if provider().status(run.provider_execution_id) != "FINISHED":
+    if provider(run.provider_name).status(run.provider_execution_id) != "FINISHED":
         raise ValueError("EXECUTION_STILL_RUNNING")
     completion_data = arguments["completion_data"]
     required = {
@@ -1443,7 +1462,7 @@ def invoke_public_tool(
                     ExecutionRun.Lifecycle.STARTING,
                 }:
                     raise ValueError("EXECUTION_NOT_CANCELLABLE")
-                provider().cancel(run.provider_execution_id)
+                provider(run.provider_name).cancel(run.provider_execution_id)
                 run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
                 run.current_phase = "CANCELLED"
                 run.save(update_fields=["lifecycle", "current_phase", "updated_at"])

@@ -418,8 +418,16 @@ def _propose(payload: dict[str, Any], root: Path, kind: str) -> dict[str, Any]:
             kind=kind,
             title=payload.get("title"),
             task_type=payload.get("task_type"),
+            work_type=payload.get("work_type"),
             execution_level=str(payload.get("execution_level", "TASK")),
             risk_modifiers=list(payload.get("risk_modifiers", [])),
+            audit_target=payload.get("audit_target"),
+            audit_questions=list(payload.get("audit_questions", [])),
+            required_inventory=list(payload.get("required_inventory", [])),
+            required_classifications=list(payload.get("required_classifications", [])),
+            mutation_policy=payload.get("mutation_policy"),
+            repair_rule=payload.get("repair_rule"),
+            acceptance_checks=list(payload.get("acceptance_checks", [])),
         )
         review = review_scope(scope)
         return {

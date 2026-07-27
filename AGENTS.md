@@ -38,6 +38,10 @@ already-existing durable approval reference. `scope.confirm_and_execute` is
 only for an explicit structured submission that includes the exact reviewed
 proposal version and hash.
 
+`AUDIT` is a work type, not an executable hierarchy level. `SPRINT` and
+`WORK_ITEM` remain the only executable scope kinds; an Audit uses the same
+proposal, confirmation, contract, execution, and evidence lifecycle.
+
 ## Main-only development
 
 During approved main-only development, execute on `main`. Before mutation,

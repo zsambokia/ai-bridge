@@ -92,3 +92,18 @@ consumption, and run records. `scope.orchestration_status` is read-only.
 `scope.complete_execution` requires a stopped provider, all-PASS gates,
 non-empty evidence manifest, changed files, and final commit SHA before it
 returns the evidence-backed completion message `Főnök, kész!`.
+
+## Audit work type and provider boundary (Sprint 013)
+
+`AUDIT` is accepted as `task_type` and `work_type` by the canonical proposal
+tools. It remains attached to a `SPRINT` or `WORK_ITEM`; it does not create a
+third executable scope kind. Audit proposals carry their target, questions,
+required inventory and classifications, mutation policy, repair rule, and
+acceptance checks in the normal proposal payload.
+
+The current operational provider inventory contains exactly `codex-cli`.
+Contract generation records it as `selected_provider_identity` and the sole
+eligible identity. `contract.consume` rejects a different identity, and
+execution resolves the receipted identity for start, status, and cancellation.
+Names that appear only in documentation are not advertised as operational
+providers.

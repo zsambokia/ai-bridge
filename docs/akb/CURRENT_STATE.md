@@ -161,3 +161,16 @@ confirmation to `conversation.confirm` and makes that high-level tool derive
 the authenticated caller binding, confirmation reference, and retry key. It
 does not introduce a second approval or execution lifecycle. Remote acceptance
 status and terminal evidence are recorded under `docs/evidence/sprint-012/`.
+
+## Sprint 013 governed provider-boundary audit
+
+Sprint 013 records that `conversation.confirm` remains the canonical
+conversational Product Owner confirmation path; `GovernanceApproval` and
+`ConversationOrchestration` preserve the durable approval and resumable
+orchestration records. `ExecutionContract` selects and allows only `codex-cli`;
+consumption records that exact provider identity before `ExecutionRun` obtains
+the fixed-argument Codex CLI adapter. An unavailable or differently named
+provider is rejected rather than falling back. The current single-provider
+implementation is intentionally classified as
+`EXECUTION_PROVIDER_IS_HARD_CODED`, not represented as a multi-provider
+capability.

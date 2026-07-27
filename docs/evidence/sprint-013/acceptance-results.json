@@ -1,0 +1,17 @@
+{
+  "sprint": "SPRINT_013_AUDIT_WORK_TYPE_AND_PROVIDER_EXECUTION_GAP",
+  "declared_baseline": "800e185d5bb7b2e23bf5c71de3f71ba5118a0feb",
+  "preflight_head": "0707aca6d8b1484e099128aa2d8d8c741b307d5e",
+  "scope_identifier": "bridge:ai-bridge:work-item:fd72da37-0041-484f-8a08-b22e015bc05f",
+  "proposal_hash": "263fd3c27392bcbb815014f5431294c845836d5f76c087830735bd26fbea9115",
+  "contract_identifier": "bridge:ai-bridge:contract:b88fcd0f-9120-43a2-968b-4dbdf6373511",
+  "orchestration_identifier": "95fed83f-0afc-4b84-93ff-745af08dd89b",
+  "execution_identifier": "619aa735-70b6-4bcc-b712-f51fc1d12560",
+  "provider": "codex-cli",
+  "classification": "EXECUTION_PROVIDER_IS_HARD_CODED",
+  "remote_confirmation": "PASS",
+  "idempotent_retry": "PASS",
+  "release_gates": "PASS — docs/evidence/sprint-013/RELEASE_GATE_RESULTS.md",
+  "final_commit_binding": "Recorded by the durable completion operation after the final commit is created.",
+  "credentials_persisted": false
+}

@@ -123,6 +123,14 @@ is the projection, implementation, and audit history; Django admin is the
 temporary diagnostic/recovery surface; and the execution provider performs
 only issued-contract work.
 
+Sprint 013 makes the provider boundary explicit in the governed record: the
+issued contract names `codex-cli` as both selected and eligible, and its
+consumption receipt is required before `ExecutionRun` resolves that same
+identity for dispatch, status, or cancellation. No provider-selection fallback
+exists. This is deliberately a hard-coded operational boundary, classified as
+`EXECUTION_PROVIDER_IS_HARD_CODED`; it is not an unimplemented dynamic-provider
+feature.
+
 ## Sprint 010 canonical scope authority
 
 `ExecutableScope` is the only authority for new executable Sprints and

@@ -94,3 +94,23 @@ def test_clarifications_create_a_new_confirmable_proposal_version(
     assert review["confirmation_eligible"] is True
     assert review["proposal_hash"] != initial["proposal_hash"]
     assert review["confirmation_prompt"] == "Jó lesz így?"
+
+
+@pytest.mark.django_db
+def test_audit_is_a_work_type_not_an_executable_scope_kind(project: Project) -> None:
+    scope = propose_scope(
+        project,
+        "Audit provider dispatch and repair only the proven gap.",
+        kind="WORK_ITEM",
+        work_type="AUDIT",
+        audit_target="projects.execution provider boundary",
+        audit_questions=["Which providers are operational?"],
+        required_inventory=["Codex CLI", "documented names"],
+        required_classifications=["EXECUTION_PROVIDER_IS_HARD_CODED"],
+        mutation_policy="REPAIR_ALLOWED",
+        repair_rule="Repair only the proven dispatch gap.",
+        acceptance_checks=["provider identity is contract-bound"],
+    )
+    assert scope.kind == "WORK_ITEM"
+    assert scope.record["work_type"] == "AUDIT"
+    assert scope.record["audit"]["mutation_policy"] == "REPAIR_ALLOWED"

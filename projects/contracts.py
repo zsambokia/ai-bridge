@@ -14,6 +14,7 @@ from uuid import uuid4
 from django.db import transaction
 from django.utils import timezone
 
+from .execution import provider
 from .execution_context import build_execution_context
 from .models import (
     ContractConsumption,
@@ -108,6 +109,7 @@ def generate_scope_execution_contract(
     )
     baseline = _head_sha(repository_root)
     record = scope.record
+    selected_provider = provider().name
     payload = {
         "schema_version": "2.0",
         "contract_id": handoff_identifier,
@@ -126,12 +128,15 @@ def generate_scope_execution_contract(
         "execution": {
             "execution_level": record["execution_level"],
             "task_type": record["task_type"],
+            "work_type": record.get("work_type", record["task_type"]),
             "intent": record["intent"],
             "target_branch": context.target_branch,
             "baseline_commit": baseline,
             "baseline_rule": "DESCENDANT_OF",
         },
         "provider_policy": {
+            "selected_provider_identity": selected_provider,
+            "eligible_provider_identities": [selected_provider],
             "provider_may_issue": False,
             "provider_may_consume_own_issue": False,
             "supported_schema_versions": ["2.0"],
@@ -145,6 +150,8 @@ def generate_scope_execution_contract(
         },
         "allowed_terminal_states": context.allowed_terminal_states,
     }
+    if "audit" in record:
+        payload["execution"]["audit"] = record["audit"]
     return ExecutionContract.objects.create(
         project=scope.project,
         handoff_identifier=handoff_identifier,
@@ -261,7 +268,12 @@ def consume_execution_contract(
         raise ValueError("CONSUMPTION_BASELINE_MISMATCH")
     if provider_identity == contract.payload.get("issuer", {}).get("issued_by"):
         raise ValueError("PROVIDER_SELF_AUTHORIZATION_REJECTED")
-    if schema_version not in contract.payload.get("provider_policy", {}).get(
+    provider_policy = contract.payload.get("provider_policy", {})
+    if provider_identity not in provider_policy.get(
+        "eligible_provider_identities", []
+    ) or provider_identity != provider_policy.get("selected_provider_identity"):
+        raise ValueError("PROVIDER_NOT_ELIGIBLE")
+    if schema_version not in provider_policy.get(
         "supported_schema_versions", [schema_version]
     ):
         raise ValueError("CONTRACT_SCHEMA_UNSUPPORTED")
