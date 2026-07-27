@@ -69,6 +69,11 @@ def credential_value(entry: ExecutionProvider) -> str:
     """Resolve a declared binding only at dispatch time and never serialize it."""
     if not entry.credential_binding:
         raise ValueError("PROVIDER_CREDENTIAL_BINDING_REQUIRED")
+    if (
+        entry.kind == ExecutionProvider.Kind.OPENAI
+        and entry.credential_binding != "OPENAI_API_KEY"
+    ):
+        raise ValueError("OPENAI_CREDENTIAL_BINDING_INVALID")
     value = os.environ.get(entry.credential_binding)
     if not value:
         raise ValueError("PROVIDER_CREDENTIAL_UNAVAILABLE")
@@ -259,6 +264,14 @@ def check_health(entry: ExecutionProvider) -> dict[str, object]:
         result = {
             "status": "HEALTHY" if ready else "UNAVAILABLE",
             "reason": None if ready else "codex executable unavailable",
+        }
+    elif (
+        entry.kind == ExecutionProvider.Kind.OPENAI
+        and entry.credential_binding != "OPENAI_API_KEY"
+    ):
+        result = {
+            "status": "MISCONFIGURED",
+            "reason": "OpenAI credential binding must be OPENAI_API_KEY",
         }
     elif not entry.credential_binding or not os.environ.get(entry.credential_binding):
         result = {"status": "UNAVAILABLE", "reason": "credential binding unavailable"}

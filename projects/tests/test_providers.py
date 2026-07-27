@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import pytest
+from django.core.exceptions import ValidationError
 
 from projects.governed_mcp import invoke_public_tool
 from projects.models import ExecutionProvider
-from projects.providers import check_health, public_provider, select_provider
+from projects.providers import (
+    check_health,
+    credential_value,
+    public_provider,
+    select_provider,
+)
 
 
 @pytest.mark.django_db
@@ -44,14 +50,17 @@ def test_public_projection_never_reveals_configuration_or_secret_reference() -> 
 
 
 @pytest.mark.django_db
-def test_health_check_is_safe_and_mcp_provider_tools_are_read_only() -> None:
+def test_health_check_is_safe_and_mcp_provider_tools_are_read_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     entry = ExecutionProvider.objects.create(
         provider_id="health-provider",
         name="Health provider",
         kind=ExecutionProvider.Kind.OPENAI,
         role=ExecutionProvider.Role.MODEL_API,
         adapter_key="health-provider-adapter",
-        credential_binding="ABSENT_PROVIDER_TOKEN",
+        credential_binding="OPENAI_API_KEY",
     )
     result = check_health(entry)
     entry.refresh_from_db()
@@ -60,3 +69,20 @@ def test_health_check_is_safe_and_mcp_provider_tools_are_read_only() -> None:
     response = invoke_public_tool("provider.get", {"provider_id": entry.provider_id})
     assert response["provider_id"] == entry.provider_id
     assert "credential_binding" not in response
+
+
+@pytest.mark.django_db
+def test_openai_provider_accepts_only_the_openai_environment_reference() -> None:
+    entry = ExecutionProvider(
+        provider_id="invalid-openai-provider",
+        name="Invalid OpenAI provider",
+        kind=ExecutionProvider.Kind.OPENAI,
+        role=ExecutionProvider.Role.MODEL_API,
+        adapter_key="invalid-openai-provider-adapter",
+        credential_binding="OTHER_API_KEY",
+    )
+
+    with pytest.raises(ValidationError, match="OPENAI_CREDENTIAL_BINDING_INVALID"):
+        entry.full_clean()
+    with pytest.raises(ValueError, match="OPENAI_CREDENTIAL_BINDING_INVALID"):
+        credential_value(entry)

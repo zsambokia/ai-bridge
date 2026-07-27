@@ -500,6 +500,12 @@ class ExecutionProvider(models.Model):
             r"[A-Z][A-Z0-9_]{2,127}", self.credential_binding
         ):
             raise ValidationError("CREDENTIAL_BINDING_REFERENCE_INVALID")
+        if (
+            self.kind == self.Kind.OPENAI
+            and self.credential_binding
+            and self.credential_binding != "OPENAI_API_KEY"
+        ):
+            raise ValidationError("OPENAI_CREDENTIAL_BINDING_INVALID")
         if not isinstance(self.configuration, dict) or not isinstance(
             self.capabilities, list
         ):
