@@ -57,6 +57,9 @@ def consumed_contract(
     monkeypatch.setattr(
         "projects.contracts._is_descendant_of", lambda root, ancestor, head: True
     )
+    monkeypatch.setattr(
+        "projects.execution.check_health", lambda entry: {"status": "HEALTHY"}
+    )
     assert bootstrap_project(definition, "docs/sprints/SPRINT_003.md", tmp_path).success
     project = Project.objects.get(project_id="generic-project")
     scope = propose_scope(
@@ -136,6 +139,36 @@ def test_start_recovers_an_unbound_starting_run(
     assert list(run.events.values_list("sequence", "event_type")) == [
         (1, "START_RECOVERED"),
         (2, "EXECUTOR_STARTED"),
+    ]
+
+
+@pytest.mark.django_db
+def test_start_retries_a_transient_provider_launch_once(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+
+    class TransientProvider(StubProvider):
+        launches = 0
+
+        def start(self, *, repository: Path, prompt: str) -> ProviderStart:
+            self.launches += 1
+            if self.launches == 1:
+                raise ValueError("CODEX_SUBPROCESS_EXITED_EARLY")
+            return ProviderStart("provider-43", str(repository))
+
+    transient = TransientProvider()
+    monkeypatch.setattr("projects.execution.provider", lambda identity=None: transient)
+
+    run = start_run(contract, request, root)
+
+    assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert run.attempt_count == 2
+    assert list(run.events.values_list("sequence", "event_type")) == [
+        (1, "PREFLIGHT_COMPLETED"),
+        (2, "PROVIDER_START_RETRYING"),
+        (3, "EXECUTOR_STARTED"),
     ]
 
 

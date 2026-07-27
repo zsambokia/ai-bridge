@@ -784,7 +784,9 @@ def _derived_conversation_confirmation(
         json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return {
-        **arguments,
+        "project_id": arguments["project_id"],
+        "scope_identifier": arguments["scope_identifier"],
+        "confirmation_text": "igen",
         "product_owner_identity": product_owner_identity,
         "confirmation_reference": f"conversation-confirmation:v1:{digest}",
         "idempotency_key": f"conversation-confirm:v1:{digest}",
@@ -865,7 +867,27 @@ def _idempotent(
     ).first()
     if record:
         if record.request_fingerprint != fingerprint:
-            raise ValueError("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST")
+            # Earlier conversation confirmations stored their fingerprint before
+            # the public reply was reduced to its governed, caller-bound form.
+            # Permit that one-way normalization only when the durable flow proves
+            # that this caller, project, scope and confirmation reference are the
+            # same conversation.  All other key reuse remains a hard failure.
+            if tool == "conversation.confirm":
+                flow = ConversationOrchestration.objects.filter(
+                    scope__project__project_id=arguments["project_id"],
+                    scope__identifier=arguments["scope_identifier"],
+                    confirmation_reference=arguments["confirmation_reference"],
+                    product_owner_identity=arguments["product_owner_identity"],
+                ).first()
+                if flow is not None and record.result.get("orchestration_token") == str(
+                    flow.token
+                ):
+                    record.request_fingerprint = fingerprint
+                    record.save(update_fields=["request_fingerprint"])
+                else:
+                    raise ValueError("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST")
+            else:
+                raise ValueError("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST")
         return record.result
     return None
 
@@ -997,6 +1019,13 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
         }:
             raise ValueError("CONTRACT_LIFECYCLE_NOT_EXECUTABLE")
         _transition(flow, caller, "EXECUTION", "CONTRACT_CONSUMED")
+        persisted_run = flow.run if flow.run_id is not None else None
+        if (
+            persisted_run is not None
+            and persisted_run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+        ):
+            flow.run = None
+            flow.save(update_fields=["run", "updated_at"])
         if flow.run_id is None:
             request, _ = ExecutionStartRequest.objects.get_or_create(
                 contract=contract,
@@ -1016,7 +1045,13 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
                     "contract": contract.handoff_identifier,
                 },
             )
-            flow.run = start_run(contract, request, root, audit_event_id=audit.pk)
+            try:
+                flow.run = start_run(contract, request, root, audit_event_id=audit.pk)
+            except (OSError, ValueError):
+                flow.run = ExecutionRun.objects.filter(contract=contract).first()
+                if flow.run is not None:
+                    flow.save(update_fields=["run", "updated_at"])
+                raise
             request.status = "EXECUTION_STARTED"
             request.next_action = "Provider result must be verified before completion."
             request.save(update_fields=["status", "next_action"])
@@ -1214,6 +1249,21 @@ def invoke_public_tool(
         arguments = _derived_conversation_confirmation(arguments, caller)
     replay = _idempotent(caller, name, arguments)
     if replay is not None:
+        if name == "conversation.confirm":
+            replay_project = _project(arguments)
+            flow = ConversationOrchestration.objects.filter(
+                scope__project=replay_project,
+                confirmation_reference=arguments["confirmation_reference"],
+            ).first()
+            if flow is not None and flow.status == "BLOCKED":
+                _advance_orchestration(flow, caller)
+                resumed = _orchestration_result(flow)
+                McpIdempotencyRecord.objects.filter(
+                    caller=caller,
+                    tool_name=name,
+                    key=arguments["idempotency_key"],
+                ).update(result=resumed)
+                return {**resumed, "idempotent_replay": True, "resumed": True}
         return {**replay, "idempotent_replay": True}
     project = _project(arguments) if "project_id" in arguments else None
     try:

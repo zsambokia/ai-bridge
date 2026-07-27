@@ -21,7 +21,14 @@ from .models import (
 from .models import (
     ExecutionProvider as ExecutionProviderRecord,
 )
-from .providers import CodexCliAdapter, ProviderStart, adapter_for, select_provider
+from .providers import (
+    CodexCliAdapter,
+    ProviderStart,
+    adapter_for,
+    check_health,
+    mark_runtime_unavailable,
+    select_provider,
+)
 
 ACTIVE_STATES = {
     ExecutionRun.Lifecycle.REQUESTED,
@@ -33,6 +40,7 @@ ACTIVE_STATES = {
     ExecutionRun.Lifecycle.CLOSING,
 }
 SECRET_MARKERS = ("token", "secret", "password", "authorization", "bearer")
+MAX_PROVIDER_START_ATTEMPTS = 2
 
 
 class ExecutionProvider(Protocol):
@@ -123,6 +131,17 @@ def start_run(
         .order_by("id")
         .first()
     )
+    if recoverable_run is None:
+        recoverable_run = (
+            ExecutionRun.objects.filter(
+                contract=contract,
+                lifecycle=ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+                provider_execution_id="",
+                attempt_count__lt=MAX_PROVIDER_START_ATTEMPTS,
+            )
+            .order_by("id")
+            .first()
+        )
     active_runs = ExecutionRun.objects.filter(
         contract__project=contract.project,
         branch=execution["target_branch"],
@@ -160,22 +179,69 @@ def start_run(
         )
     else:
         run = recoverable_run
-        add_event(run, "START_RECOVERED", reason="unbound starting run")
-    try:
-        started = selected_provider.start(repository=root, prompt=_prompt(contract))
-    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        run.lifecycle = ExecutionRun.Lifecycle.STARTING
+        run.current_phase = "STARTING"
+        run.current_blocker = {}
+        run.ended_at = None
+        run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+        add_event(run, "START_RECOVERED", reason="resuming persisted blocked run")
+
+    started: ProviderStart | None = None
+    failure: Exception | None = None
+    for attempt in range(1, MAX_PROVIDER_START_ATTEMPTS + 1):
+        run.attempt_count += 1
+        run.save(update_fields=["attempt_count", "updated_at"])
+        try:
+            readiness = check_health(provider_record)
+            if readiness["status"] != "HEALTHY":
+                raise ValueError("CODEX_RUNTIME_NOT_READY")
+            started = selected_provider.start(repository=root, prompt=_prompt(contract))
+            break
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            failure = exc
+            retryable = str(exc) in {
+                "CODEX_SUBPROCESS_EXITED_EARLY",
+                "CODEX_RUNTIME_EXECUTABLE_UNAVAILABLE",
+            }
+            if retryable and attempt < MAX_PROVIDER_START_ATTEMPTS:
+                add_event(
+                    run,
+                    "PROVIDER_START_RETRYING",
+                    attempt=attempt,
+                    reason=str(exc)[:100],
+                )
+                continue
+            break
+    if started is None:
+        assert failure is not None
+        failure_text = str(failure)
+        mark_runtime_unavailable(provider_record, failure_text)
         run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
         run.current_blocker = {
             "category": "unavailable external input",
             "question": "Restore Codex provider access.",
-            "evidence": str(exc)[:300],
+            "evidence": failure_text[:300],
         }
         run.ended_at = timezone.now()
         run.save(
             update_fields=["lifecycle", "current_blocker", "ended_at", "updated_at"]
         )
-        add_event(run, "PROVIDER_FAILURE", classification="unavailable external input")
-        raise ValueError("EXECUTOR_START_FAILED") from exc
+        add_event(
+            run,
+            "PROVIDER_FAILURE",
+            classification="unavailable external input",
+            reason=failure_text[:100],
+            readiness_invalidated=True,
+        )
+        raise ValueError("EXECUTOR_START_FAILED") from failure
     run.provider_execution_id = started.execution_id
     run.workspace_identifier = started.workspace_identifier
     run.lifecycle = ExecutionRun.Lifecycle.RUNNING
