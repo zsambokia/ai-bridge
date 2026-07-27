@@ -1050,7 +1050,7 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
                 flow.run = start_run(
                     contract,
                     request,
-                    project_repository_root(scope.project, root),
+                    root,
                     audit_event_id=audit.pk,
                 )
             except (OSError, ValueError):
@@ -1541,7 +1541,7 @@ def invoke_public_tool(
             run = start_run(
                 contract,
                 req,
-                project_repository_root(contract.project, Path(settings.BASE_DIR)),
+                Path(settings.BASE_DIR),
                 audit_event_id=dispatch_audit.pk,
             )
             req.status = "EXECUTION_STARTED"

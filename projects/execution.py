@@ -18,9 +18,7 @@ from .models import (
     ExecutionRun,
     ExecutionStartRequest,
 )
-from .models import (
-    ExecutionProvider as ExecutionProviderRecord,
-)
+from .models import ExecutionProvider as ExecutionProviderRecord
 from .providers import (
     CodexCliAdapter,
     ProviderStart,
@@ -29,6 +27,7 @@ from .providers import (
     mark_runtime_unavailable,
     select_provider,
 )
+from .services import project_repository_root
 
 ACTIVE_STATES = {
     ExecutionRun.Lifecycle.REQUESTED,
@@ -109,7 +108,7 @@ def _prompt(contract: ExecutionContract) -> str:
 def start_run(
     contract: ExecutionContract,
     request: ExecutionStartRequest,
-    root: Path,
+    platform_root: Path,
     audit_event_id: int | None = None,
 ) -> ExecutionRun:
     """Persist authorization and ownership before an external start is active."""
@@ -120,7 +119,10 @@ def start_run(
         raise ValueError("CONSUMPTION_RECEIPT_REQUIRED")
     from .contracts import validate_issued_execution_contract
 
-    validate_issued_execution_contract(contract, root)
+    # Scope authority is published by AI Bridge, while the provider must run in
+    # the Project registry's resolved workspace.  Keep those roots distinct.
+    validate_issued_execution_contract(contract, platform_root)
+    workspace_root = project_repository_root(contract.project, platform_root)
     execution = contract.payload["execution"]
     recoverable_run = (
         ExecutionRun.objects.filter(
@@ -166,7 +168,7 @@ def start_run(
             branch=execution["target_branch"],
             baseline_commit=execution["baseline_commit"],
             contract_hash=contract.contract_hash,
-            workspace_identifier=str(root),
+            workspace_identifier=str(workspace_root),
             provider_name=selected_provider.name,
             audit_event_id=audit_event_id,
             lifecycle=ExecutionRun.Lifecycle.STARTING,
@@ -203,7 +205,9 @@ def start_run(
             readiness = check_health(provider_record)
             if readiness["status"] != "HEALTHY":
                 raise ValueError("CODEX_RUNTIME_NOT_READY")
-            started = selected_provider.start(repository=root, prompt=_prompt(contract))
+            started = selected_provider.start(
+                repository=workspace_root, prompt=_prompt(contract)
+            )
             break
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             failure = exc
