@@ -294,11 +294,14 @@ These may remain part of the long-term product vision, but they must not distrac
 3. use Sprint 011's conversational Product Owner confirmation flow as the normal
    entry point for new Work Items and Sprints; its one-time Sprint bootstrap is
    retired after the canonical Sprint record is closed;
-4. review the completed Sprint 009 autonomous execution and repair-loop evidence;
-5. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop;
-6. keep `.bridge/project.yaml` as the static Project definition;
-7. use the smallest sufficient tiered Execution Contract for every implementation, repair, migration, and recovery task.
-8. use Bridge-managed canonical Sprint or Work Item scope records for all new executable work; legacy Markdown is read-only history.
+4. deploy and refresh the Sprint 012 conversational confirmation tool surface,
+   then prove a fresh Work Item through `conversation.confirm` rather than
+   `scope.approve`;
+5. review the completed Sprint 009 autonomous execution and repair-loop evidence;
+6. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop;
+7. keep `.bridge/project.yaml` as the static Project definition;
+8. use the smallest sufficient tiered Execution Contract for every implementation, repair, migration, and recovery task.
+9. use Bridge-managed canonical Sprint or Work Item scope records for all new executable work; legacy Markdown is read-only history.
 
 ## 7. Roadmap success criterion
 

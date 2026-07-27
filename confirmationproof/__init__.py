@@ -1,0 +1,1 @@
+"""Confirmation Proof Django application."""

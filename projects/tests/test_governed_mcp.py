@@ -15,6 +15,7 @@ from projects.governed_mcp import (
 )
 from projects.models import (
     ConversationOrchestration,
+    ExecutableScope,
     ExecutionContract,
     GovernanceApproval,
     McpAuditEvent,
@@ -36,6 +37,8 @@ def test_public_registry_is_versioned_unique_and_schema_bounded() -> None:
         "akb.search",
         "execution.prepare",
         "contract.issue",
+        "conversation.confirm",
+        "scope.confirm_and_execute",
     }.issubset({tool["name"] for tool in tools})
     assert all(tool["inputSchema"]["additionalProperties"] is False for tool in tools)
     assert (
@@ -212,17 +215,41 @@ def test_conversational_confirmation_binds_the_current_exact_review(
         {
             "project_id": project.project_id,
             "scope_identifier": scope.identifier,
-            "confirmation_text": "Igen.",
-            "product_owner_identity": "Product Owner",
-            "confirmation_reference": "PO-conversation-1",
-            "idempotency_key": "conversation-confirm-123",
+            "confirmation_text": "Igen, jó lesz.",
         },
+        caller="chatgpt-connector-principal",
     )
 
     flow = ConversationOrchestration.objects.get(scope=scope)
     assert result["orchestration_token"] == str(flow.token)
     assert flow.proposal_hash == review["proposal_hash"]
     assert flow.proposal_version == review["proposal_version"]
+    assert flow.product_owner_identity.startswith("authenticated-mcp-caller:")
+    assert flow.confirmation_reference.startswith("conversation-confirmation:v1:")
+    assert (
+        GovernanceApproval.objects.filter(
+            scope=scope,
+            reference=flow.confirmation_reference,
+            approved_action="AUTHORIZE_EXECUTION",
+        ).count()
+        == 1
+    )
+    # A retry arrives after the proposal has left PROPOSED; it must replay the
+    # existing durable flow instead of asking for another approval.
+    scope.status = ExecutableScope.Status.APPROVED
+    scope.save(update_fields=["status"])
+    assert (
+        invoke_public_tool(
+            "conversation.confirm",
+            {
+                "project_id": project.project_id,
+                "scope_identifier": scope.identifier,
+                "confirmation_text": "Igen, jó lesz.",
+            },
+            caller="chatgpt-connector-principal",
+        )["idempotent_replay"]
+        is True
+    )
     with pytest.raises(ValueError, match="PRODUCT_OWNER_CONFIRMATION_REQUIRED"):
         invoke_public_tool(
             "conversation.confirm",
@@ -230,9 +257,40 @@ def test_conversational_confirmation_binds_the_current_exact_review(
                 "project_id": project.project_id,
                 "scope_identifier": scope.identifier,
                 "confirmation_text": "Maybe later",
-                "product_owner_identity": "Product Owner",
-                "confirmation_reference": "PO-conversation-2",
-                "idempotency_key": "conversation-reject-123",
+            },
+        )
+
+
+@pytest.mark.django_db
+def test_review_routes_an_eligible_product_owner_to_simple_confirmation() -> None:
+    project = Project.objects.create(
+        project_id="review-routing-project",
+        display_name="Review Routing Project",
+        repository_full_name="example/review-routing-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Create confirmationproof.", kind="WORK_ITEM")
+    review = invoke_public_tool(
+        "scope.review",
+        {"project_id": project.project_id, "scope_identifier": scope.identifier},
+    )
+    assert review["next_tool"] == "conversation.confirm"
+    assert review["required_user_input"] == ["confirmation_text"]
+    confirm_schema = TOOLS["conversation.confirm"]["inputSchema"]
+    assert confirm_schema["required"] == [
+        "project_id",
+        "scope_identifier",
+        "confirmation_text",
+    ]
+    with pytest.raises(ValueError, match="unknown property: product_owner_identity"):
+        invoke_public_tool(
+            "conversation.confirm",
+            {
+                "project_id": project.project_id,
+                "scope_identifier": scope.identifier,
+                "confirmation_text": "Igen.",
+                "product_owner_identity": "forged",
             },
         )
 

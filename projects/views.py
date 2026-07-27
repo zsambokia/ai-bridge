@@ -80,7 +80,7 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
     ).hexdigest()
     try:
         message = json.loads(request.body)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return _error(None, -32700, "Parse error.")
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
         return _error(None, -32600, "JSON-RPC 2.0 object required.")

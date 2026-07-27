@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "core",
     "projects",
     "storybook.apps.StorybookConfig",
+    "confirmationproof.apps.ConfirmationProofConfig",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

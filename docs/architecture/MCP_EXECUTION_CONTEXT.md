@@ -108,6 +108,15 @@ services. Every transition remains separately auditable; retries resume the
 same orchestration, contract, and run. Completion requires a stopped provider,
 all Release Gates, and recorded evidence.
 
+Sprint 012 confirms that this is the sole conversational approval architecture:
+`conversation.confirm` is the high-level entry point and derives an auditable
+binding, confirmation reference, and deterministic retry key from the
+authenticated MCP caller and exact current review. `scope.confirm_and_execute`
+remains the structured entry point, while `scope.approve` only binds a
+pre-existing approval reference. A review explicitly routes an eligible
+conversation to `conversation.confirm`; no parallel approval authority or
+lifecycle is introduced.
+
 Bridge DB is live lifecycle and canonical structured state; conversation is
 Product Owner intent, review, clarification, confirmation, and result; GitHub
 is the projection, implementation, and audit history; Django admin is the

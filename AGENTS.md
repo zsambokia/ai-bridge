@@ -30,6 +30,14 @@ introducing new ones. Ordinary configuration, dependency, test, lint, type,
 migration, evidence, and documentation failures follow `DETECT → DIAGNOSE →
 REPAIR → RERUN`; they do not require a Product Owner decision.
 
+For a reviewed, confirmation-eligible scope, use `conversation.confirm` as the
+high-level conversational Product Owner entry point. It derives the caller
+binding, confirmation reference, and deterministic retry key. Do not route an
+affirmative message to `scope.approve`: that lower-level operation binds an
+already-existing durable approval reference. `scope.confirm_and_execute` is
+only for an explicit structured submission that includes the exact reviewed
+proposal version and hash.
+
 ## Main-only development
 
 During approved main-only development, execute on `main`. Before mutation,

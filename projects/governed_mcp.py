@@ -42,7 +42,7 @@ from .scopes import (
     review_scope,
 )
 
-TOOL_SURFACE_VERSION = "2026-07-26.6"
+TOOL_SURFACE_VERSION = "2026-07-27.1"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -56,6 +56,7 @@ MUTATING = {
 }
 _PRODUCT_OWNER_CONFIRMATIONS = {
     "igen",
+    "igen jo lesz",
     "jo lesz igy",
     "mehet",
     "rendben csinald meg",
@@ -390,7 +391,11 @@ _TOOLS.extend(
         ),
         _tool(
             "scope.confirm_and_execute",
-            "Confirm a reviewed proposal and dispatch its governed execution.",
+            (
+                "Advanced structured confirmation: bind a reviewed proposal with "
+                "its already-displayed version, hash, and durable Product Owner "
+                "context."
+            ),
             EXECUTION_BOUNDARY,
             {
                 **_PROJECT,
@@ -421,31 +426,22 @@ _TOOLS.extend(
         ),
         _tool(
             "conversation.confirm",
-            "Bind a Product Owner reply to the exact pending proposal.",
+            (
+                "Confirm the exact pending proposal from an authenticated Product "
+                "Owner reply. Supply only the displayed scope and affirmative "
+                "reply; identity, confirmation reference, proposal binding, and "
+                "retry key are derived by the governed service."
+            ),
             EXECUTION_BOUNDARY,
             {
                 **_PROJECT,
                 "scope_identifier": {"type": "string", "minLength": 1},
                 "confirmation_text": {"type": "string", "minLength": 1},
-                "product_owner_identity": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 255,
-                },
-                "confirmation_reference": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 255,
-                },
-                **_IDEMPOTENCY,
             },
             [
                 "project_id",
                 "scope_identifier",
                 "confirmation_text",
-                "product_owner_identity",
-                "confirmation_reference",
-                "idempotency_key",
             ],
         ),
         _tool(
@@ -694,6 +690,60 @@ def _project(arguments: dict[str, Any]) -> Project:
         )
     except Project.DoesNotExist:
         raise ValueError("PROJECT_NOT_VISIBLE: select a ready visible project.")
+
+
+def _derived_conversation_confirmation(
+    arguments: dict[str, Any], caller: str
+) -> dict[str, Any]:
+    """Bind a simple conversational reply to authenticated MCP request context.
+
+    The public tool intentionally accepts no caller-controlled approval identity,
+    reference, proposal version/hash, or idempotency key.  A stable fingerprint
+    of the authenticated MCP connection and exact current proposal produces all
+    durable values before the ordinary canonical orchestration is entered.
+    """
+    if _normalise_confirmation(arguments["confirmation_text"]) not in (
+        _PRODUCT_OWNER_CONFIRMATIONS
+    ):
+        raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
+    project = _project(arguments)
+    scope = ExecutableScope.objects.get(
+        project=project, identifier=arguments["scope_identifier"]
+    )
+    caller_fingerprint = hashlib.sha256(caller.encode("utf-8")).hexdigest()
+    product_owner_identity = f"authenticated-mcp-caller:{caller_fingerprint}"
+    existing = (
+        ConversationOrchestration.objects.filter(
+            scope=scope, product_owner_identity=product_owner_identity
+        )
+        .order_by("created_at")
+        .first()
+    )
+    if existing is not None:
+        proposal_version = existing.proposal_version
+        proposal_hash = existing.proposal_hash
+    else:
+        review = review_scope(scope)
+        if not review["confirmation_eligible"]:
+            raise ValueError("CLARIFICATION_REQUIRED")
+        proposal_version = review["proposal_version"]
+        proposal_hash = review["proposal_hash"]
+    binding = {
+        "caller": caller_fingerprint,
+        "project_id": project.project_id,
+        "scope_identifier": scope.identifier,
+        "proposal_version": proposal_version,
+        "proposal_hash": proposal_hash,
+    }
+    digest = hashlib.sha256(
+        json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {
+        **arguments,
+        "product_owner_identity": product_owner_identity,
+        "confirmation_reference": f"conversation-confirmation:v1:{digest}",
+        "idempotency_key": f"conversation-confirm:v1:{digest}",
+    }
 
 
 def _approval(
@@ -1113,6 +1163,8 @@ def invoke_public_tool(
     tool = TOOLS[name]
     schema = tool["inputSchema"]
     _validate_arguments(schema, arguments)
+    if name == "conversation.confirm":
+        arguments = _derived_conversation_confirmation(arguments, caller)
     replay = _idempotent(caller, name, arguments)
     if replay is not None:
         return {**replay, "idempotent_replay": True}
@@ -1214,9 +1266,18 @@ def invoke_public_tool(
             scope = ExecutableScope.objects.get(
                 identifier=arguments["scope_identifier"], project=project
             )
+            review = review_scope(scope)
             result = {
                 "status": "PROPOSAL_REVIEW",
-                "proposal_review": review_scope(scope),
+                "project_id": project.project_id,
+                "scope_identifier": scope.identifier,
+                "proposal_review": review,
+                "next_tool": (
+                    "conversation.confirm" if review["confirmation_eligible"] else None
+                ),
+                "required_user_input": (
+                    ["confirmation_text"] if review["confirmation_eligible"] else []
+                ),
             }
         elif name == "scope.answer_clarifications":
             assert project is not None

@@ -31,9 +31,9 @@ The deployment-safe default allows the two approved Cloudflare tunnel hosts:
 with `DJANGO_ALLOWED_HOSTS` (comma-separated). Wildcard hosts are rejected.
 
 `POST /mcp/` is an authenticated Streamable HTTP MCP endpoint. It implements
-`initialize`, `tools/list`, and `tools/call`, and currently exposes the
-read-only `factory.get_status` tool. Configure `MCP_API_TOKEN` before starting
-the service; a missing token fails closed. See the
+`initialize`, `tools/list`, and `tools/call`, and exposes the versioned
+governed tool registry. Configure `MCP_API_TOKEN` before starting the service;
+a missing token fails closed. See the
 [ChatGPT connection guide](docs/integrations/CHATGPT_MCP_CONNECTION.md) and
 [MCP architecture](docs/architecture/MCP_EXECUTION_CONTEXT.md).
 
@@ -62,12 +62,16 @@ new work.
 ## Conversational Product Owner flow
 
 Sprint 011 adds the normal Product Owner path: state the outcome, review the
-versioned proposal (including its exact hash), and confirm once. The
-conversation adapter binds that confirmation to the displayed proposal; Bridge
-then independently records approval, publication, preparation, contract
-generation, validation, issuance, consumption, provider dispatch, and
-completion. It asks again only for a material change, a real blocker, or new
-authority. See the [tool reference](docs/integrations/BRIDGE_MCP_TOOL_REFERENCE.md).
+versioned proposal (including its exact hash), and confirm once. For an
+eligible review, `conversation.confirm` is the explicit next tool and accepts
+only the affirmative text. Bridge derives the authenticated caller binding,
+confirmation reference, and retry key, then records approval, publication,
+preparation, contract generation, validation, issuance, consumption, provider
+dispatch, and completion. `scope.approve` is not a conversational entry point:
+it binds an already-existing durable approval reference.
+`scope.confirm_and_execute` remains the explicit structured entry point for a
+client that has already displayed the exact proposal version and hash. See the
+[tool reference](docs/integrations/BRIDGE_MCP_TOOL_REFERENCE.md).
 
 ## Verification
 

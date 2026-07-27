@@ -8,7 +8,7 @@
 | MCP endpoint | `https://stage.artificial-software-factory.com/mcp/` |
 | Transport | Streamable HTTP (MCP protocol `2025-03-26`) |
 | Staging authentication | `Authorization: Bearer <MCP_API_TOKEN>` |
-| Discovered tool | `factory.get_status` |
+| Discovered tools | Versioned governed registry; see `BRIDGE_MCP_TOOL_REFERENCE.md` |
 
 The endpoint is a remote MCP server, not a browser login endpoint. It accepts
 JSON-RPC 2.0 requests and returns JSON for all protocol and authentication
@@ -45,7 +45,8 @@ Cloudflare Tunnel configuration, request URLs, screenshots, or prompts.
 3. Select Streamable HTTP if the UI requests a transport.
 4. Configure the app's supported Bearer authorization credential with the
    current `MCP_API_TOKEN`. Do not configure a Cloudflare Tunnel token here.
-5. Run the UI's tool scan. It must discover `factory.get_status` with no input.
+5. Run the UI's tool scan. It must discover the governed registry, including
+   `scope.review`, `conversation.confirm`, and `scope.confirm_and_execute`.
 6. In a new chat, invoke: `Use factory.get_status and summarize the current AI
    Bridge project status.` Approve the read-only tool request if the workspace
    policy asks for approval.
@@ -57,10 +58,11 @@ tool discovery, tool-call approval, and the security model:
 ## Authorization and operations
 
 `MCP_API_TOKEN` authenticates the MCP client; it is not an end-user identity or
-authorization grant. The current public registry is intentionally restricted
-to the read-only `factory.get_status` capability. Authentication therefore
-permits access only to that least-privilege surface. Future write tools require
-a separate approved authorization design and Sprint.
+unbounded authorization grant. The governed registry enforces project scope,
+schema validation, audit, idempotency, durable approval, and execution
+boundaries server-side. For an eligible review, ChatGPT must invoke
+`conversation.confirm` only after the Product Owner's affirmative reply; it
+must not use lower-level `scope.approve` as a fallback.
 
 Rotate the token by generating a replacement, updating the deployment secret,
 restarting/redeploying the service, updating the ChatGPT credential, and
@@ -101,7 +103,7 @@ approval record. The complete inventory is in `BRIDGE_MCP_TOOL_REFERENCE.md`.
 | Host rejection | Configure only the approved hostname in `DJANGO_ALLOWED_HOSTS`; do not use wildcards. |
 | CSRF HTML or login page | A deployed old version/proxy is handling the request; the MCP route itself is CSRF-exempt and JSON-only. |
 | Invalid MCP response | Confirm JSON-RPC 2.0 with `initialize` before `tools/list`/`tools/call`, and preserve the protocol version. |
-| No tools discovered | Rescan after valid authentication; expect exactly `factory.get_status`. |
+| No tools discovered or stale tools | Refresh/re-scan after valid authentication; verify `tools/list` includes `conversation.confirm` and the current tool-surface version. |
 | OAuth redirect mismatch | OAuth is not enabled in this staging proof; when production OAuth is introduced, register the exact HTTPS redirect URI. |
 
 ## Product Owner acceptance

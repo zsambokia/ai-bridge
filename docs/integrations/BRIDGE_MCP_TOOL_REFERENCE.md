@@ -66,17 +66,26 @@ new contract. `contract.complete` requires final commit, allowed closure state,
 execution result, non-empty gates and evidence manifest, changed files and a
 failure classification from a matching terminal execution run.
 
-## Conversational confirmation (Sprint 011)
+## Conversational confirmation (Sprint 011, repaired in Sprint 012)
 
 `scope.review` returns the complete pending proposal, immutable version and
 SHA-256 hash, policy, acceptance checks, and Release Gates. Clarification
 answers are recorded through `scope.answer_clarifications`; a material answer
-creates a new version and hash. `conversation.confirm` accepts a documented
-Product Owner affirmative phrase and binds the exact current review. Clients
-that already displayed the values may call `scope.confirm_and_execute` with the
-exact version and hash. Both require Product Owner identity, confirmation
-reference, and idempotency key; stale versions, unresolved clarification, and
-unbound confirmation are rejected.
+creates a new version and hash. For an eligible review it also returns
+`next_tool: conversation.confirm` and `required_user_input:
+["confirmation_text"]`. `conversation.confirm` is the high-level
+conversational approval entry point: it accepts the Product Owner's documented
+affirmative phrase and derives its authenticated caller binding, durable
+confirmation reference, and deterministic retry key server-side. It binds the
+exact current review.
+
+`scope.confirm_and_execute` is the explicit structured orchestration entry
+point for clients that have already displayed and submit the exact version and
+hash plus their durable identity/reference/retry values. `scope.approve` is a
+lower-level approval-binding operation and requires an already-existing durable
+approval reference; it is not a fallback for conversational confirmation.
+Stale versions, unresolved clarification, and unbound confirmation are
+rejected.
 
 The orchestrator records separate approval, publication, preparation, contract,
 consumption, and run records. `scope.orchestration_status` is read-only.

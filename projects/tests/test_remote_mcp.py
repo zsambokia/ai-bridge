@@ -305,6 +305,15 @@ def test_authentication_and_protocol_failures_are_json_not_html() -> None:
     assert malformed.status_code == 400
     assert malformed.json()["error"]["code"] == -32600
 
+    invalid_utf8 = client.post(
+        "/mcp/",
+        data=b'{"confirmation_text":"Igen, j\xf3 lesz."}',
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {TOKEN}",
+    )
+    assert invalid_utf8.status_code == 400
+    assert invalid_utf8.json()["error"]["code"] == -32700
+
     wrong_method = client.get("/mcp/", HTTP_AUTHORIZATION=f"Bearer {TOKEN}")
     assert wrong_method.status_code == 405
     assert wrong_method["Content-Type"].startswith("application/json")

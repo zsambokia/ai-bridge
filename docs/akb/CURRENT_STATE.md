@@ -149,3 +149,15 @@ Sprint 011 introduces a durable conversational Product Owner confirmation path.
 The one-time external bootstrap authority applies only to Sprint 011 itself. The
 Storybook Work Item followed its own exact proposal-hash confirmation and the
 ordinary approval, publication, contract, provider, evidence, and completion flow.
+
+## Sprint 012 conversational routing assessment and repair
+
+Sprint 012 assessed the existing `conversation.confirm` and
+`ConversationOrchestration` path before changing it. The canonical services
+already existed; the failed conversation selected lower-level `scope.approve`,
+which correctly returned `APPROVAL_REQUIRED` because no durable approval
+reference existed. The repair makes `scope.review` explicitly route eligible
+confirmation to `conversation.confirm` and makes that high-level tool derive
+the authenticated caller binding, confirmation reference, and retry key. It
+does not introduce a second approval or execution lifecycle. Remote acceptance
+status and terminal evidence are recorded under `docs/evidence/sprint-012/`.
