@@ -1,0 +1,48 @@
+{
+  "contract_id": "bridge:ai-bridge:contract:9dd6a3f6-3cbb-437c-aa9b-e51d65fd9344",
+  "approved_scope": {
+    "identifier": "bridge:ai-bridge:work-item:fb1c81ae-1994-4b1d-acbc-256f5432c554",
+    "path": "docs/work-items/fb1c81ae-1994-4b1d-acbc-256f5432c554-django-storybook-app.md",
+    "content_hash": "bf62507be52854d337d4022c79e71c9824f03a180ed1822eb79b5b8d6bc88775"
+  },
+  "baseline_commit": "76e842b29dec092da508dec1b830c95e4b07bb88",
+  "target_branch": "main",
+  "implementation_disposition": "reused-existing-canonical-storybook-app",
+  "results": [
+    {
+      "id": "storybook-smoke",
+      "command": "pytest storybook",
+      "status": "PASS",
+      "result": "1 passed"
+    },
+    {
+      "id": "backend-tests",
+      "command": "pytest",
+      "status": "PASS",
+      "result": "67 passed"
+    },
+    {
+      "id": "lint",
+      "command": "ruff check .",
+      "status": "PASS",
+      "result": "All checks passed"
+    },
+    {
+      "id": "type-check",
+      "command": "mypy .",
+      "status": "PASS",
+      "result": "Success: no issues found in 87 source files"
+    },
+    {
+      "id": "scope-schema",
+      "command": "python manage.py validate_scopes",
+      "status": "PASS",
+      "result": "All canonical scopes are valid."
+    }
+  ],
+  "notes": [
+    "The two pytest commands emitted a PytestCacheWarning because the existing cache nodeids file was not writable. Both commands exited successfully and all collected tests passed.",
+    "No product-source changes were needed because the approved capability was already present at the declared baseline."
+  ],
+  "overall_status": "PASS"
+}
