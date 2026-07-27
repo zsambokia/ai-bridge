@@ -47,6 +47,16 @@ remain unavailable until an operator configures a non-secret credential binding
 and validates their adapter. The execution lifecycle still dispatches only the
 exact provider identity recorded in the consumed contract.
 
+Codex is recorded as a `CODE_EXECUTION_AGENT` with a non-secret relationship to
+the existing OpenAI `MODEL_API_SERVICE`. Its proven mode is `CODEX_CLI_LOGIN`;
+the relationship is informational and never duplicates or resolves the OpenAI
+credential. Codex runtime health is `HEALTHY` only when its configured
+executable is both present and authenticated according to `codex login status`.
+The health check discards command output, so tokens and other CLI output cannot
+enter provider state or audit history. The `codingproviderproof` app is an
+intentionally empty Django application used solely as a harmless, canonical
+coding-provider proof; it has no models, routes, or public interface.
+
 Local Django settings optionally load the Git-ignored repository-root `.env`
 file before shared settings. The tracked `.env.example` is secret-free and
 documents `OPENAI_API_KEY`; process environment values take precedence. The

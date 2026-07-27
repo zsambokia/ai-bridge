@@ -1,0 +1,24 @@
+{
+  "contract_id": "bridge:ai-bridge:contract:5f5be80f-4b04-4aa9-8a7a-64bb7c176683",
+  "execution_token": "ae54d0e6-9fad-41f6-b751-e4f6e537f608",
+  "provider_identity": "codex-cli",
+  "result": "READY_FOR_FINAL_COMMIT_BINDING",
+  "acceptance": {
+    "codex_execution_provider": "PASS",
+    "openai_model_provider_remains_separate": "PASS",
+    "authenticated_runtime_readiness": "PASS",
+    "safe_admin_visibility": "PASS",
+    "negative_secret_protections": "PASS",
+    "coding_provider_proof_app": "PASS",
+    "canonical_final_commit_binding": "READY: repository git index is writable; final binding follows the final Release Gates"
+  },
+  "release_gates": {
+    "backend-tests": "PASS: pytest -q (62 passed)",
+    "lint": "PASS: ruff check .",
+    "format": "PASS: ruff format --check .",
+    "type-check": "PASS: mypy . (85 source files)",
+    "scope-schema": "PASS: python manage.py validate_scopes"
+  },
+  "credential_handling": "No credentials, tokens, command output, or environment values were recorded.",
+  "blocker": null
+}

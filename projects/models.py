@@ -455,6 +455,17 @@ class ExecutionProvider(models.Model):
         UNAVAILABLE = "UNAVAILABLE", "Unavailable"
         MISCONFIGURED = "MISCONFIGURED", "Misconfigured"
 
+    class AuthenticationMode(models.TextChoices):
+        """The proven, non-secret authentication source for a provider."""
+
+        OPENAI_API_CONNECTION = "OPENAI_API_CONNECTION", "OpenAI API connection"
+        CODEX_CLI_LOGIN = "CODEX_CLI_LOGIN", "Codex CLI login"
+        INHERITED_RUNTIME_CREDENTIAL = (
+            "INHERITED_RUNTIME_CREDENTIAL",
+            "Inherited runtime credential",
+        )
+        OTHER_PROVEN_MODE = "OTHER_PROVEN_MODE", "Other proven mode"
+
     provider_id = models.CharField(max_length=64, unique=True)
     name = models.CharField(max_length=128)
     kind = models.CharField(max_length=32, choices=Kind.choices)
@@ -468,6 +479,20 @@ class ExecutionProvider(models.Model):
     configuration = models.JSONField(default=dict, blank=True)
     # This is an environment/backend reference only, never a credential value.
     credential_binding = models.CharField(max_length=128, blank=True)
+    related_provider = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="dependent_providers",
+        help_text="Non-secret provider dependency; it never copies credentials.",
+    )
+    authentication_mode = models.CharField(
+        max_length=32,
+        choices=AuthenticationMode.choices,
+        blank=True,
+        help_text="Proven authentication mode only; no credential values are stored.",
+    )
     capabilities = models.JSONField(default=list, blank=True)
     health_status = models.CharField(
         max_length=32, choices=HealthStatus.choices, default=HealthStatus.UNKNOWN
@@ -506,6 +531,19 @@ class ExecutionProvider(models.Model):
             and self.credential_binding != "OPENAI_API_KEY"
         ):
             raise ValidationError("OPENAI_CREDENTIAL_BINDING_INVALID")
+        if self.kind == self.Kind.CODEX:
+            if self.credential_binding:
+                raise ValidationError("CODEX_CREDENTIAL_DUPLICATION_FORBIDDEN")
+            if self.related_provider and self.related_provider.kind != self.Kind.OPENAI:
+                raise ValidationError("CODEX_RELATED_PROVIDER_MUST_BE_OPENAI")
+            if self.authentication_mode and self.authentication_mode not in {
+                self.AuthenticationMode.CODEX_CLI_LOGIN,
+                self.AuthenticationMode.INHERITED_RUNTIME_CREDENTIAL,
+                self.AuthenticationMode.OTHER_PROVEN_MODE,
+            }:
+                raise ValidationError("CODEX_AUTHENTICATION_MODE_INVALID")
+        elif self.related_provider or self.authentication_mode:
+            raise ValidationError("NON_CODEX_PROVIDER_RELATIONSHIP_INVALID")
         if not isinstance(self.configuration, dict) or not isinstance(
             self.capabilities, list
         ):

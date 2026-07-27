@@ -2,6 +2,7 @@
 
 from django import forms
 from django.contrib import admin
+from django.core.exceptions import ValidationError
 from django.db.models import QuerySet
 
 from projects.models import (
@@ -48,7 +49,11 @@ class ExecutionProviderAdmin(admin.ModelAdmin):
         "name",
         "kind",
         "role",
+        "related_openai_provider",
+        "authentication_mode",
         "status",
+        "configuration_status",
+        "coding_capability",
         "health_status",
         "enabled",
         "priority",
@@ -81,6 +86,22 @@ class ExecutionProviderAdmin(admin.ModelAdmin):
     @admin.display(description="Credential status")
     def credential_status(self, obj: ExecutionProvider) -> str:
         return "BOUND" if obj.credential_binding else "NOT_CONFIGURED"
+
+    @admin.display(description="Related OpenAI provider")
+    def related_openai_provider(self, obj: ExecutionProvider) -> str:
+        return obj.related_provider.provider_id if obj.related_provider else "—"
+
+    @admin.display(description="Configuration")
+    def configuration_status(self, obj: ExecutionProvider) -> str:
+        try:
+            obj.full_clean()
+        except ValidationError:
+            return "INVALID"
+        return "VALID"
+
+    @admin.display(description="Coding capability", boolean=True)
+    def coding_capability(self, obj: ExecutionProvider) -> bool:
+        return "CODE_EXECUTION" in obj.capabilities
 
     @admin.action(description="Run non-mutating provider health check")
     def run_health_check(

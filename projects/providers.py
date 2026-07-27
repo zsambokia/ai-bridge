@@ -174,11 +174,31 @@ class BigQueryAdapter:
 class CodexCliAdapter:
     name = "codex-cli"
 
+    @staticmethod
+    def is_authenticated(executable: str) -> bool:
+        """Check local Codex authentication without reading or retaining credentials."""
+        try:
+            completed = subprocess.run(
+                [executable, "login", "status"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=10,
+                shell=False,
+            )  # noqa: S603
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return completed.returncode == 0
+
     def start(self, *, repository: Path, prompt: str) -> ProviderStart:
         executable = os.environ.get("BRIDGE_CODEX_EXECUTABLE", "codex")
+        resolved_executable = shutil.which(executable)
+        if not resolved_executable or not self.is_authenticated(resolved_executable):
+            raise ValueError("CODEX_RUNTIME_UNAVAILABLE")
         process = subprocess.Popen(
             [
-                executable,
+                resolved_executable,
                 "exec",
                 "--json",
                 "--sandbox",
@@ -258,12 +278,20 @@ def check_health(entry: ExecutionProvider) -> dict[str, object]:
     """Validate local readiness without issuing a remote provider request."""
     result: dict[str, object]
     if entry.adapter_key == "codex-cli":
-        ready = (
-            shutil.which(os.environ.get("BRIDGE_CODEX_EXECUTABLE", "codex")) is not None
-        )
+        executable = os.environ.get("BRIDGE_CODEX_EXECUTABLE", "codex")
+        resolved = shutil.which(executable)
+        ready = resolved is not None and CodexCliAdapter.is_authenticated(resolved)
         result = {
             "status": "HEALTHY" if ready else "UNAVAILABLE",
-            "reason": None if ready else "codex executable unavailable",
+            "reason": (
+                None
+                if ready
+                else (
+                    "codex executable unavailable"
+                    if resolved is None
+                    else "codex authentication unavailable"
+                )
+            ),
         }
     elif (
         entry.kind == ExecutionProvider.Kind.OPENAI

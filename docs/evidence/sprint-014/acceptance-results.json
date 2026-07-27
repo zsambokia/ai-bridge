@@ -1,13 +1,13 @@
 {
   "sprint": "014",
-  "state": "LOCAL_IMPLEMENTATION_VERIFIED",
-  "codex_execution": "local governed dispatch completed",
+  "state": "READY_FOR_PRODUCT_OWNER_REVIEW_AFTER_FINAL_COMMIT",
+  "codex_execution": "canonical governed dispatch created codingproviderproof and completed its provider process",
   "external_providers": "configured as disabled DRAFT; credentials and safe proof targets unavailable",
   "release_gates": {
     "makemigrations": "PASS",
     "migrate": "PASS",
     "validate_scopes": "PASS",
-    "pytest": "PASS: 54 passed",
+    "pytest": "PASS: 62 passed",
     "ruff": "PASS",
     "format": "PASS",
     "mypy": "PASS",
