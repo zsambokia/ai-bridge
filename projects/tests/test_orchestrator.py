@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from projects.models import OrchestrationSession, Project
@@ -13,6 +15,7 @@ from projects.orchestrator import (
     evaluate_policy,
     validate_response,
 )
+from projects.orchestrator_providers import configured_provider
 
 
 def _project() -> Project:
@@ -105,3 +108,14 @@ def test_bounded_context_excludes_secrets_and_repository_contents() -> None:
     assert len(context["summary"]) == 500
     assert "secrets" in context["prohibited"]
     assert "repository_contents" in context["prohibited"]
+
+
+def test_domain_has_no_openai_specific_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import projects.orchestrator as domain
+
+    monkeypatch.setenv("AI_BRIDGE_ORCHESTRATOR_PROVIDER", "not-registered")
+    assert "OpenAI" not in inspect.getsource(domain)
+    with pytest.raises(ValueError, match="ORCHESTRATOR_PROVIDER_UNAVAILABLE"):
+        configured_provider()

@@ -28,7 +28,8 @@ from .models import (
     Project,
     ProjectResolutionContinuation,
 )
-from .orchestrator import OpenAIOrchestratorProvider, assess
+from .orchestrator import assess
+from .orchestrator_providers import configured_provider
 from .scopes import (
     answer_clarifications,
     bind_approval,
@@ -118,7 +119,7 @@ def orchestrator_assess(
         )
         if not summary or not key:
             return {"status": "USER_INPUT_REQUIRED"}
-        session = assess(project, summary, key, OpenAIOrchestratorProvider())
+        session = assess(project, summary, key, configured_provider())
         return {"status": "ORCHESTRATION_ASSESSED", **_decision_view(session)}
     except Project.DoesNotExist:
         return {"status": "PROJECT_NOT_FOUND"}
