@@ -197,3 +197,28 @@ gate, evidence, and status fields, so a provider cannot create authority.
 
 Windows cancellation uses the native process-tree command, completed providers
 are not killed, and execution-event writes retry transient SQLite contention.
+
+## Factory Development Mode and provider-terminal reconciliation
+
+Factory Development Mode is the single, deliberately narrow exception to the
+normal contract-first execution path. It is available only when the canonical
+Project is `ai-bridge` and its repository is `zsambokia/ai-bridge`; customer
+Projects continue to require the ordinary approved scope and consumed
+Execution Contract. A Product Owner approval reference is persisted with the
+run, its durable audit event, repository, branch, baseline, and deterministic
+evidence root. This retains the canonical `ExecutionRun` and append-only
+`ExecutionProgressEvent` model instead of creating a parallel lifecycle.
+
+`factory.begin_self_development` is idempotent for an approval reference. It
+starts the already approved local `codex-cli` provider without issuing another
+Sprint or contract, while retaining the provider allow-list and safe prompt
+handling. It rejects every other Project or repository.
+
+A provider terminal state is reconciled durably: a finished provider moves a
+`RUNNING` run to `VALIDATING` and writes `PROVIDER_FINISHED` followed by
+`VALIDATION_CONTINUATION_READY`. The transition is row-locked and idempotent,
+so a repeated read, retry, or watchdog invocation cannot start a second
+continuation. Read-side execution status reconciles before reporting it, and
+`reconcile_provider_runs` provides the same bounded recovery path for
+operations. Validation, release gates, evidence, documentation, final commit,
+and draft Pull Request review remain required before closure.

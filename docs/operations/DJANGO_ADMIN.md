@@ -48,3 +48,24 @@ credential value in Django or in the provider configuration.
 For staging and production, do not deploy `.env`; inject `OPENAI_API_KEY`
 through the environment or the platform secret manager and retain the same
 `credential_binding` reference.
+
+## Recovering a completed provider run
+
+Do not edit execution lifecycle fields in Django admin. A provider can finish
+after its caller has disconnected; reconciliation records the terminal fact
+and moves the canonical run from `RUNNING` to `VALIDATING` exactly once.
+
+Run the bounded, idempotent recovery command from the repository root:
+
+```powershell
+python manage.py reconcile_provider_runs
+```
+
+`execution.get_run_status` performs the same reconciliation before presenting
+Product Owner progress. The resulting validation continuation must still run
+the applicable tests and release gates, write evidence, update documentation,
+and bind the final commit before the draft Pull Request can be closed.
+
+Factory Development Mode is only for the canonical `ai-bridge` repository and
+requires an explicit Product Owner approval reference. It is not available
+for customer Projects and does not permit a manual terminal-state override.

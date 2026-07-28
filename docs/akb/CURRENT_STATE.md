@@ -221,6 +221,25 @@ diagnosis and applied repair, then a persisted gate rerun changes the repair
 item to completed only after that gate passes. DEV console lines and MCP use
 the identical secret-safe event projection.
 
+## Factory Development Mode and completed-provider recovery
+
+AI Bridge self-development has a constrained Factory Development Mode. An
+explicit Product Owner approval reference can start the `ai-bridge` canonical
+repository through the local approved Codex provider without repeatedly
+creating Sprint or Execution Contract artifacts. The exception is encoded as
+an execution profile on the existing `ExecutionRun`, with authority, audit,
+baseline, branch, and evidence facts persisted there; it does not apply to
+customer Projects.
+
+Provider completion is now a durable lifecycle fact. When the provider is
+finished, reconciliation advances the canonical run from `RUNNING` to
+`VALIDATING`, records terminal and continuation events, and is safe to retry.
+`execution.get_run_status` reconciles before returning Product Owner progress;
+operations can also run `python manage.py reconcile_provider_runs`. A
+provider terminal signal is therefore not closure: evidence, validation,
+release gates, documentation, a commit, and draft Pull Request review still
+determine the final result.
+
 ### Sprint 015 V3 execution continuity
 
 Heartbeat and possible-stall signals are read-time projections of canonical

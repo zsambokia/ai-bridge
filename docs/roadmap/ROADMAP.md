@@ -324,8 +324,9 @@ These may remain part of the long-term product vision, but they must not distrac
 8. select a bounded proving application Sprint for the first complete
    frontend-and-backend execution loop;
 9. keep `.bridge/project.yaml` as the static Project definition and use the
-   smallest sufficient tiered Execution Contract for every implementation,
-   repair, migration, and recovery task;
+   smallest sufficient tiered Execution Contract for every customer-project
+   implementation, repair, migration, and recovery task; Factory Development
+   Mode is the documented, `ai-bridge`-only Product Owner exception;
 10. use Bridge-managed canonical Sprint or Work Item scope records for all new
     executable work; legacy Markdown is read-only history.
 
@@ -353,3 +354,18 @@ heartbeat and stall semantics, repairable Windows/provider/console failures,
 and a read-only Codex handoff bound to durable identifiers. These are
 continuity and governance improvements, not a second lifecycle or
 provider-created authority.
+
+## Factory Development Mode delivery
+
+Factory Development Mode removes repeat governance friction only while AI
+Bridge repairs or develops itself. It keeps the canonical execution, provider,
+event, evidence, validation, and closure components, but records a Product
+Owner approval reference in place of an AI Bridge-issued Sprint and Execution
+Contract. The provider-terminal watchdog and read-time reconciliation ensure a
+finished local Codex process advances to validation rather than remaining
+indefinitely `RUNNING`, `EXECUTING`, or `WAITING_FOR_PROVIDER`.
+
+The next operational step is to schedule or invoke
+`reconcile_provider_runs` wherever provider supervision is unavailable. This
+does not loosen release gates or authorise Factory Development Mode for a
+customer Project.
