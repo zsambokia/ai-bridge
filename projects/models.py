@@ -684,6 +684,7 @@ class ExecutionProvider(models.Model):
 
     class HealthStatus(models.TextChoices):
         UNKNOWN = "UNKNOWN", "Unknown"
+        CONFIGURED = "CONFIGURED", "Configured"
         HEALTHY = "HEALTHY", "Healthy"
         DEGRADED = "DEGRADED", "Degraded"
         UNAVAILABLE = "UNAVAILABLE", "Unavailable"

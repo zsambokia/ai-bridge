@@ -133,6 +133,28 @@ def test_health_check_is_safe_and_mcp_provider_tools_are_read_only(
 
 
 @pytest.mark.django_db
+def test_configured_openai_health_status_is_a_valid_provider_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-value")
+    entry = ExecutionProvider.objects.create(
+        provider_id="configured-health-provider",
+        name="Configured health provider",
+        kind=ExecutionProvider.Kind.OPENAI,
+        role=ExecutionProvider.Role.MODEL_API,
+        adapter_key="configured-health-provider-adapter",
+        credential_binding="OPENAI_API_KEY",
+    )
+
+    result = check_health(entry)
+    entry.refresh_from_db()
+
+    assert result["status"] == ExecutionProvider.HealthStatus.CONFIGURED
+    assert entry.health_status == ExecutionProvider.HealthStatus.CONFIGURED
+    entry.full_clean()
+
+
+@pytest.mark.django_db
 def test_openai_provider_accepts_only_the_openai_environment_reference() -> None:
     entry = ExecutionProvider(
         provider_id="invalid-openai-provider",
