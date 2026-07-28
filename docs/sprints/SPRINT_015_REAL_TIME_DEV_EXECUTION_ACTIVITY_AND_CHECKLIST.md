@@ -1,6 +1,6 @@
 # Sprint 015 — Real-Time DEV Execution Activity and Checklist
 
-**Status:** APPROVED FOR CODEX EXECUTION  
+**Status:** APPROVED FOR CODEX EXECUTION — V2 SCOPE AMENDMENT  
 **Project:** AI Bridge  
 **Repository:** `zsambokia/ai-bridge`  
 **Execution level:** SPRINT  
@@ -11,7 +11,7 @@
 
 Make every governed AI Bridge execution observable in near real time during DEV mode.
 
-A Product Owner or developer must be able to see, through ChatGPT and server-side console output:
+A Product Owner or developer must be able to see, through ChatGPT, MCP, Django admin, and server-side console output:
 
 - where the execution currently is;
 - what meaningful activity is happening now;
@@ -20,6 +20,7 @@ A Product Owner or developer must be able to see, through ChatGPT and server-sid
 - whether AI Bridge is diagnosing and repairing the error;
 - whether the repair succeeded;
 - whether the run is blocked and why;
+- when the provider has not produced canonical progress for an unusual amount of time;
 - when the Sprint is ready for Product Owner review.
 
 The output must be concise, readable, friendly, and optionally decorated with emojis for visual clarity. It must not expose raw stack traces, secrets, unbounded command output, or invented progress.
@@ -28,17 +29,9 @@ The output must be concise, readable, friendly, and optionally decorated with em
 
 This is an AI Bridge feature, not an ASF employee or meeting system.
 
-Do not implement:
+Do not implement employees, named virtual team members, employee assignment, role inheritance, meeting threads, Slack-style channels, fictional actors, or fake participants.
 
-- employees;
-- named virtual team members;
-- employee assignment;
-- role inheritance;
-- meeting threads;
-- Slack-style channels;
-- fictional actors or fake participants.
-
-Allowed actor labels are system-level execution roles only, for example:
+Allowed actor labels are system-level execution roles only:
 
 ```text
 AI Bridge
@@ -51,60 +44,19 @@ Documentation
 
 Use a label only when it truthfully represents the component or phase producing the event.
 
-## 3. Product experience
-
-The intended DEV-mode experience is similar to:
-
-```text
-Mesél az erdő Sprint
-
-🟢 Started
-
-Checklist
-☑ Preflight and contract validation
-☑ Repository assessment
-☑ Existing architecture identified
-☒ UI implementation
-☐ Targeted tests
-☐ Release gates
-☐ Evidence and closure
-
-🔍 Codex
-Megvizsgálom a repository jelenlegi struktúráját.
-
-💡 Dev
-Meglévő navigációs rendszert találtam, ezért azt használom tovább.
-
-🎨 Dev
-Elkészült a reszponzív alkalmazás-layout.
-
-⚠️ Dev
-A build hibás import miatt megállt. Megkezdtem a diagnózist.
-
-🔧 Codex
-Az import útvonalát javítottam. Újrafuttatom az érintett ellenőrzést.
-
-✅ QA
-A javítás sikeres. A build és a célzott tesztek átmentek.
-
-🏁 AI Bridge
-PASS — READY FOR PRODUCT OWNER REVIEW
-```
-
-The exact wording may differ, but the semantic content must be truthful and derived from durable execution state and events.
-
-## 4. Governing principles
+## 3. Governing principles
 
 1. Reuse the existing canonical execution lifecycle, `ExecutionRun`, execution events, provider dispatch, repair loop, audit, and MCP tools.
-2. Do not create a parallel activity lifecycle or second execution status model.
-3. Every displayed progress statement must be backed by a persisted event or current canonical execution state.
-4. DEV mode may expose more operational detail than normal mode, but still must remain human-readable and safe.
+2. Do not create a parallel activity lifecycle, heartbeat lifecycle, or second execution status model.
+3. Every displayed progress statement must be backed by a persisted canonical event or current canonical execution state.
+4. DEV mode may expose more operational detail than normal mode, but must remain human-readable and safe.
 5. Ordinary technical failures must trigger the existing diagnose-repair-rerun loop where safely possible.
 6. Self-repair must never be silent: error, diagnosis, repair attempt, rerun, and outcome must be visible.
 7. The Product Owner must not receive raw stack traces or secret-bearing logs.
 8. Checklist completion must be computed from real execution milestones, not guessed percentages.
+9. Heartbeat and stalled detection are observability projections only. They must never create a fake blocker, fake failure, or terminal state.
 
-## 5. Mandatory assessment before implementation
+## 4. Mandatory assessment before implementation
 
 Before writing code, inspect and document:
 
@@ -119,7 +71,7 @@ Before writing code, inspect and document:
 - Django admin execution and contract detail views;
 - existing DEV or debug configuration flags;
 - secret redaction and log-safety facilities;
-- any current checklist, milestone, progress, or phase projection logic.
+- any current checklist, milestone, progress, phase, heartbeat, last-activity, timeout, or stalled-detection projection logic.
 
 Classify relevant components as:
 
@@ -133,9 +85,9 @@ UNSAFE_FOR_DEV_OUTPUT
 
 Implement only the smallest missing pieces.
 
-## 6. Canonical activity events
+## 5. Canonical activity events
 
-Extend the existing ordered execution events only where necessary.
+Extend the existing ordered execution events only where necessary. Reuse existing event types whenever they already express the same fact.
 
 The event stream must support meaningful DEV activity such as:
 
@@ -170,8 +122,6 @@ BLOCKER_DECLARED
 EXECUTION_COMPLETED
 ```
 
-Do not create redundant event types where an existing canonical event already expresses the same fact.
-
 Each user-visible event must provide or allow projection of:
 
 ```yaml
@@ -186,56 +136,20 @@ message: concise human-readable explanation
 details: bounded structured metadata
 ```
 
-`details` may include safe values such as:
+## 6. DEV-mode output
 
-- command name without secrets;
-- exit code;
-- repair attempt number;
-- changed file paths;
-- test or gate name;
-- blocker classification;
-- provider execution ID;
-- final commit SHA;
-- evidence path.
-
-## 7. DEV-mode output rules
-
-Introduce or reuse one explicit DEV observability setting.
-
-Example intent:
-
-```text
-AI_BRIDGE_DEV_EXECUTION_ACTIVITY=true
-```
-
-Do not hardcode the exact setting name if a canonical environment or Django setting already exists.
-
-When DEV activity is enabled:
+Introduce or reuse one explicit DEV observability setting. When enabled:
 
 - persist detailed but bounded structured events;
-- print a readable one-line or compact multi-line representation to the server console;
+- print readable compact console activity;
 - expose the same truthful activity through MCP for ChatGPT;
-- include error and repair progress;
-- include checklist changes;
-- include the current blocker, if any.
+- include errors, diagnosis, repair, rerun, checklist changes, blocker, and heartbeat projection.
 
-When disabled:
+When disabled, preserve all durable events required for audit and lifecycle correctness while allowing a more concise user-facing projection.
 
-- preserve the durable event stream required for audit and lifecycle correctness;
-- allow a more concise user-facing projection;
-- do not remove evidence required for governance.
+Console and MCP output must redact secrets, avoid normal-feed stack traces, and enforce bounded message sizes.
 
-Console output must:
-
-- be human-readable;
-- use emojis only as decoration;
-- avoid ANSI-dependent formatting unless already supported safely;
-- avoid raw stack traces in the normal activity feed;
-- retain detailed tracebacks only in protected technical logs where existing policy allows;
-- redact secrets and credentials;
-- limit message size.
-
-## 8. Checklist projection
+## 7. Checklist projection
 
 Implement a canonical checklist projection for each execution run.
 
@@ -252,7 +166,7 @@ Documentation and evidence
 Closure
 ```
 
-Each item must have one status:
+Statuses:
 
 ```text
 PENDING
@@ -262,129 +176,144 @@ FAILED_REPAIRING
 BLOCKED
 ```
 
-User-facing symbols may be:
-
-```text
-☐ PENDING
-☒ IN_PROGRESS
-☑ COMPLETED
-⚠ FAILED_REPAIRING
-⛔ BLOCKED
-```
-
 Checklist state must be derived from lifecycle and persisted events. It must not be independently edited into a contradictory state.
 
-The checklist response must include:
+## 8. Execution heartbeat and stalled detection
 
-- stable item ID;
-- label;
-- status;
-- completion timestamp when complete;
-- latest explanatory message;
-- related event sequence where applicable.
+Add a read-only heartbeat projection derived exclusively from canonical execution progress events and canonical run timestamps.
 
-Do not use a fake numeric completion percentage unless it is deterministically derived from completed checklist items and clearly identified as a checklist ratio rather than estimated work effort.
+Do not create a separately persisted heartbeat state that can drift from the event stream. Do not create a separate timer database or manually maintained lifecycle flag.
 
-## 9. ChatGPT and MCP surface
+Expose at least:
+
+```yaml
+last_activity_at: timestamp or null
+heartbeat_age_seconds: non-negative integer or null
+idle_duration_seconds: non-negative integer or null
+heartbeat_status: canonical observability classification
+last_event_type: stable event type or null
+last_event_sequence: ordered integer or null
+```
+
+Preferred heartbeat classifications:
+
+```text
+ACTIVE
+QUIET
+WAITING_FOR_PROVIDER
+POSSIBLY_STALLED
+```
+
+Equivalent repository-compatible names are acceptable if their semantics are documented and tested.
+
+Thresholds must be centralized and configurable. Do not scatter magic numbers through the code. Classification must be deterministic and testable.
+
+The projection must truthfully distinguish examples such as:
+
+```text
+🟢 Running
+Last activity: 23 seconds ago
+```
+
+```text
+🟠 Running
+No canonical progress received for 6 minutes.
+Waiting for provider...
+```
+
+```text
+🔴 Running
+Execution appears stalled.
+No provider activity for 18 minutes.
+Last event: EXECUTOR_STARTED
+```
+
+These are observability messages only:
+
+- the execution may remain `RUNNING`;
+- no blocker may be created unless a real canonical blocker exists;
+- no failure or terminal state may be invented;
+- stalled detection must not alter retry, repair, gate, or governance behavior.
+
+For terminal runs, heartbeat projection must remain stable and must not misleadingly classify a completed run as stalled.
+
+## 9. MCP and ChatGPT surface
 
 Preserve existing tools and extend them where appropriate.
 
-At minimum:
+### `execution.list_events`
 
-### 9.1 `execution.list_events`
+Return ordered, bounded, human-projectable events containing enough information to show meaningful DEV activity.
 
-Ensure it returns ordered, bounded, human-projectable events containing enough information to show meaningful DEV activity.
+### `execution.get_run_status`
 
-### 9.2 Execution activity summary
-
-Add one canonical read-only tool only if the assessment proves existing tools cannot provide a compact current view.
-
-Preferred capability:
-
-```text
-execution.get_activity_summary
-```
-
-It should return:
+Extend the current response with the heartbeat projection where backward compatibility permits:
 
 ```yaml
-execution_token: string
-status: current run status
-phase: current phase
-current_activity: concise description
-checklist: ordered checklist items
-latest_events: bounded recent meaningful events
-error_state: null or concise safe error summary
-repair_state: null or current attempt and action
-blocker: null or canonical blocker
-final_result: null or terminal result
+last_activity_at
+heartbeat_age_seconds
+idle_duration_seconds
+heartbeat_status
+last_event_type
+last_event_sequence
 ```
 
-The tool must be read-only, bounded, audit-safe, and derived from canonical state.
+### Execution activity summary
 
-Do not require ChatGPT to reconstruct checklist state by interpreting raw stdout.
+Add `execution.get_activity_summary` only if assessment proves existing tools cannot provide a compact canonical view. It should remain read-only, bounded, audit-safe, and derived from canonical state.
 
-## 10. Real-time behaviour
+The summary should include:
+
+```yaml
+execution_token
+status
+phase
+current_activity
+checklist
+latest_events
+error_state
+repair_state
+blocker
+heartbeat
+final_result
+```
+
+Do not require ChatGPT to reconstruct checklist or heartbeat state by interpreting raw stdout.
+
+## 10. Near-real-time behaviour
 
 The system must expose new meaningful events while execution is still running.
 
-Acceptable implementation options include the smallest repository-compatible mechanism such as:
+Acceptable mechanisms include provider progress callbacks, structured provider output, bounded polling with incremental event ingestion, worker-side event emission, or explicit stable subprocess marker parsing.
 
-- provider progress callback;
-- structured provider output protocol;
-- bounded polling with incremental event ingestion;
-- worker-side event emission;
-- subprocess line parsing only when based on an explicit stable marker protocol.
+Do not claim real-time activity if events are generated only after provider exit.
 
-Do not claim real-time activity if events are generated only after the provider exits.
+Prove that at least three distinct meaningful events become visible before execution completion.
 
-The implementation must prove that at least three distinct meaningful events become visible before execution completion.
-
-This Sprint does not require WebSockets, Server-Sent Events, push notifications, or a new frontend dashboard unless already present and trivially reusable. Pollable near-real-time MCP and console visibility is sufficient.
+This Sprint does not require WebSockets, Server-Sent Events, push notifications, or a new frontend dashboard. Pollable near-real-time MCP, Django admin, and console visibility is sufficient.
 
 ## 11. Error visibility and autonomous repair
 
-When an ordinary technical failure occurs, the activity stream and checklist must show:
+When an ordinary technical failure occurs, show:
 
 1. where the failure occurred;
 2. a concise safe explanation;
-3. that diagnosis started;
-4. the identified root cause when available;
-5. the repair attempt number;
-6. what was changed at a meaningful level;
-7. which validation is being rerun;
-8. whether repair succeeded;
-9. whether another retry begins;
-10. whether the run becomes legitimately blocked.
+3. diagnosis start;
+4. proven root cause when available;
+5. repair attempt number;
+6. meaningful repair description;
+7. validation rerun;
+8. repair outcome;
+9. retry start where applicable;
+10. legitimate blocker only where canonically justified.
 
-Required repair narrative example:
-
-```text
-⚠️ Build failed
-A frontend import could not be resolved.
-
-🔍 Diagnosing
-Checking the changed component and existing module paths.
-
-🔧 Repair attempt 1
-Corrected the import path in `src/pages/Characters.tsx`.
-
-🧪 Validation rerun
-Running the frontend build again.
-
-✅ Repair successful
-The build now passes.
-```
-
-The activity layer must not invent root causes from incomplete data. Use wording such as `diagnosis in progress` until the cause is proven.
-
-Existing retry limits and governance rules remain authoritative. Do not weaken tests, gates, typing, migrations, or acceptance criteria to obtain PASS.
+Do not invent root causes from incomplete data. Existing retry limits and governance rules remain authoritative. Do not weaken tests, gates, typing, migrations, or acceptance criteria to obtain PASS.
 
 ## 12. Django admin visibility
 
-Extend the existing execution contract or execution run admin detail page with a read-only Activity section if an appropriate page already exists.
+Extend the existing execution run or contract detail page with a read-only Activity section. Do not create a separate administrative application or complex dashboard.
 
-Minimum display:
+Display at least:
 
 - current lifecycle and phase;
 - current activity;
@@ -392,9 +321,12 @@ Minimum display:
 - recent events;
 - current error or repair state;
 - blocker;
-- completion result.
-
-Do not create a separate administrative application or complex dashboard.
+- completion result;
+- last activity time;
+- heartbeat age;
+- idle duration;
+- heartbeat status;
+- last canonical event.
 
 ## 13. Required tests
 
@@ -404,139 +336,91 @@ Add automated tests for at least:
 2. DEV activity setting behaviour;
 3. safe event projection without secrets;
 4. bounded message and detail size;
-5. checklist derivation from lifecycle and events;
-6. checklist transitions through running, repair, blocked, and completed states;
-7. execution activity summary response;
-8. meaningful events becoming queryable before provider completion;
-9. error event visibility;
-10. repair attempt visibility;
-11. successful repair and rerun visibility;
-12. legitimate blocker visibility;
-13. no fictional actor labels;
-14. console projection formatting;
-15. Django admin read-only activity rendering;
-16. compatibility with existing `execution.get_run_status` and `execution.list_events`;
-17. no duplicate execution lifecycle or parallel status source;
-18. no raw stack trace or secret leakage through MCP activity responses.
+5. checklist derivation and transitions;
+6. activity summary response where implemented;
+7. meaningful events queryable before provider completion;
+8. error, diagnosis, repair, rerun, and blocker visibility;
+9. no fictional actor labels;
+10. console projection formatting;
+11. Django admin read-only activity rendering;
+12. compatibility with existing `execution.get_run_status` and `execution.list_events`;
+13. no duplicate lifecycle or parallel status source;
+14. no raw stack trace or secret leakage through MCP responses;
+15. heartbeat derivation exclusively from canonical events and run timestamps;
+16. deterministic heartbeat threshold boundaries;
+17. ACTIVE, QUIET, WAITING_FOR_PROVIDER, and POSSIBLY_STALLED-equivalent projections;
+18. no lifecycle mutation from heartbeat classification;
+19. no fake blocker or fake failure creation;
+20. terminal runs not classified as stalled;
+21. Django admin heartbeat rendering;
+22. MCP heartbeat response fields;
+23. backward compatibility of existing consumers.
 
 ## 14. Proving scenario
 
 Run one real governed proving execution in DEV mode.
 
-The proof must demonstrate before completion:
+Before completion, evidence must show:
 
-- execution started;
+- execution start;
 - repository assessment activity;
-- at least one implementation or file-change activity;
+- implementation or file-change activity;
 - checklist transitions visible through MCP;
 - console activity output;
-- at least one technical failure and autonomous repair cycle, using a safe controlled scenario if necessary;
-- release gate progress;
-- final closure event.
+- Django admin activity output;
+- heartbeat projection during an active period;
+- controlled proof of waiting/stalled projection using deterministic test time or a safe test fixture, without delaying production execution;
+- no lifecycle mutation and no fake blocker during stalled projection.
 
-The final proof must include the actual ordered events and checklist snapshots from multiple timestamps.
+The final proof must include release gates, evidence binding, final commit, and Product Owner review readiness.
 
-Do not fabricate events after the run to simulate real-time behaviour.
+## 15. Required evidence
 
-## 15. Release Gates
+Create Sprint 015 evidence under the repository's established evidence structure, including:
 
-Run all canonical repository-wide gates resolved from `.bridge/project.yaml`, the current Constitution, and affected components.
+- assessment and reuse classification;
+- event schema or event mapping;
+- checklist derivation mapping;
+- heartbeat derivation and threshold specification;
+- MCP response examples;
+- Django admin screenshots or deterministic rendering proof;
+- console output sample;
+- active, waiting, and possibly-stalled examples;
+- tests and release-gate results;
+- final commit binding;
+- issued Execution Contract identifier and proposal hash for this V2 scope.
 
-At minimum, if still canonical:
+## 16. Acceptance criteria
 
-```text
-python manage.py makemigrations --check --dry-run
-pytest -q
-ruff check .
-ruff format --check .
-mypy .
-git diff --check
-```
+Sprint 015 V2 passes only if all are true:
 
-Any technical failure must follow:
+- meaningful DEV execution events are persisted and visible before provider completion;
+- checklist state is derived from canonical lifecycle and events;
+- ChatGPT/MCP, Django admin, and console project the same canonical facts;
+- repair activity is visible and truthful;
+- no raw stack traces or secrets leak through user-facing activity;
+- no duplicate lifecycle or independent checklist truth source is introduced;
+- heartbeat is derived exclusively from canonical progress events and run timestamps;
+- heartbeat thresholds are centralized, deterministic, configurable, and tested;
+- `last_activity_at`, heartbeat age, idle duration, status, and last event are available through MCP;
+- Django admin displays heartbeat information read-only;
+- long event silence produces a truthful waiting or possibly-stalled projection;
+- heartbeat projection does not change lifecycle, create a blocker, create a failure, or create a terminal state;
+- terminal runs are not misleadingly classified as stalled;
+- existing execution tools remain compatible;
+- proving evidence is bound to the new V2 proposal hash and AI Bridge-issued Execution Contract;
+- all required tests and release gates pass.
 
-```text
-DETECT → DIAGNOSE → REPAIR → RERUN
-```
+## 17. Continuation rule for the currently paused worktree
 
-Continue until all required gates pass or one legitimate blocker is proven.
+The current Sprint 015 implementation work already present in the worktree may be retained and reused after the new V2 contract is issued.
 
-## 16. Evidence
+Before continuing:
 
-Evidence root:
+1. verify the worktree changes against this exact V2 scope;
+2. discard or correct any change not authorized by this document;
+3. implement the heartbeat amendment;
+4. rerun all required tests and release gates;
+5. create evidence and commit only under the new AI Bridge-issued, hash-bound Execution Contract.
 
-```text
-docs/evidence/sprint-015-real-time-dev-execution-activity-and-checklist/
-```
-
-Required artifacts:
-
-```text
-CLOSURE_REPORT.md
-assessment.md
-acceptance-results.json
-activity-event-schema-validation.json
-real-time-event-ingestion-validation.json
-checklist-projection-validation.json
-mcp-activity-summary-validation.json
-console-output-validation.json
-error-and-repair-visibility-validation.json
-admin-activity-view-validation.json
-secret-redaction-validation.json
-proving-execution-events.json
-proving-execution-checklist-snapshots.json
-```
-
-Evidence must prove:
-
-- events were visible before execution completion;
-- checklist items changed truthfully over time;
-- an error and repair cycle were visible;
-- no employee or fictional participant layer was introduced;
-- ChatGPT can retrieve a concise current activity summary;
-- console and MCP projections represent the same canonical events;
-- final repository state passes all gates.
-
-## 17. Acceptance criteria
-
-The Sprint passes only when all are true:
-
-- [ ] DEV mode shows meaningful execution activity while a run is still active.
-- [ ] ChatGPT can query where the execution currently is and what it is doing.
-- [ ] Server console shows concise, readable, emoji-decorated activity.
-- [ ] A continuously updated checklist is available.
-- [ ] Completed items are visibly checked.
-- [ ] The active item is visibly marked.
-- [ ] Pending items remain unchecked.
-- [ ] Errors are shown without raw stack traces.
-- [ ] Diagnosis and autonomous repair attempts are shown.
-- [ ] Repair success, retry, blocker, and completion are shown truthfully.
-- [ ] At least three meaningful activity events are observable before execution completes.
-- [ ] Checklist state is derived from canonical execution state and events.
-- [ ] Existing execution lifecycle, provider, audit, and repair components are reused.
-- [ ] No employee, meeting-thread, channel, or fictional participant model is added.
-- [ ] MCP output is bounded and secret-safe.
-- [ ] Django admin shows a minimal read-only activity view.
-- [ ] All release gates pass.
-- [ ] Final evidence is committed and bound to the execution.
-
-## 18. Required Codex behaviour
-
-Codex must:
-
-1. assess before implementing;
-2. reuse the current execution event and repair infrastructure;
-3. keep the implementation narrow;
-4. emit truthful progress during its own proving execution;
-5. repair ordinary technical failures autonomously;
-6. show those failures and repairs through the new activity layer;
-7. avoid raw technical noise in Product Owner-facing output;
-8. update affected architecture, workflow, MCP, admin, and AKB documentation;
-9. produce fresh evidence from the final commit;
-10. finish only as:
-
-```text
-PASS — READY FOR PRODUCT OWNER REVIEW
-```
-
-or one constitutionally legitimate blocker state.
+Do not create evidence, claim PASS, or commit the Sprint 015 implementation against the superseded V1 contract.
