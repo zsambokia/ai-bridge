@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
+from pathlib import Path
 
 import pytest
 
@@ -122,6 +124,23 @@ def test_domain_has_no_openai_specific_dependency(
     assert "from openai" not in inspect.getsource(composition).lower()
     with pytest.raises(ValueError, match="MODEL_PROVIDER_UNAVAILABLE"):
         configured_provider()
+
+
+def test_provider_boundary_guard_covers_orchestration_and_remediation_domains() -> None:
+    """Keep OpenAI SDK imports out of governed domain modules at test time."""
+    root = Path(__file__).resolve().parents[2]
+    for relative in ("projects/orchestrator.py", "projects/remediation.py"):
+        tree = ast.parse((root / relative).read_text(encoding="utf-8"))
+        imports = [
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+            for alias in node.names
+        ]
+        assert not any(
+            name == "openai" or name.startswith("openai.") for name in imports
+        )
+    assert '"openai"' not in (root / "pyproject.toml").read_text(encoding="utf-8")
 
 
 @pytest.mark.django_db

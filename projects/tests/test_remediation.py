@@ -21,6 +21,7 @@ from projects.models import (
     RemediationWorkflow,
 )
 from projects.remediation import (
+    cancel_remediation,
     continue_workflow,
     create_remediation,
     deploy_or_rollback,
@@ -40,6 +41,16 @@ class _DeploymentAdapter:
 
     def rollback(self, *, environment: str, remediation: RemediationWorkflow) -> str:
         return f"rollback:{environment}:{remediation.token}"
+
+
+class _UnavailableDeploymentAdapter(_DeploymentAdapter):
+    name = "unavailable-release"
+
+    def deploy(self, *, environment: str, remediation: RemediationWorkflow) -> str:
+        raise OSError("deployment provider unavailable")
+
+    def rollback(self, *, environment: str, remediation: RemediationWorkflow) -> str:
+        raise OSError("rollback provider unavailable")
 
 
 class RemediationWorkflowTests(TestCase):
@@ -127,6 +138,20 @@ class RemediationWorkflowTests(TestCase):
         workflow.save()
         return workflow
 
+    def _replacement_contract(self, identifier: str) -> ExecutionContract:
+        return ExecutionContract.objects.create(
+            project=self.project,
+            handoff_identifier=identifier,
+            approved_sprint_path="docs/sprints/test.md",
+            lifecycle=ExecutionContract.Lifecycle.CONSUMED,
+            contract_hash=(identifier[0] * 64),
+            payload={
+                "schema_version": "2.0",
+                "approved_scope": {"identifier": self.scope.identifier},
+                "approval_reference": self.approval.reference,
+            },
+        )
+
     def test_remediation_requires_allowed_ownership_and_consumed_contract(self) -> None:
         workflow = self._linked_workflow()
         self.assertEqual(workflow.status, RemediationWorkflow.Status.CONTRACT_LINKED)
@@ -182,6 +207,80 @@ class RemediationWorkflowTests(TestCase):
             RemediationWorkflow.Status.RETRY_REQUIRED,
         )
 
+    def test_retry_has_independent_validation_history_and_escalates_when_bounded(
+        self,
+    ) -> None:
+        workflow = self._completed_workflow()
+        workflow.max_retries = 1
+        workflow.save(update_fields=["max_retries"])
+        validate_remediation(
+            workflow,
+            validator_identity="independent-gate",
+            outcome="FAILED",
+            evidence_references=["gate:first"],
+            rationale="first attempt failed",
+        )
+        self.assertEqual(continue_workflow(workflow).status, "RETRY_REQUIRED")
+        self.assertEqual(continue_workflow(workflow).retry_count, 1)
+        with self.assertRaisesMessage(
+            ValueError, "REMEDIATION_RETRY_REQUIRES_NEW_CONTRACT"
+        ):
+            link_contract(workflow, self.contract)
+        workflow = link_contract(workflow, self._replacement_contract("contract-2"))
+        assert workflow.contract is not None
+        request = ExecutionStartRequest.objects.create(
+            contract=workflow.contract, approval=self.approval
+        )
+        second_run = ExecutionRun.objects.create(
+            contract=workflow.contract,
+            start_request=request,
+            repository="example/remediation-test",
+            branch="main",
+            baseline_commit="c" * 40,
+            contract_hash="c" * 64,
+            workspace_identifier="test",
+            provider_name="codex-cli",
+            lifecycle=ExecutionRun.Lifecycle.COMPLETED,
+            evidence_root="docs/evidence/test",
+        )
+        workflow.start_request = request
+        workflow.run = second_run
+        workflow.status = RemediationWorkflow.Status.DISPATCHED
+        workflow.save()
+        validate_remediation(
+            workflow,
+            validator_identity="independent-gate",
+            outcome="FAILED",
+            evidence_references=["gate:second"],
+            rationale="second attempt failed",
+        )
+        self.assertEqual(continue_workflow(workflow).status, "ESCALATED")
+        self.assertEqual(workflow.validations.count(), 2)
+
+    def test_validation_replay_is_immutable_and_does_not_duplicate_timeline(
+        self,
+    ) -> None:
+        workflow = self._completed_workflow()
+        validation = validate_remediation(
+            workflow,
+            validator_identity="independent-gate",
+            outcome="PASSED",
+            evidence_references=["gate:replay"],
+            rationale="stable deterministic result",
+        )
+        events = len(RemediationWorkflow.objects.get(pk=workflow.pk).timeline)
+        replay = validate_remediation(
+            workflow,
+            validator_identity="independent-gate",
+            outcome="PASSED",
+            evidence_references=["gate:replay"],
+            rationale="stable deterministic result",
+        )
+        refreshed = RemediationWorkflow.objects.get(pk=workflow.pk)
+        self.assertEqual(replay.pk, validation.pk)
+        self.assertEqual(refreshed.validations.count(), 1)
+        self.assertEqual(len(refreshed.timeline), events)
+
     def test_timeout_is_durable_and_does_not_create_a_replacement_run(self) -> None:
         workflow = self._completed_workflow()
         workflow.deadline_at = timezone.now() - timedelta(seconds=1)
@@ -189,6 +288,26 @@ class RemediationWorkflowTests(TestCase):
         timed_out = enforce_timeout(workflow, approval=self.approval)
         self.assertEqual(timed_out.status, RemediationWorkflow.Status.TIMED_OUT)
         self.assertEqual(ExecutionRun.objects.filter(contract=self.contract).count(), 1)
+
+    def test_cancellation_rechecks_scope_bound_execution_authority(self) -> None:
+        workflow = self._completed_workflow()
+        assert workflow.run is not None
+        workflow.run.lifecycle = ExecutionRun.Lifecycle.RUNNING
+        workflow.run.save(update_fields=["lifecycle"])
+        unauthorized = GovernanceApproval.objects.create(
+            reference="wrong-cancel-authority",
+            project=self.project,
+            approved_action="AUTHORIZE_DEPLOYMENT",
+            approved_by="product-owner",
+        )
+        with self.assertRaisesMessage(ValueError, "APPROVAL_SCOPE_MISMATCH"):
+            cancel_remediation(workflow, approval=unauthorized)
+        with patch("projects.remediation.cancel_run") as cancel_run:
+            cancelled = cancel_remediation(workflow, approval=self.approval)
+        cancel_run.assert_called_once_with(
+            workflow.run, approval_reference=self.approval.reference
+        )
+        self.assertEqual(cancelled.status, RemediationWorkflow.Status.CANCELLED)
 
     @patch("projects.remediation.start_run")
     def test_dispatch_uses_canonical_executor_and_audit_linkage(
@@ -227,6 +346,14 @@ class RemediationWorkflowTests(TestCase):
         )
         self.assertEqual(dispatched.run, run)
         self.assertEqual(audit.details["approval"], self.approval.reference)
+        self.assertEqual(audit.outcome, "DISPATCHED")
+        self.assertEqual(
+            dispatch_remediation(
+                workflow, approval=self.approval, platform_root=Path(".")
+            ),
+            dispatched,
+        )
+        start_run.assert_called_once()
 
     def test_deployment_and_rollback_require_separate_explicit_authority(self) -> None:
         workflow = self._completed_workflow()
@@ -237,7 +364,7 @@ class RemediationWorkflowTests(TestCase):
             evidence_references=["gate:all"],
             rationale="ok",
         )
-        continue_workflow(workflow)
+        workflow = continue_workflow(workflow)
         register_deployment_adapter(_DeploymentAdapter())
         deploy_approval = GovernanceApproval.objects.create(
             reference="deploy-1",
@@ -278,3 +405,96 @@ class RemediationWorkflowTests(TestCase):
             idempotency_key="rollback-1",
         )
         self.assertEqual(rolled_back.status, DeploymentRecord.Status.COMPLETED)
+
+    def test_release_idempotency_and_provider_failure_are_durable(self) -> None:
+        workflow = self._completed_workflow()
+        validate_remediation(
+            workflow,
+            validator_identity="gate",
+            outcome="PASSED",
+            evidence_references=["gate:all"],
+            rationale="ok",
+        )
+        workflow = continue_workflow(workflow)
+        approval = GovernanceApproval.objects.create(
+            reference="deploy-failure",
+            project=self.project,
+            approved_action="AUTHORIZE_DEPLOYMENT",
+            approved_by="product-owner",
+        )
+        register_deployment_adapter(_UnavailableDeploymentAdapter())
+        with self.assertRaisesMessage(ValueError, "DEPLOYMENT_PROVIDER_UNAVAILABLE"):
+            deploy_or_rollback(
+                workflow,
+                approval=approval,
+                action="DEPLOY",
+                environment="staging",
+                adapter_name="unavailable-release",
+                idempotency_key="failed-deploy",
+            )
+        failed = DeploymentRecord.objects.get(idempotency_key="failed-deploy")
+        self.assertEqual(failed.status, DeploymentRecord.Status.FAILED)
+        self.assertEqual(
+            deploy_or_rollback(
+                workflow,
+                approval=approval,
+                action="DEPLOY",
+                environment="staging",
+                adapter_name="unavailable-release",
+                idempotency_key="failed-deploy",
+            ).pk,
+            failed.pk,
+        )
+        with self.assertRaisesMessage(ValueError, "DEPLOYMENT_IDEMPOTENCY_MISMATCH"):
+            deploy_or_rollback(
+                workflow,
+                approval=approval,
+                action="DEPLOY",
+                environment="production",
+                adapter_name="unavailable-release",
+                idempotency_key="failed-deploy",
+            )
+
+    def test_rollback_provider_failure_is_durable(self) -> None:
+        workflow = self._completed_workflow()
+        validate_remediation(
+            workflow,
+            validator_identity="gate",
+            outcome="PASSED",
+            evidence_references=["gate:all"],
+            rationale="ok",
+        )
+        workflow = continue_workflow(workflow)
+        deploy_approval = GovernanceApproval.objects.create(
+            reference="deploy-before-failed-rollback",
+            project=self.project,
+            approved_action="AUTHORIZE_DEPLOYMENT",
+            approved_by="product-owner",
+        )
+        register_deployment_adapter(_DeploymentAdapter())
+        deploy_or_rollback(
+            workflow,
+            approval=deploy_approval,
+            action="DEPLOY",
+            environment="staging",
+            adapter_name="test-release",
+            idempotency_key="deploy-before-failed-rollback",
+        )
+        rollback_approval = GovernanceApproval.objects.create(
+            reference="failed-rollback-authority",
+            project=self.project,
+            approved_action="AUTHORIZE_ROLLBACK",
+            approved_by="product-owner",
+        )
+        register_deployment_adapter(_UnavailableDeploymentAdapter())
+        with self.assertRaisesMessage(ValueError, "DEPLOYMENT_PROVIDER_UNAVAILABLE"):
+            deploy_or_rollback(
+                workflow,
+                approval=rollback_approval,
+                action="ROLLBACK",
+                environment="staging",
+                adapter_name="unavailable-release",
+                idempotency_key="failed-rollback",
+            )
+        failed = DeploymentRecord.objects.get(idempotency_key="failed-rollback")
+        self.assertEqual(failed.status, DeploymentRecord.Status.FAILED)

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .execution import cancel_run, start_run
@@ -101,14 +101,27 @@ def create_remediation(
         or ownership.selected_project_id is None
     ):
         raise ValueError("REMEDIATION_POLICY_DENIED")
-    workflow = RemediationWorkflow.objects.create(
-        incident=incident,
-        project_id=ownership.selected_project_id,
-        idempotency_key=idempotency_key,
-        correlation_id=incident.correlation_id,
-        summary=summary,
-        status=RemediationWorkflow.Status.AWAITING_CONTRACT,
-    )
+    try:
+        with transaction.atomic():
+            workflow = RemediationWorkflow.objects.create(
+                incident=incident,
+                project_id=ownership.selected_project_id,
+                idempotency_key=idempotency_key,
+                correlation_id=incident.correlation_id,
+                summary=summary,
+                status=RemediationWorkflow.Status.AWAITING_CONTRACT,
+            )
+    except IntegrityError:
+        existing_workflow = RemediationWorkflow.objects.filter(
+            idempotency_key=idempotency_key
+        ).first()
+        if (
+            existing_workflow is None
+            or existing_workflow.incident_id != incident.pk
+            or existing_workflow.summary != summary
+        ):
+            raise ValueError("REMEDIATION_IDEMPOTENCY_MISMATCH")
+        return existing_workflow
     _append(workflow, "REMEDIATION_PLANNED", ownership_policy=ownership.policy_decision)
     workflow.save(update_fields=["timeline", "updated_at"])
     return workflow
@@ -119,7 +132,11 @@ def link_contract(
     workflow: RemediationWorkflow, contract: ExecutionContract
 ) -> RemediationWorkflow:
     """Link, but never generate, the approved scope and consumed contract."""
-    if workflow.status != RemediationWorkflow.Status.AWAITING_CONTRACT:
+    workflow = RemediationWorkflow.objects.select_for_update().get(pk=workflow.pk)
+    if workflow.status not in {
+        RemediationWorkflow.Status.AWAITING_CONTRACT,
+        RemediationWorkflow.Status.RETRY_REQUIRED,
+    }:
         raise ValueError("REMEDIATION_NOT_AWAITING_CONTRACT")
     if (
         contract.project_id != workflow.project_id
@@ -127,12 +144,14 @@ def link_contract(
     ):
         raise ValueError("REMEDIATION_CONTRACT_NOT_CONSUMED")
     scope = _scope_for_contract(contract)
+    if workflow.contract_id == contract.pk:
+        raise ValueError("REMEDIATION_RETRY_REQUIRES_NEW_CONTRACT")
     workflow.scope = scope
     workflow.contract = contract
     workflow.status = RemediationWorkflow.Status.CONTRACT_LINKED
     _append(
         workflow,
-        "CONTRACT_LINKED",
+        "CONTRACT_LINKED" if workflow.retry_count == 0 else "RETRY_CONTRACT_LINKED",
         contract=contract.handoff_identifier,
         scope=scope.identifier,
     )
@@ -152,6 +171,7 @@ def dispatch_remediation(
     caller: str = "orchestrator-remediation",
 ) -> RemediationWorkflow:
     """Dispatch through the existing canonical executor after authority checks."""
+    workflow = RemediationWorkflow.objects.select_for_update().get(pk=workflow.pk)
     if workflow.status == RemediationWorkflow.Status.DISPATCHED:
         return workflow
     if (
@@ -180,6 +200,8 @@ def dispatch_remediation(
         },
     )
     run = start_run(contract, request, platform_root, audit_event_id=audit.pk)
+    audit.outcome = "DISPATCHED"
+    audit.save(update_fields=["outcome"])
     request.status = "EXECUTION_STARTED"
     request.next_action = "Independent validation is required after completion."
     request.save(update_fields=["status", "next_action"])
@@ -269,6 +291,7 @@ def validate_remediation(
     rationale: str,
 ) -> RemediationValidation:
     """Persist an independently identified validator result with provenance."""
+    workflow = RemediationWorkflow.objects.select_for_update().get(pk=workflow.pk)
     run = workflow.run
     if run is None or run.lifecycle != ExecutionRun.Lifecycle.COMPLETED:
         raise ValueError("COMPLETED_RUN_REQUIRED")
@@ -282,6 +305,7 @@ def validate_remediation(
         raise ValueError("VALIDATION_OUTCOME_INVALID")
     validation, created = RemediationValidation.objects.get_or_create(
         remediation=workflow,
+        execution_token=run.token,
         defaults={
             "validator_identity": validator_identity,
             "outcome": outcome,
@@ -296,6 +320,8 @@ def validate_remediation(
         or validation.rationale != rationale
     ):
         raise ValueError("VALIDATION_IMMUTABLE")
+    if not created:
+        return validation
     workflow.status = RemediationWorkflow.Status.VALIDATION_PENDING
     _append(
         workflow,
@@ -310,10 +336,18 @@ def validate_remediation(
 @transaction.atomic
 def continue_workflow(workflow: RemediationWorkflow) -> RemediationWorkflow:
     """Deterministically resume, retry, or escalate without execution authority."""
-    try:
-        validation = workflow.validation
-    except ObjectDoesNotExist as exc:
-        raise ValueError("VALIDATION_REQUIRED") from exc
+    workflow = RemediationWorkflow.objects.select_for_update().get(pk=workflow.pk)
+    if workflow.status in {
+        RemediationWorkflow.Status.RESUMED,
+        RemediationWorkflow.Status.ESCALATED,
+        RemediationWorkflow.Status.RETRY_REQUIRED,
+    }:
+        return workflow
+    if workflow.status != RemediationWorkflow.Status.VALIDATION_PENDING:
+        raise ValueError("REMEDIATION_VALIDATION_NOT_READY")
+    validation = workflow.validations.order_by("-created_at", "-pk").first()
+    if validation is None:
+        raise ValueError("VALIDATION_REQUIRED")
     if validation.outcome == RemediationValidation.Outcome.PASSED:
         workflow.incident.status = FailureIncident.Status.CLOSED
         workflow.incident.save(update_fields=["status", "updated_at"])
@@ -322,15 +356,18 @@ def continue_workflow(workflow: RemediationWorkflow) -> RemediationWorkflow:
     elif workflow.incident.causal_classification in {"BUSINESS", "MIXED", "UNSAFE"}:
         workflow.status = RemediationWorkflow.Status.ESCALATED
         event = "BUSINESS_AUTHORITY_ESCALATED"
+    elif workflow.retry_count >= workflow.max_retries:
+        workflow.status = RemediationWorkflow.Status.ESCALATED
+        event = "RETRY_EXHAUSTED_ESCALATED"
     else:
+        workflow.retry_count += 1
         workflow.status = RemediationWorkflow.Status.RETRY_REQUIRED
         event = "RETRY_REQUIRES_NEW_CONTRACT"
     _append(workflow, event, validation_outcome=validation.outcome)
-    workflow.save(update_fields=["status", "timeline", "updated_at"])
+    workflow.save(update_fields=["status", "retry_count", "timeline", "updated_at"])
     return workflow
 
 
-@transaction.atomic
 def deploy_or_rollback(
     workflow: RemediationWorkflow,
     *,
@@ -343,6 +380,13 @@ def deploy_or_rollback(
     """Execute an adapter only with a durable, explicit release authority."""
     existing = DeploymentRecord.objects.filter(idempotency_key=idempotency_key).first()
     if existing is not None:
+        if (
+            existing.remediation_id != workflow.pk
+            or existing.approval_id != approval.pk
+            or existing.action != action
+            or existing.environment != environment
+        ):
+            raise ValueError("DEPLOYMENT_IDEMPOTENCY_MISMATCH")
         return existing
     expected = (
         "AUTHORIZE_DEPLOYMENT"
@@ -369,14 +413,29 @@ def deploy_or_rollback(
     adapter = _deployment_adapters.get(adapter_name)
     if adapter is None:
         raise ValueError("DEPLOYMENT_ADAPTER_UNAVAILABLE")
-    record = DeploymentRecord.objects.create(
-        remediation=workflow,
-        approval=approval,
-        action=action,
-        environment=environment,
-        idempotency_key=idempotency_key,
-        status=DeploymentRecord.Status.REQUESTED,
-    )
+    try:
+        with transaction.atomic():
+            record = DeploymentRecord.objects.create(
+                remediation=workflow,
+                approval=approval,
+                action=action,
+                environment=environment,
+                idempotency_key=idempotency_key,
+                status=DeploymentRecord.Status.REQUESTED,
+            )
+    except IntegrityError:
+        existing_record = DeploymentRecord.objects.filter(
+            idempotency_key=idempotency_key
+        ).first()
+        if (
+            existing_record is None
+            or existing_record.remediation_id != workflow.pk
+            or existing_record.approval_id != approval.pk
+            or existing_record.action != action
+            or existing_record.environment != environment
+        ):
+            raise ValueError("DEPLOYMENT_IDEMPOTENCY_MISMATCH")
+        return existing_record
     try:
         receipt = (
             adapter.deploy(environment=environment, remediation=workflow)

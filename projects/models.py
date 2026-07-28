@@ -220,6 +220,8 @@ class RemediationWorkflow(models.Model):
         "ExecutionRun", null=True, blank=True, on_delete=models.PROTECT
     )
     deadline_at = models.DateTimeField(null=True, blank=True)
+    retry_count = models.PositiveSmallIntegerField(default=0)
+    max_retries = models.PositiveSmallIntegerField(default=2)
     timeline = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -232,14 +234,23 @@ class RemediationValidation(models.Model):
         PASSED = "PASSED", "Passed"
         FAILED = "FAILED", "Failed"
 
-    remediation = models.OneToOneField(
-        RemediationWorkflow, on_delete=models.CASCADE, related_name="validation"
+    remediation = models.ForeignKey(
+        RemediationWorkflow, on_delete=models.CASCADE, related_name="validations"
     )
+    execution_token = models.UUIDField(default=uuid.uuid4)
     validator_identity = models.CharField(max_length=255)
     outcome = models.CharField(max_length=16, choices=Outcome.choices)
     evidence_references = models.JSONField(default=list)
     rationale = models.CharField(max_length=1000)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["remediation", "execution_token"],
+                name="unique_remediation_validation_execution",
+            )
+        ]
 
 
 class DeploymentRecord(models.Model):
