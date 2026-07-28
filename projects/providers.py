@@ -67,9 +67,7 @@ def _windows_process_is_running(process_id: int) -> bool:
     process_query_limited_information = 0x1000
     still_active = 259
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    handle = kernel32.OpenProcess(
-        process_query_limited_information, False, process_id
-    )
+    handle = kernel32.OpenProcess(process_query_limited_information, False, process_id)
     if not handle:
         return False
     try:

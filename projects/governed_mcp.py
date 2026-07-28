@@ -1109,7 +1109,8 @@ def _resume_result(scope: ExecutableScope) -> dict[str, Any]:
         # A later revision, revocation, or final scope state is the authoritative
         # invalidation mechanism; clients must always submit this exact binding.
         "expires_at": None,
-        "can_resume": scope.status in {
+        "can_resume": scope.status
+        in {
             ExecutableScope.Status.PROPOSED,
             ExecutableScope.Status.APPROVED,
         },
@@ -1123,13 +1124,20 @@ def _resume_result(scope: ExecutableScope) -> dict[str, Any]:
     result["orchestration"] = orchestration
     if flow.status == "COMPLETED":
         result.update(
-            {"status": "ALREADY_COMPLETED", "can_resume": False, "can_confirm": False,
-             "required_next_action": "review_completion_evidence"}
+            {
+                "status": "ALREADY_COMPLETED",
+                "can_resume": False,
+                "can_confirm": False,
+                "required_next_action": "review_completion_evidence",
+            }
         )
     elif flow.run_id is not None and flow.run and flow.run.lifecycle in ACTIVE_STATES:
         result.update(
-            {"status": "ALREADY_EXECUTING", "can_confirm": False,
-             "required_next_action": "poll_execution_status"}
+            {
+                "status": "ALREADY_EXECUTING",
+                "can_confirm": False,
+                "required_next_action": "poll_execution_status",
+            }
         )
     else:
         result.update({"status": "RECOVERABLE", "can_confirm": True})
@@ -1444,14 +1452,14 @@ def _resume_confirm_and_execute(
         ):
             raise ValueError("SCOPE_CONFIRMATION_SUPERSEDED")
         _audit(
-        caller,
-        "scope.resume_confirm_and_execute",
-        project,
-        "APPROVAL_REPLAYED",
-        {
-            "scope_identifier": scope.identifier,
-            "orchestration_token": str(existing.token),
-        },
+            caller,
+            "scope.resume_confirm_and_execute",
+            project,
+            "APPROVAL_REPLAYED",
+            {
+                "scope_identifier": scope.identifier,
+                "orchestration_token": str(existing.token),
+            },
         )
         _advance_orchestration(existing, caller)
         result = _orchestration_result(existing)

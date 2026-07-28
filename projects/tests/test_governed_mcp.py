@@ -65,8 +65,9 @@ def test_execution_tools_reject_invalid_tokens_as_controlled_errors() -> None:
 
 
 @pytest.mark.django_db
-def test_orchestration_status_exposes_conflicting_execution_token_without_rebinding(
-) -> None:
+def test_orchestration_status_exposes_conflicting_execution_token_without_rebinding() -> (
+    None
+):
     project = Project.objects.create(
         project_id="conflicting-execution-project",
         display_name="Conflicting Execution Project",
