@@ -1,6 +1,6 @@
-# Sprint 015 — Real-Time DEV Execution Activity and Checklist
+# Sprint 015 V3 — Real-Time DEV Execution Activity, Checklist, Heartbeat and Governed Codex Handoff
 
-**Status:** APPROVED FOR CODEX EXECUTION — V2 SCOPE AMENDMENT  
+**Status:** APPROVED FOR CODEX EXECUTION — V3 CONSOLIDATED SCOPE  
 **Project:** AI Bridge  
 **Repository:** `zsambokia/ai-bridge`  
 **Execution level:** SPRINT  
@@ -9,7 +9,7 @@
 
 ## 1. Goal
 
-Make every governed AI Bridge execution observable in near real time during DEV mode.
+Make governed AI Bridge execution observable in near real time during DEV mode and make the full Product Owner → AI Bridge → Codex handoff usable without manually assembling governance artifacts.
 
 A Product Owner or developer must be able to see, through ChatGPT, MCP, Django admin, and server-side console output:
 
@@ -23,7 +23,9 @@ A Product Owner or developer must be able to see, through ChatGPT, MCP, Django a
 - when the provider has not produced canonical progress for an unusual amount of time;
 - when the Sprint is ready for Product Owner review.
 
-The output must be concise, readable, friendly, and optionally decorated with emojis for visual clarity. It must not expose raw stack traces, secrets, unbounded command output, or invented progress.
+In addition, ChatGPT must be able to use AI Bridge to fully prepare a governed Sprint and receive one bounded handoff output that can be pasted directly to Codex. That output must contain the exact execution authority and execution instructions required by `AGENTS.md`.
+
+The output must be concise, readable, friendly, optionally decorated with emojis, and safe. It must not expose raw stack traces, secrets, unbounded command output, invented progress, fake blockers, or fake failures.
 
 ## 2. Explicit scope boundary
 
@@ -46,15 +48,17 @@ Use a label only when it truthfully represents the component or phase producing 
 
 ## 3. Governing principles
 
-1. Reuse the existing canonical execution lifecycle, `ExecutionRun`, execution events, provider dispatch, repair loop, audit, and MCP tools.
-2. Do not create a parallel activity lifecycle, heartbeat lifecycle, or second execution status model.
+1. Reuse the existing canonical execution lifecycle, `ExecutionRun`, execution events, provider dispatch, repair loop, audit, proposal versioning, approval, contract issuance, and MCP tools.
+2. Do not create a parallel activity lifecycle, heartbeat lifecycle, contract lifecycle, or second execution status model.
 3. Every displayed progress statement must be backed by a persisted canonical event or current canonical execution state.
 4. DEV mode may expose more operational detail than normal mode, but must remain human-readable and safe.
 5. Ordinary technical failures must trigger the existing diagnose-repair-rerun loop where safely possible.
 6. Self-repair must never be silent: error, diagnosis, repair attempt, rerun, and outcome must be visible.
-7. The Product Owner must not receive raw stack traces or secret-bearing logs.
+7. The Product Owner must not receive raw stack traces, secret-bearing logs, or internal unbounded payloads.
 8. Checklist completion must be computed from real execution milestones, not guessed percentages.
 9. Heartbeat and stalled detection are observability projections only. They must never create a fake blocker, fake failure, or terminal state.
+10. Only AI Bridge governance may create proposal versions, bind Product Owner approval, issue an Execution Contract, or create an execution token. The provider must never self-approve or self-issue authority.
+11. The Product Owner may see a simplified approval UX, but all proposal hashes, contract hashes, approvals, baselines, gates, and evidence bindings must remain durable and auditable.
 
 ## 4. Mandatory assessment before implementation
 
@@ -64,14 +68,18 @@ Before writing code, inspect and document:
 - the current execution event model and persistence path;
 - `execution.get_run_status`;
 - `execution.list_events`;
-- Codex provider stdout, stderr, status polling, and completion parsing;
+- Codex provider stdout, stderr, status polling, progress parsing, and completion parsing;
 - current autonomous repair events and retry handling;
 - current console logging configuration;
 - current ChatGPT/MCP response schemas and bounded output rules;
 - Django admin execution and contract detail views;
 - existing DEV or debug configuration flags;
 - secret redaction and log-safety facilities;
-- any current checklist, milestone, progress, phase, heartbeat, last-activity, timeout, or stalled-detection projection logic.
+- current checklist, milestone, heartbeat, last-activity, timeout, or stalled-detection projection logic;
+- proposal creation, review, approval, versioning, scope amendment, contract issuance, execution preparation, and provider dispatch;
+- existing MCP tools that expose contract, baseline, branch, gate, evidence, and execution token data;
+- current handling of an already-modified worktree when authority is superseded or amended;
+- current Codex prompt generation or provider instruction construction.
 
 Classify relevant components as:
 
@@ -208,7 +216,7 @@ Equivalent repository-compatible names are acceptable if their semantics are doc
 
 Thresholds must be centralized and configurable. Do not scatter magic numbers through the code. Classification must be deterministic and testable.
 
-The projection must truthfully distinguish examples such as:
+Examples:
 
 ```text
 🟢 Running
@@ -237,7 +245,7 @@ These are observability messages only:
 
 For terminal runs, heartbeat projection must remain stable and must not misleadingly classify a completed run as stalled.
 
-## 9. MCP and ChatGPT surface
+## 9. MCP and ChatGPT activity surface
 
 Preserve existing tools and extend them where appropriate.
 
@@ -247,7 +255,7 @@ Return ordered, bounded, human-projectable events containing enough information 
 
 ### `execution.get_run_status`
 
-Extend the current response with the heartbeat projection where backward compatibility permits:
+Extend the current response with:
 
 ```yaml
 last_activity_at
@@ -260,7 +268,7 @@ last_event_sequence
 
 ### Execution activity summary
 
-Add `execution.get_activity_summary` only if assessment proves existing tools cannot provide a compact canonical view. It should remain read-only, bounded, audit-safe, and derived from canonical state.
+Add `execution.get_activity_summary` only if assessment proves existing tools cannot provide a compact canonical view. It must remain read-only, bounded, audit-safe, and derived from canonical state.
 
 The summary should include:
 
@@ -328,7 +336,134 @@ Display at least:
 - heartbeat status;
 - last canonical event.
 
-## 13. Required tests
+## 13. Governed scope-amendment approval UX
+
+When a running governed execution receives a requested addition that changes the approved scope, AI Bridge must not silently append it and must not leave the Product Owner to manually construct governance calls.
+
+Present a concise Product Owner prompt such as:
+
+```text
+💡 AI Bridge
+
+A futás közben egy új követelmény merült fel.
+Ez módosítja a jóváhagyott scope-ot.
+
+Javasolt módosítás:
++ Execution Heartbeat
++ Stalled Detection
+
+Szeretnéd hozzáadni a Sprinthez?
+
+[ Jóváhagyom ]
+```
+
+On approval, only AI Bridge governance may:
+
+- create the next proposal version or superseding proposal;
+- calculate and persist the new proposal hash;
+- bind the Product Owner approval reference;
+- issue the new hash-bound Execution Contract;
+- prepare or create the execution token;
+- bind baseline, branch, release gates, and evidence path;
+- expose the resulting handoff package;
+- allow the provider to resume from the preserved worktree.
+
+The provider must never:
+
+- create its own proposal;
+- approve its own proposal;
+- issue its own contract;
+- invent a contract identifier, hash, token, baseline, gate, or evidence path;
+- commit or produce evidence while waiting for superseding authority.
+
+The Product Owner UX may hide technical identifiers under a collapsible or secondary technical-details section, but the underlying artifacts must remain durable and auditable.
+
+## 14. Complete Sprint preparation and Codex handoff package
+
+AI Bridge must support an end-to-end preparation flow that ChatGPT can invoke through MCP.
+
+The flow must be able to:
+
+1. create or amend the governed Sprint proposal;
+2. return the exact reviewable proposal and hash;
+3. bind Product Owner confirmation;
+4. issue the hash-bound Execution Contract;
+5. prepare or start the execution according to current governance policy;
+6. return one complete, bounded handoff package suitable for direct copy-paste into Codex.
+
+Use existing tools where possible. Add one orchestration or summary tool only if existing tools cannot provide a reliable single-call or resumable flow.
+
+Preferred capability name:
+
+```text
+governance.prepare_codex_handoff
+```
+
+Equivalent repository-compatible naming is acceptable.
+
+The final handoff output must include actual values, never placeholders:
+
+```yaml
+project_id
+repository
+sprint_document_path
+scope_identifier
+proposal_version
+proposal_hash
+product_owner_approval_reference
+contract_identifier
+contract_hash
+execution_token
+baseline_commit_sha
+target_branch
+release_gates
+evidence_root
+evidence_required_artifacts
+execution_status
+codex_prompt
+```
+
+The `codex_prompt` must be immediately usable. It must instruct Codex to:
+
+- run `git status` and preserve existing worktree changes;
+- run `git pull --ff-only` only when safe and when it will not overwrite or conflict with the preserved worktree;
+- if pull is blocked by local changes, use a safe repository-compatible synchronization method without discarding work;
+- load and validate the exact AI Bridge-issued Execution Contract;
+- verify contract identifier, contract hash, scope identifier, proposal hash, execution token, baseline, branch, release gates, and evidence root;
+- continue from the existing worktree only after validation succeeds;
+- implement the exact V3 scope without asking routine clarification questions;
+- assess and reuse existing partial Sprint 015 changes instead of blindly restarting;
+- run required targeted tests and all contract release gates;
+- create evidence only under the contract evidence path;
+- commit only after all acceptance criteria and gates pass;
+- stop only for a genuine external blocker, governance mismatch, unsafe destructive operation, or unavailable required secret.
+
+The handoff package must never expose secrets and must be bounded for ChatGPT use.
+
+## 15. No-placeholder and atomic-completion rule
+
+A successful governance handoff response must never claim readiness while any required field is missing.
+
+If proposal approval succeeded but contract issuance or execution preparation failed, return a truthful partial state with:
+
+- completed steps;
+- missing step;
+- safe retry action;
+- stable idempotency or orchestration reference.
+
+Do not return placeholder values such as:
+
+```text
+<CONTRACT_ID>
+<CONTRACT_HASH>
+<EXECUTION_TOKEN>
+```
+
+Do not tell the Product Owner that Codex can continue until the actual required values exist.
+
+The flow must be idempotent and resumable. Repeating the same confirmed request must not issue conflicting duplicate contracts or executions.
+
+## 16. Required tests
 
 Add automated tests for at least:
 
@@ -354,9 +489,21 @@ Add automated tests for at least:
 20. terminal runs not classified as stalled;
 21. Django admin heartbeat rendering;
 22. MCP heartbeat response fields;
-23. backward compatibility of existing consumers.
+23. backward compatibility of existing consumers;
+24. scope-amendment prompt generated from a real scope difference;
+25. approval creates a new proposal version or superseding scope through governance only;
+26. provider cannot self-issue authority;
+27. preserved worktree remains untouched while authority is pending;
+28. successful preparation returns every required handoff field with actual values;
+29. no-placeholder guarantee;
+30. idempotent retry after partial governance failure;
+31. generated Codex prompt contains exact identifiers, baseline, branch, gates, and evidence root;
+32. prompt instructs safe pull/synchronization without discarding local work;
+33. handoff output is bounded and secret-safe.
 
-## 14. Proving scenario
+## 17. Proving scenarios
+
+### A. Real-time observability proving run
 
 Run one real governed proving execution in DEV mode.
 
@@ -369,14 +516,28 @@ Before completion, evidence must show:
 - console activity output;
 - Django admin activity output;
 - heartbeat projection during an active period;
-- controlled proof of waiting/stalled projection using deterministic test time or a safe test fixture, without delaying production execution;
+- controlled proof of waiting/stalled projection using deterministic test time or a safe fixture;
 - no lifecycle mutation and no fake blocker during stalled projection.
+
+### B. Full governed Codex handoff proving run
+
+Run one complete preparation scenario through AI Bridge:
+
+1. create or amend a Sprint proposal;
+2. review the proposal and hash;
+3. bind Product Owner approval;
+4. issue a real Execution Contract;
+5. obtain a real execution token;
+6. return one complete Codex handoff package;
+7. verify that every required identifier and path is present and non-placeholder;
+8. paste the generated prompt into a controlled Codex execution or validate it with the provider adapter;
+9. prove Codex can begin without requesting the already-issued governance values again.
 
 The final proof must include release gates, evidence binding, final commit, and Product Owner review readiness.
 
-## 15. Required evidence
+## 18. Required evidence
 
-Create Sprint 015 evidence under the repository's established evidence structure, including:
+Create Sprint 015 V3 evidence under the contract-defined evidence root, including:
 
 - assessment and reuse classification;
 - event schema or event mapping;
@@ -386,13 +547,21 @@ Create Sprint 015 evidence under the repository's established evidence structure
 - Django admin screenshots or deterministic rendering proof;
 - console output sample;
 - active, waiting, and possibly-stalled examples;
+- scope-amendment flow evidence;
+- proposal version and hash evidence;
+- Product Owner approval binding evidence;
+- issued Execution Contract identifier and contract hash;
+- execution token evidence with secret-safe representation;
+- baseline, branch, release-gate, and evidence-root binding;
+- full generated Codex handoff sample with actual non-secret values;
+- no-placeholder test results;
+- idempotency and resume test results;
 - tests and release-gate results;
-- final commit binding;
-- issued Execution Contract identifier and proposal hash for this V2 scope.
+- final commit binding.
 
-## 16. Acceptance criteria
+## 19. Acceptance criteria
 
-Sprint 015 V2 passes only if all are true:
+Sprint 015 V3 passes only if all are true:
 
 - meaningful DEV execution events are persisted and visible before provider completion;
 - checklist state is derived from canonical lifecycle and events;
@@ -408,19 +577,28 @@ Sprint 015 V2 passes only if all are true:
 - heartbeat projection does not change lifecycle, create a blocker, create a failure, or create a terminal state;
 - terminal runs are not misleadingly classified as stalled;
 - existing execution tools remain compatible;
-- proving evidence is bound to the new V2 proposal hash and AI Bridge-issued Execution Contract;
+- a scope-changing request produces a clear Product Owner approval UX;
+- approval causes AI Bridge governance, not the provider, to create the amended authority;
+- ChatGPT can invoke AI Bridge to complete the governed preparation flow;
+- one final handoff output contains the real proposal hash, contract identifier, contract hash, execution token, baseline, branch, gates, evidence root, and a ready-to-paste Codex prompt;
+- the handoff output contains no placeholders;
+- partial failures are truthful, resumable, and idempotent;
+- Codex can safely synchronize the repository, preserve the existing worktree, validate the contract, and continue without routine clarification questions;
+- evidence is bound to the V3 proposal hash and AI Bridge-issued Execution Contract;
 - all required tests and release gates pass.
 
-## 17. Continuation rule for the currently paused worktree
+## 20. Continuation rule for the currently paused worktree
 
-The current Sprint 015 implementation work already present in the worktree may be retained and reused after the new V2 contract is issued.
+The current Sprint 015 implementation work already present in the worktree may be retained and reused after the new V3 contract is issued.
 
 Before continuing:
 
-1. verify the worktree changes against this exact V2 scope;
-2. discard or correct any change not authorized by this document;
-3. implement the heartbeat amendment;
-4. rerun all required tests and release gates;
-5. create evidence and commit only under the new AI Bridge-issued, hash-bound Execution Contract.
+1. preserve the current worktree;
+2. synchronize with the remote safely without discarding local changes;
+3. verify existing changes against this exact V3 scope;
+4. discard or correct only changes that are out of scope or incorrect;
+5. implement heartbeat, stalled detection, scope-amendment governance UX, and complete Codex handoff preparation;
+6. rerun all required tests and release gates;
+7. create evidence and commit only under the new AI Bridge-issued, hash-bound V3 Execution Contract.
 
-Do not create evidence, claim PASS, or commit the Sprint 015 implementation against the superseded V1 contract.
+Do not create evidence, claim PASS, or commit the Sprint 015 implementation against the superseded V1 or V2 authority.
