@@ -14,11 +14,57 @@ from projects.models import (
     ExecutionProgressEvent,
     ExecutionProvider,
     ExecutionRun,
+    OrchestrationDecision,
+    OrchestrationSession,
     Project,
     ProjectContext,
     ProviderAuditEvent,
 )
 from projects.providers import check_health
+
+
+@admin.register(OrchestrationSession)
+class OrchestrationSessionAdmin(admin.ModelAdmin):
+    list_display = ("token", "project", "provider_id", "status", "created_at")
+    readonly_fields = tuple(field.name for field in OrchestrationSession._meta.fields)
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: OrchestrationSession | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: OrchestrationSession | None = None
+    ) -> bool:
+        return False
+
+
+@admin.register(OrchestrationDecision)
+class OrchestrationDecisionAdmin(admin.ModelAdmin):
+    list_display = (
+        "session",
+        "authority_classification",
+        "policy_decision",
+        "recommended_action",
+        "created_at",
+    )
+    readonly_fields = tuple(field.name for field in OrchestrationDecision._meta.fields)
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: OrchestrationDecision | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: OrchestrationDecision | None = None
+    ) -> bool:
+        return False
 
 
 class ProviderAdminForm(forms.ModelForm):

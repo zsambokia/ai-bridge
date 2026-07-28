@@ -24,9 +24,11 @@ from .execution_context import build_execution_context
 from .models import (
     ExecutableScope,
     ExecutionContract,
+    OrchestrationSession,
     Project,
     ProjectResolutionContinuation,
 )
+from .orchestrator import OpenAIOrchestratorProvider, assess
 from .scopes import (
     answer_clarifications,
     bind_approval,
@@ -69,6 +71,74 @@ def invoke_operation(
             "error": "MCP operation is not registered",
         }
     return handler(payload, repository_root)
+
+
+def _decision_view(session: OrchestrationSession) -> dict[str, Any]:
+    result: dict[str, Any] = {"session": str(session.token), "status": session.status}
+    if hasattr(session, "decision"):
+        decision = session.decision
+        result["decision"] = {
+            "authority_classification": decision.authority_classification,
+            "policy_decision": decision.policy_decision,
+            "recommended_action": decision.recommended_action,
+            "rationale": decision.rationale,
+            "evidence_references": decision.evidence_references,
+            "policy_rule_ids": decision.policy_rule_ids,
+            "product_owner_question": decision.product_owner_question,
+        }
+    return result
+
+
+@mcp_operation("orchestrator.get_status")
+def orchestrator_status(
+    payload: dict[str, Any], repository_root: Path
+) -> dict[str, Any]:
+    del repository_root
+    try:
+        return {
+            "status": "ORCHESTRATION_RETRIEVED",
+            **_decision_view(
+                OrchestrationSession.objects.get(token=str(payload.get("session", "")))
+            ),
+        }
+    except (OrchestrationSession.DoesNotExist, ValueError):
+        return {"status": "ORCHESTRATION_NOT_FOUND"}
+
+
+@mcp_operation("orchestrator.assess")
+def orchestrator_assess(
+    payload: dict[str, Any], repository_root: Path
+) -> dict[str, Any]:
+    del repository_root
+    try:
+        project = Project.objects.get(project_id=str(payload.get("project_id", "")))
+        summary, key = (
+            str(payload.get("summary", "")),
+            str(payload.get("idempotency_key", "")),
+        )
+        if not summary or not key:
+            return {"status": "USER_INPUT_REQUIRED"}
+        session = assess(project, summary, key, OpenAIOrchestratorProvider())
+        return {"status": "ORCHESTRATION_ASSESSED", **_decision_view(session)}
+    except Project.DoesNotExist:
+        return {"status": "PROJECT_NOT_FOUND"}
+
+
+@mcp_operation("orchestrator.cancel")
+def orchestrator_cancel(
+    payload: dict[str, Any], repository_root: Path
+) -> dict[str, Any]:
+    del repository_root
+    try:
+        session = OrchestrationSession.objects.get(
+            token=str(payload.get("session", ""))
+        )
+        if session.status == OrchestrationSession.Status.PENDING:
+            session.status = OrchestrationSession.Status.CANCELLED
+            session.save(update_fields=["status", "updated_at"])
+        return {"status": "ORCHESTRATION_CANCELLED", **_decision_view(session)}
+    except (OrchestrationSession.DoesNotExist, ValueError):
+        return {"status": "ORCHESTRATION_NOT_FOUND"}
 
 
 def _project_view(project: Project) -> dict[str, str]:

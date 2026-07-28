@@ -46,6 +46,49 @@ class Project(models.Model):
         return self.project_id
 
 
+class OrchestrationSession(models.Model):
+    """Durable, bounded model-assessment state; never execution authority."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="orchestrations"
+    )
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    provider_id = models.CharField(max_length=64)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING
+    )
+    request_summary = models.CharField(max_length=500)
+    correlation_id = models.CharField(max_length=128)
+    version = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class OrchestrationDecision(models.Model):
+    """Validated recommendation plus deterministic policy outcome, not a command."""
+
+    session = models.OneToOneField(
+        OrchestrationSession, on_delete=models.CASCADE, related_name="decision"
+    )
+    schema_version = models.CharField(max_length=16)
+    authority_classification = models.CharField(max_length=16)
+    policy_decision = models.CharField(max_length=32)
+    recommended_action = models.CharField(max_length=64)
+    rationale = models.CharField(max_length=1000)
+    evidence_references = models.JSONField(default=list)
+    risk_flags = models.JSONField(default=list)
+    policy_rule_ids = models.JSONField(default=list)
+    product_owner_question = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class ProjectContext(models.Model):
     """A deterministic runtime snapshot of a ready registered Project."""
 

@@ -366,3 +366,12 @@ heartbeat and stall semantics, repairable Windows/provider/console failures,
 and a read-only Codex handoff bound to durable identifiers. These are
 continuity and governance improvements, not a second lifecycle or
 provider-created authority.
+
+## EPIC 009 orchestration control plane
+
+EPIC 009 is decomposed into five dependency-ordered Sprints: authority and
+provider foundation; durable incident and ownership assessment; linked
+remediation and governed executor dispatch; independent validation and
+workflow continuation; and governed deployment, rollback, and end-to-end
+proof. Sprint A establishes the safe decision boundary only; it does not grant
+an LLM execution authority or replace the existing scope and contract lifecycle.

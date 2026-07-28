@@ -262,3 +262,13 @@ hash; Bridge derives the new caller-bound confirmation reference and reuses the
 existing `GovernanceApproval` and `ConversationOrchestration` records. Stale
 bindings fail closed and all recovery actions are audited. Evidence is recorded
 under `docs/evidence/bridge-ai-bridge-sprint-e626a32e-b18a-415e-bfe2-5d2baf8bf1b2/`.
+
+## EPIC 009 Sprint A orchestrator foundation
+
+The first LLM-assisted assessment boundary is durable and provider-neutral.
+OpenAI is the initial runtime adapter, but an LLM recommendation is validated
+as untrusted data and then evaluated by deterministic authority policy. The
+foundation persists sessions and decisions, exposes only bounded MCP status,
+assessment, and cancellation operations, and contains no execution or approval
+path. The remaining incident, remediation, validation, and deployment stages
+are explicitly planned as separate dependent Sprints.
