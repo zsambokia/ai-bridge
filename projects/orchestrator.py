@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from django.db import IntegrityError, transaction
 
+from .knowledge import context_package
 from .models import OrchestrationDecision, OrchestrationSession, Project
 from .orchestration_context import bind, for_session
 
@@ -181,6 +182,7 @@ def build_context(
 ) -> dict[str, Any]:
     """Bounded normalized context; repository content, logs and secrets are excluded."""
     context = bind(project, f"orchestration:{orchestration_id}")
+    package = context_package(project, context.work_context_id, "ENGINEERING")
     return {
         **context.as_dict(),
         "project_id": project.project_id,
@@ -190,6 +192,7 @@ def build_context(
         "orchestration_id": orchestration_id,
         "allowed_actions": [x.value for x in RecommendedAction],
         "prohibited": ["shell_commands", "secrets", "repository_contents"],
+        "knowledge_context_package": package,
     }
 
 
@@ -224,9 +227,13 @@ def assess(
     context_error: ValueError | None = None
     try:
         for_session(session)
-        raw = provider.assess(
-            build_context(project, summary, str(session.token)), session.correlation_id
+        context = build_context(project, summary, str(session.token))
+        session.context_package_hash = context["knowledge_context_package"]["hash"]
+        session.context_entry_ids = context["knowledge_context_package"]["entry_ids"]
+        session.save(
+            update_fields=["context_package_hash", "context_entry_ids", "updated_at"]
         )
+        raw = provider.assess(context, session.correlation_id)
         payload = validate_response(
             raw, str(session.token), repository=project.repository_full_name
         )

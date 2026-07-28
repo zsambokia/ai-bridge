@@ -90,6 +90,8 @@ def test_assessment_is_durable_idempotent_and_never_dispatches() -> None:
     assert first.pk == second.pk
     assert provider.calls == 1
     assert first.status == OrchestrationSession.Status.COMPLETED
+    assert len(first.context_package_hash) == 64
+    assert first.context_entry_ids == []
     assert first.decision.policy_decision == PolicyDecision.ALLOW
     assert first.decision.recommended_action == "CREATE_TECHNICAL_WORK_ITEM"
 

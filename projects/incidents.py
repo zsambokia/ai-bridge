@@ -6,9 +6,11 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
+from .knowledge import create_or_upsert_candidate
 from .models import (
     FailureIncident,
     IncidentEvidence,
+    KnowledgeEntry,
     OrchestrationSession,
     OwnershipAssessment,
     Project,
@@ -185,3 +187,42 @@ def assess_ownership(
     ][-20:]
     incident.save(update_fields=["status", "timeline", "updated_at"])
     return assessment
+
+
+def close_incident(
+    incident: FailureIncident, actor: str = "system"
+) -> KnowledgeEntry:
+    """Close an incident and record its bounded lesson as a reviewable AKB candidate.
+
+    This intentionally does not activate knowledge: a separately approved AKB
+    review is required before an Orchestrator can consume the lesson.
+    """
+    for_incident(incident)
+    evidence = list(incident.evidence.values_list("reference", flat=True))[:20]
+    entry = create_or_upsert_candidate(
+        incident.project,
+        {
+            "entry_key": f"incident:{incident.token}",
+            "scope": "PROJECT",
+            "knowledge_type": "INCIDENT_LESSON",
+            "title": f"Incident lesson: {incident.summary[:180]}",
+            "content": (
+                f"Incident: {incident.summary}\n"
+                "Causal classification: "
+                f"{incident.causal_classification or 'UNCLASSIFIED'}\n"
+                "Status: closed; lesson requires review before activation."
+            ),
+            "source_type": "INCIDENT",
+            "source_reference": f"incident:{incident.token}",
+            "evidence_references": evidence,
+            "work_context_id": f"incident:{incident.token}",
+            "role_context": ["ENGINEERING"],
+            "knowledge_owner_role": "ENGINEERING",
+        },
+        actor,
+        upsert=True,
+    )
+    incident.status = FailureIncident.Status.CLOSED
+    incident.timeline = [*incident.timeline, {"event": "CLOSED", "actor": actor}][-20:]
+    incident.save(update_fields=["status", "timeline", "updated_at"])
+    return entry

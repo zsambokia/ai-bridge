@@ -1,0 +1,15 @@
+{
+  "scope": "bridge:ai-bridge:sprint:5977cb4b-715c-4fd6-8fff-f4763a09e7ea",
+  "contract": "bridge:ai-bridge:contract:87bcd547-56ab-4e63-a052-30675b1117f1",
+  "baseline": "6cc1f0ffb689347d2ed8d7e28fb1611ce4981896",
+  "status": "PASS",
+  "engineering_audit": "PASS",
+  "akb_readiness": "PARTIALLY READY",
+  "gates": [
+    {"name": "pytest", "status": "PASS", "detail": "130 passed"},
+    {"name": "ruff check .", "status": "PASS", "detail": "all checks passed"},
+    {"name": "mypy .", "status": "PASS", "detail": "no issues in 106 source files"},
+    {"name": "validate_scopes", "status": "PASS", "detail": "all canonical scopes valid"}
+  ],
+  "known_separate_defect": "interrupted-codex-running-state.md"
+}

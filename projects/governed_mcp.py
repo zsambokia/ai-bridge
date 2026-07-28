@@ -32,6 +32,17 @@ from .execution import (
     start_run,
 )
 from .execution_activity import activity_summary, event_view, heartbeat_projection
+from .knowledge import (
+    context_package as akb_context_package,
+)
+from .knowledge import (
+    create_or_upsert_candidate,
+    entry_for_project,
+    review_candidate,
+)
+from .knowledge import (
+    search as akb_search,
+)
 from .mcp import invoke_operation
 from .models import (
     ConversationOrchestration,
@@ -43,6 +54,7 @@ from .models import (
     ExecutionRun,
     ExecutionStartRequest,
     GovernanceApproval,
+    KnowledgeEntry,
     McpAuditEvent,
     McpIdempotencyRecord,
     Project,
@@ -57,7 +69,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-28.3"
+TOOL_SURFACE_VERSION = "2026-07-28.4"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -100,6 +112,43 @@ def _schema(
 _PROJECT = {"project_id": {"type": "string", "minLength": 1, "maxLength": 128}}
 _APPROVAL = {"approval_reference": {"type": "string", "minLength": 1, "maxLength": 128}}
 _IDEMPOTENCY = {"idempotency_key": {"type": "string", "minLength": 8, "maxLength": 128}}
+_AKB_ENTRY = {
+    "entry_key": {"type": "string", "minLength": 1, "maxLength": 160},
+    "scope": {"type": "string", "enum": ["PLATFORM", "PROJECT"]},
+    "knowledge_type": {
+        "type": "string",
+        "enum": [
+            "CONSTITUTION",
+            "ROADMAP",
+            "UI_PLAN",
+            "SYSTEM_DESIGN",
+            "INCIDENT_LESSON",
+            "RUNBOOK",
+            "POLICY",
+            "ARCHITECTURE_DECISION",
+            "GENERAL",
+        ],
+    },
+    "title": {"type": "string", "minLength": 1, "maxLength": 255},
+    "content": {"type": "string", "minLength": 1, "maxLength": 12000},
+    "source_type": {"type": "string", "maxLength": 64},
+    "source_reference": {"type": "string", "minLength": 1, "maxLength": 255},
+    "evidence_references": {
+        "type": "array",
+        "maxItems": 20,
+        "items": {"type": "string", "maxLength": 255},
+    },
+    "work_context_id": {"type": "string", "maxLength": 255},
+    "role_context": {
+        "type": "array",
+        "maxItems": 10,
+        "items": {"type": "string", "maxLength": 64},
+    },
+    "verification_status": {"type": "string", "maxLength": 32},
+    "freshness_status": {"type": "string", "maxLength": 32},
+    "knowledge_owner_role": {"type": "string", "maxLength": 64},
+    "is_must_know": {"type": "boolean"},
+}
 
 
 def _tool(
@@ -213,17 +262,20 @@ _TOOLS = [
     ),
     _tool(
         "akb.search",
-        "Search bounded project AKB documents; returns at most ten safe snippets.",
+        "Search governed Platform and Project AKB entries with bounded "
+        "metadata filters.",
         READ_ONLY,
         {
             **_PROJECT,
             "query": {"type": "string", "minLength": 1, "maxLength": 200},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10},
-            "categories": {
-                "type": "array",
-                "maxItems": 2,
-                "items": {"type": "string", "enum": ["current-state", "roadmap"]},
-            },
+            "scope": {"type": "string", "enum": ["PLATFORM", "PROJECT"]},
+            "knowledge_type": {"type": "string", "maxLength": 64},
+            "status": {"type": "string", "maxLength": 32},
+            "verification_status": {"type": "string", "maxLength": 32},
+            "freshness_status": {"type": "string", "maxLength": 32},
+            "role_context": {"type": "string", "maxLength": 64},
+            "work_context_id": {"type": "string", "maxLength": 255},
         },
         ["project_id", "query"],
     ),
@@ -236,6 +288,80 @@ _TOOLS = [
             "document_id": {"type": "string", "enum": ["current-state", "roadmap"]},
         },
         ["project_id", "document_id"],
+    ),
+    _tool(
+        "akb.get_entry",
+        "Read one governed AKB entry in the caller's project context.",
+        READ_ONLY,
+        {**_PROJECT, "entry_id": {"type": "integer", "minimum": 1}},
+        ["project_id", "entry_id"],
+    ),
+    _tool(
+        "akb.get_context_package",
+        "Build the deterministic, auditable Orki AKB Context Package.",
+        READ_ONLY,
+        {
+            **_PROJECT,
+            "work_context_id": {"type": "string", "minLength": 1, "maxLength": 255},
+            "role_context_id": {"type": "string", "maxLength": 64},
+        },
+        ["project_id", "work_context_id"],
+    ),
+    _tool(
+        "akb.create_candidate",
+        "Create a governed AKB candidate; publication remains approval-controlled.",
+        PREPARATORY_STATE,
+        {**_PROJECT, **_AKB_ENTRY, **_IDEMPOTENCY},
+        [
+            "project_id",
+            "entry_key",
+            "scope",
+            "knowledge_type",
+            "title",
+            "content",
+            "source_reference",
+            "idempotency_key",
+        ],
+    ),
+    _tool(
+        "akb.upsert_candidate",
+        "Idempotently revise an existing AKB candidate without overwriting "
+        "active knowledge.",
+        PREPARATORY_STATE,
+        {**_PROJECT, **_AKB_ENTRY, **_IDEMPOTENCY},
+        [
+            "project_id",
+            "entry_key",
+            "scope",
+            "knowledge_type",
+            "title",
+            "content",
+            "source_reference",
+            "idempotency_key",
+        ],
+    ),
+    _tool(
+        "akb.review_candidate",
+        "Submit review or approve a candidate with a durable approval reference.",
+        APPROVAL_REQUIRED,
+        {
+            **_PROJECT,
+            "entry_id": {"type": "integer", "minimum": 1},
+            "decision": {
+                "type": "string",
+                "enum": ["REQUEST_REVIEW", "REJECT", "APPROVE"],
+            },
+            "approval_reference": {"type": "string", "minLength": 1, "maxLength": 128},
+            **_IDEMPOTENCY,
+        },
+        ["project_id", "entry_id", "decision", "idempotency_key"],
+    ),
+    _tool(
+        "akb.list_review_queue",
+        "List candidate and review entries visible in one project context.",
+        READ_ONLY,
+        {**_PROJECT, "limit": {"type": "integer", "minimum": 1, "maximum": 50}},
+        ["project_id"],
     ),
     _tool(
         "execution.prepare",
@@ -950,6 +1076,33 @@ def _audit(
     McpAuditEvent.objects.create(
         caller=caller, tool_name=tool, project=project, outcome=outcome, details=details
     )
+
+
+def _akb_audit_details(
+    name: str, arguments: dict[str, Any], result: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Record AKB operation metadata without putting knowledge content in audit logs."""
+    if not name.startswith("akb."):
+        return {}
+    details: dict[str, Any] = {
+        "operation_type": name,
+        "platform_context_id": "ai-bridge.platform.v1",
+        "project_context_id": arguments.get("project_id", ""),
+        "work_context_id": arguments.get("work_context_id", ""),
+        "role_context": arguments.get(
+            "role_context_id", arguments.get("role_context", "")
+        ),
+        "input_reference": arguments.get(
+            "entry_key", arguments.get("entry_id", arguments.get("query", ""))
+        ),
+        "approval_reference": arguments.get("approval_reference", ""),
+    }
+    if result:
+        details["modified_entry_ids"] = (
+            [result["entry_id"]] if "entry_id" in result else []
+        )
+        details["context_package_hash"] = result.get("hash", "")
+    return details
 
 
 def _idempotent(
@@ -1947,20 +2100,88 @@ def invoke_public_tool(
             result = {"document_id": ident, "content": content}
         elif name == "akb.search":
             assert project is not None
-            hits = []
-            for ident in arguments.get("categories", ["current-state", "roadmap"]):
-                _, content = _akb(project, ident)
-                for line in content.splitlines():
-                    if arguments["query"].lower() in line.lower():
-                        hits.append({"document_id": ident, "snippet": line[:500]})
             limit = arguments.get("limit", 10)
+            hits = akb_search(
+                project, arguments["query"], {**arguments, "limit": limit}
+            )
             result = {
                 "results": [
-                    {**hit, "rank": index + 1, "accepted": True}
-                    for index, hit in enumerate(hits[:limit])
+                    {**hit, "rank": index + 1} for index, hit in enumerate(hits)
                 ],
                 "result_limit": limit,
-                "search_capability": "bounded deterministic accepted-document search",
+                "search_capability": "bounded metadata-filtered AKB text search",
+            }
+        elif name == "akb.get_entry":
+            assert project is not None
+            entry = entry_for_project(project, arguments["entry_id"])
+            result = {
+                "entry_id": entry.pk,
+                "entry_key": entry.entry_key,
+                "title": entry.title,
+                "content": entry.content,
+                "scope": entry.scope,
+                "knowledge_type": entry.knowledge_type,
+                "status": entry.status,
+                "version": entry.version,
+                "source_reference": entry.source_reference,
+                "evidence_references": entry.evidence_references,
+            }
+        elif name == "akb.get_context_package":
+            assert project is not None
+            result = akb_context_package(
+                project,
+                arguments["work_context_id"],
+                arguments.get("role_context_id", ""),
+            )
+        elif name in {"akb.create_candidate", "akb.upsert_candidate"}:
+            assert project is not None
+            entry = create_or_upsert_candidate(
+                project, arguments, caller, upsert=name == "akb.upsert_candidate"
+            )
+            result = {
+                "status": entry.status,
+                "entry_id": entry.pk,
+                "entry_key": entry.entry_key,
+                "version": entry.version,
+                "next_allowed_action": "akb.review_candidate",
+            }
+        elif name == "akb.review_candidate":
+            assert project is not None
+            entry = review_candidate(
+                project,
+                arguments["entry_id"],
+                arguments["decision"],
+                caller,
+                arguments.get("approval_reference", ""),
+            )
+            result = {
+                "status": entry.status,
+                "entry_id": entry.pk,
+                "version": entry.version,
+                "approval_reference": entry.approval_reference,
+            }
+        elif name == "akb.list_review_queue":
+            assert project is not None
+            queue = KnowledgeEntry.objects.filter(
+                project__in=[None, project],
+                status__in=[
+                    KnowledgeEntry.Status.CANDIDATE,
+                    KnowledgeEntry.Status.IN_REVIEW,
+                    KnowledgeEntry.Status.REJECTED,
+                ],
+            ).order_by("created_at")[: arguments.get("limit", 20)]
+            result = {
+                "entries": [
+                    {
+                        "entry_id": item.pk,
+                        "entry_key": item.entry_key,
+                        "title": item.title,
+                        "status": item.status,
+                        "knowledge_type": item.knowledge_type,
+                        "scope": item.scope,
+                    }
+                    for item in queue
+                ]
             }
         elif name == "execution.prepare":
             assert project is not None
@@ -2224,8 +2445,23 @@ def invoke_public_tool(
         else:
             raise ValueError("TOOL_NOT_IMPLEMENTED")
         _store_idempotent(caller, name, arguments, result)
-        _audit(caller, name, project, "SUCCESS", {"status": result.get("status", "OK")})
+        _audit(
+            caller,
+            name,
+            project,
+            "SUCCESS",
+            {
+                "status": result.get("status", "OK"),
+                **_akb_audit_details(name, arguments, result),
+            },
+        )
         return result
     except Exception as exc:
-        _audit(caller, name, project, "REJECTED", {"code": str(exc)[:200]})
+        _audit(
+            caller,
+            name,
+            project,
+            "REJECTED",
+            {"code": str(exc)[:200], **_akb_audit_details(name, arguments)},
+        )
         raise

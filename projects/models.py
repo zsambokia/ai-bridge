@@ -67,6 +67,8 @@ class OrchestrationSession(models.Model):
     request_summary = models.CharField(max_length=500)
     correlation_id = models.CharField(max_length=128)
     version = models.PositiveIntegerField(default=0)
+    context_package_hash = models.CharField(max_length=64, blank=True)
+    context_entry_ids = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -508,6 +510,95 @@ class McpIdempotencyRecord(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["caller", "tool_name", "key"], name="unique_mcp_idempotency_key"
+            )
+        ]
+
+
+class KnowledgeEntry(models.Model):
+    """Governed, searchable Platform or Project AKB knowledge."""
+
+    class Scope(models.TextChoices):
+        PLATFORM = "PLATFORM", "Platform"
+        PROJECT = "PROJECT", "Project"
+
+    class Status(models.TextChoices):
+        CANDIDATE = "CANDIDATE", "Candidate"
+        IN_REVIEW = "IN_REVIEW", "In review"
+        APPROVED = "APPROVED", "Approved"
+        ACTIVE = "ACTIVE", "Active"
+        WATCH = "WATCH", "Watch"
+        REVIEW_DUE = "REVIEW_DUE", "Review due"
+        STALE = "STALE", "Stale"
+        SUPERSEDED = "SUPERSEDED", "Superseded"
+        ARCHIVED = "ARCHIVED", "Archived"
+        REJECTED = "REJECTED", "Rejected"
+
+    project = models.ForeignKey(
+        Project,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="knowledge_entries",
+    )
+    platform_context_id = models.CharField(
+        max_length=128, default="ai-bridge.platform.v1"
+    )
+    project_context_id = models.CharField(max_length=160, blank=True)
+    work_context_id = models.CharField(max_length=255, blank=True)
+    role_context = models.JSONField(default=list)
+    entry_key = models.CharField(max_length=160, unique=True)
+    scope = models.CharField(max_length=16, choices=Scope.choices)
+    knowledge_type = models.CharField(max_length=64)
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    source_type = models.CharField(max_length=64)
+    source_reference = models.CharField(max_length=255)
+    evidence_references = models.JSONField(default=list)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.CANDIDATE
+    )
+    verification_status = models.CharField(max_length=32, default="UNVERIFIED")
+    freshness_status = models.CharField(max_length=32, default="CURRENT")
+    knowledge_owner_role = models.CharField(max_length=64, default="ENGINEERING")
+    is_must_know = models.BooleanField(default=False)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    review_due_at = models.DateTimeField(null=True, blank=True)
+    approval_reference = models.CharField(max_length=128, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "scope", "knowledge_type", "title"],
+                name="unique_akb_entry_identity",
+            )
+        ]
+        ordering = ["scope", "knowledge_type", "title"]
+
+
+class KnowledgeRevision(models.Model):
+    """Append-only provenance for a KnowledgeEntry mutation."""
+
+    entry = models.ForeignKey(
+        KnowledgeEntry, on_delete=models.CASCADE, related_name="revisions"
+    )
+    actor = models.CharField(max_length=128)
+    previous_version = models.PositiveIntegerField(default=0)
+    new_version = models.PositiveIntegerField()
+    source_reference = models.CharField(max_length=255)
+    approval_reference = models.CharField(max_length=128, blank=True)
+    linked_work = models.CharField(max_length=255, blank=True)
+    reason = models.CharField(max_length=1000)
+    content_snapshot = models.TextField(default="")
+    metadata_snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["entry", "new_version"], name="unique_akb_revision_version"
             )
         ]
 

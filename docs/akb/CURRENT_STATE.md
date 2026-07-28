@@ -24,6 +24,14 @@ no models, routes, or public interface.
 The Project Definition is static configuration. Lifecycle, onboarding, Context,
 and capability state are runtime data and are not written back to YAML.
 
+## AKB Sprint 1 foundation
+
+Sprint 1 adds durable, governed Platform and Project knowledge entries,
+append-only revisions, metadata-filtered bounded retrieval, deterministic
+Orchestrator Context Packages, and an approval-controlled candidate-to-active
+lifecycle. The implementation and deliberately deferred capabilities are
+described in `docs/architecture/AKB_FOUNDATION.md`.
+
 ## Verified current execution
 
 Sprint 003 bootstrap was run against this repository's own Project Definition.
