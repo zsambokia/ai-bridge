@@ -14,8 +14,11 @@ from projects.models import (
     ExecutionProgressEvent,
     ExecutionProvider,
     ExecutionRun,
+    FailureIncident,
+    IncidentEvidence,
     OrchestrationDecision,
     OrchestrationSession,
+    OwnershipAssessment,
     Project,
     ProjectContext,
     ProviderAuditEvent,
@@ -63,6 +66,57 @@ class OrchestrationDecisionAdmin(admin.ModelAdmin):
 
     def has_delete_permission(
         self, request: object, obj: OrchestrationDecision | None = None
+    ) -> bool:
+        return False
+
+
+class IncidentEvidenceInline(admin.TabularInline):
+    model = IncidentEvidence
+    extra = 0
+    can_delete = False
+    readonly_fields = tuple(field.name for field in IncidentEvidence._meta.fields)
+
+    def has_add_permission(self, request: object, obj: object | None = None) -> bool:
+        return False
+
+
+@admin.register(FailureIncident)
+class FailureIncidentAdmin(admin.ModelAdmin):
+    list_display = ("token", "project", "status", "correlation_id", "created_at")
+    list_filter = ("status",)
+    search_fields = ("token", "project__project_id", "correlation_id")
+    readonly_fields = tuple(field.name for field in FailureIncident._meta.fields)
+    inlines = (IncidentEvidenceInline,)
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: FailureIncident | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: FailureIncident | None = None
+    ) -> bool:
+        return False
+
+
+@admin.register(OwnershipAssessment)
+class OwnershipAssessmentAdmin(admin.ModelAdmin):
+    list_display = ("incident", "selected_project", "confidence", "policy_decision")
+    readonly_fields = tuple(field.name for field in OwnershipAssessment._meta.fields)
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: OwnershipAssessment | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: OwnershipAssessment | None = None
     ) -> bool:
         return False
 

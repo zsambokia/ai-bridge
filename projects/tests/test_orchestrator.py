@@ -6,7 +6,7 @@ import inspect
 
 import pytest
 
-from projects.models import OrchestrationSession, Project
+from projects.models import ExecutionProvider, OrchestrationSession, Project
 from projects.orchestrator import (
     FakeOrchestratorProvider,
     PolicyDecision,
@@ -110,12 +110,29 @@ def test_bounded_context_excludes_secrets_and_repository_contents() -> None:
     assert "repository_contents" in context["prohibited"]
 
 
+@pytest.mark.django_db
 def test_domain_has_no_openai_specific_dependency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import projects.orchestrator as domain
+    import projects.orchestrator_providers as composition
 
     monkeypatch.setenv("AI_BRIDGE_ORCHESTRATOR_PROVIDER", "not-registered")
     assert "OpenAI" not in inspect.getsource(domain)
-    with pytest.raises(ValueError, match="ORCHESTRATOR_PROVIDER_UNAVAILABLE"):
+    assert "from openai" not in inspect.getsource(composition).lower()
+    with pytest.raises(ValueError, match="MODEL_PROVIDER_UNAVAILABLE"):
         configured_provider()
+
+
+@pytest.mark.django_db
+def test_configured_provider_uses_the_registered_model_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = ExecutionProvider.objects.get(provider_id="openai")
+    entry.status = ExecutionProvider.Status.ACTIVE
+    entry.enabled = True
+    entry.capabilities = ["MODEL_INFERENCE"]
+    entry.save(update_fields=["status", "enabled", "capabilities"])
+    monkeypatch.setenv("AI_BRIDGE_ORCHESTRATOR_PROVIDER", entry.provider_id)
+
+    assert configured_provider().provider_id == entry.provider_id

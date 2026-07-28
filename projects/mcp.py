@@ -21,9 +21,11 @@ from .contracts import (
     validate_execution_contract,
 )
 from .execution_context import build_execution_context
+from .incidents import add_evidence, assess_ownership, record_incident
 from .models import (
     ExecutableScope,
     ExecutionContract,
+    FailureIncident,
     OrchestrationSession,
     Project,
     ProjectResolutionContinuation,
@@ -140,6 +142,124 @@ def orchestrator_cancel(
         return {"status": "ORCHESTRATION_CANCELLED", **_decision_view(session)}
     except (OrchestrationSession.DoesNotExist, ValueError):
         return {"status": "ORCHESTRATION_NOT_FOUND"}
+
+
+def _incident_view(incident: FailureIncident) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "incident": str(incident.token),
+        "project_id": incident.project.project_id,
+        "status": incident.status,
+        "summary": incident.summary,
+        "correlation_id": incident.correlation_id,
+        "evidence": [
+            {
+                "reference": item.reference,
+                "kind": item.kind,
+                "provenance": item.provenance,
+            }
+            for item in incident.evidence.all()
+        ],
+    }
+    if hasattr(incident, "ownership_assessment"):
+        assessment = incident.ownership_assessment
+        result["ownership"] = {
+            "project_id": assessment.selected_project.project_id
+            if assessment.selected_project
+            else None,
+            "component": assessment.selected_component,
+            "confidence": assessment.confidence,
+            "policy_decision": assessment.policy_decision,
+            "reason": assessment.reason,
+            "candidates": assessment.candidates,
+        }
+    return result
+
+
+@mcp_operation("incident.record")
+def incident_record(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    """Record bounded diagnostic evidence; this cannot dispatch remediation."""
+    del repository_root
+    try:
+        project = Project.objects.get(project_id=str(payload.get("project_id", "")))
+        session_token = str(payload.get("session", "")).strip()
+        session = (
+            OrchestrationSession.objects.get(token=session_token)
+            if session_token
+            else None
+        )
+        incident = record_incident(
+            project,
+            str(payload.get("summary", "")),
+            str(payload.get("idempotency_key", "")),
+            session=session,
+            causal_classification=str(payload.get("causal_classification", "")),
+        )
+        evidence = payload.get("evidence", [])
+        if not isinstance(evidence, list) or len(evidence) > 20:
+            raise ValueError("INCIDENT_EVIDENCE_INVALID")
+        for item in evidence:
+            if not isinstance(item, dict):
+                raise ValueError("INCIDENT_EVIDENCE_INVALID")
+            add_evidence(
+                incident,
+                str(item.get("reference", "")),
+                str(item.get("kind", "")),
+                str(item.get("summary", "")),
+                str(item.get("provenance", "")),
+            )
+        return {"status": "INCIDENT_RECORDED", **_incident_view(incident)}
+    except Project.DoesNotExist:
+        return {"status": "PROJECT_NOT_FOUND"}
+    except OrchestrationSession.DoesNotExist:
+        return {"status": "ORCHESTRATION_NOT_FOUND"}
+    except ValueError as exc:
+        return {"status": str(exc)}
+
+
+@mcp_operation("incident.assess")
+def incident_assess(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    """Apply deterministic ownership constraints to untrusted candidate input."""
+    del repository_root
+    try:
+        incident = FailureIncident.objects.get(token=str(payload.get("incident", "")))
+        candidates = payload.get("candidates", [])
+        if not isinstance(candidates, list):
+            raise ValueError("OWNERSHIP_CANDIDATES_INVALID")
+        assess_ownership(incident, candidates)
+        return {"status": "INCIDENT_ASSESSED", **_incident_view(incident)}
+    except (FailureIncident.DoesNotExist, ValueError):
+        return {"status": "INCIDENT_ASSESSMENT_REJECTED"}
+
+
+@mcp_operation("incident.get")
+def incident_get(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    try:
+        return {
+            "status": "INCIDENT_RETRIEVED",
+            **_incident_view(
+                FailureIncident.objects.get(token=str(payload.get("incident", "")))
+            ),
+        }
+    except (FailureIncident.DoesNotExist, ValueError):
+        return {"status": "INCIDENT_NOT_FOUND"}
+
+
+@mcp_operation("incident.list")
+def incident_list(payload: dict[str, Any], repository_root: Path) -> dict[str, Any]:
+    del repository_root
+    project_id = str(payload.get("project_id", "")).strip()
+    incidents = (
+        FailureIncident.objects.select_related("project")
+        .prefetch_related("evidence")
+        .order_by("-created_at")
+    )
+    if project_id:
+        incidents = incidents.filter(project__project_id=project_id)
+    return {
+        "status": "INCIDENTS_RETRIEVED",
+        "incidents": [_incident_view(item) for item in incidents[:50]],
+    }
 
 
 def _project_view(project: Project) -> dict[str, str]:

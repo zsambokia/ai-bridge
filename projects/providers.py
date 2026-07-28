@@ -424,6 +424,70 @@ def adapter_for(entry: ExecutionProvider) -> ExecutionAdapter:
     raise ValueError("PROVIDER_EXECUTION_ADAPTER_UNAVAILABLE")
 
 
+def model_adapter_for(entry: ExecutionProvider) -> ModelAdapter:
+    """Resolve a model adapter from the canonical provider registry entry."""
+    adapters: dict[str, ModelAdapter] = {
+        ExecutionProvider.Kind.OPENAI: OpenAIAdapter(),
+        ExecutionProvider.Kind.CLAUDE: ClaudeAdapter(),
+    }
+    try:
+        return adapters[entry.kind]
+    except KeyError as exc:
+        raise ValueError("MODEL_PROVIDER_ADAPTER_UNAVAILABLE") from exc
+
+
+def select_model_provider(identity: str) -> ExecutionProvider:
+    """Select one enabled, active model provider by its governed identity."""
+    try:
+        entry = ExecutionProvider.objects.get(provider_id=identity)
+    except ExecutionProvider.DoesNotExist as exc:
+        raise ValueError("MODEL_PROVIDER_UNAVAILABLE") from exc
+    if (
+        not entry.enabled
+        or entry.status != ExecutionProvider.Status.ACTIVE
+        or entry.role != ExecutionProvider.Role.MODEL_API
+        or "MODEL_INFERENCE" not in entry.capabilities
+    ):
+        raise ValueError("MODEL_PROVIDER_UNAVAILABLE")
+    return entry
+
+
+def structured_model_response(
+    entry: ExecutionProvider, response: dict[str, object]
+) -> dict[str, object]:
+    """Decode one JSON-object response inside the provider-platform boundary."""
+    text: object
+    if entry.kind == ExecutionProvider.Kind.OPENAI:
+        output = response.get("output")
+        if not isinstance(output, list) or not output:
+            raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
+        message = output[0]
+        if not isinstance(message, dict):
+            raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
+        content = message.get("content")
+        if not isinstance(content, list) or not content:
+            raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
+        item = content[0]
+        text = item.get("text") if isinstance(item, dict) else None
+    elif entry.kind == ExecutionProvider.Kind.CLAUDE:
+        content = response.get("content")
+        if not isinstance(content, list) or not content:
+            raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
+        item = content[0]
+        text = item.get("text") if isinstance(item, dict) else None
+    else:
+        raise ValueError("MODEL_PROVIDER_ADAPTER_UNAVAILABLE")
+    if not isinstance(text, str):
+        raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
+    return decoded
+
+
 def select_provider(
     identity: str, required_capabilities: set[str] | None = None
 ) -> ExecutionProvider:

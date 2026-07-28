@@ -89,6 +89,101 @@ class OrchestrationDecision(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class RepositoryDependency(models.Model):
+    """A reviewed repository relationship used by ownership assessment."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="outgoing_dependencies"
+    )
+    depends_on = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="incoming_dependencies"
+    )
+    component_mapping = models.JSONField(default=dict)
+    autonomous_remediation_approved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "depends_on"], name="unique_repository_dependency"
+            )
+        ]
+
+
+class FailureIncident(models.Model):
+    """Durable, retry-safe technical failure record; never remediation authority."""
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Open"
+        ASSESSED = "ASSESSED", "Assessed"
+        CLOSED = "CLOSED", "Closed"
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="failure_incidents"
+    )
+    session = models.ForeignKey(
+        OrchestrationSession,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="incidents",
+    )
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    correlation_id = models.CharField(max_length=128)
+    summary = models.CharField(max_length=1000)
+    causal_classification = models.CharField(max_length=64, blank=True)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.OPEN
+    )
+    timeline = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class IncidentEvidence(models.Model):
+    """Bounded provenance record; stores a reference and summary, never raw logs."""
+
+    incident = models.ForeignKey(
+        FailureIncident, on_delete=models.CASCADE, related_name="evidence"
+    )
+    reference = models.CharField(max_length=255)
+    kind = models.CharField(max_length=64)
+    summary = models.CharField(max_length=1000)
+    provenance = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["incident", "reference"],
+                name="unique_incident_evidence_reference",
+            )
+        ]
+
+
+class OwnershipAssessment(models.Model):
+    """Deterministic ownership outcome over registered repositories and evidence."""
+
+    incident = models.OneToOneField(
+        FailureIncident, on_delete=models.CASCADE, related_name="ownership_assessment"
+    )
+    selected_project = models.ForeignKey(
+        Project,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="owned_incidents",
+    )
+    selected_component = models.CharField(max_length=255, blank=True)
+    confidence = models.FloatField(default=0)
+    policy_decision = models.CharField(max_length=32)
+    reason = models.CharField(max_length=1000)
+    candidates = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class ProjectContext(models.Model):
     """A deterministic runtime snapshot of a ready registered Project."""
 

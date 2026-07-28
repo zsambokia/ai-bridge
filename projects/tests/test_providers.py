@@ -13,8 +13,11 @@ from projects.providers import (
     CodexCliAdapter,
     check_health,
     credential_value,
+    model_adapter_for,
     public_provider,
+    select_model_provider,
     select_provider,
+    structured_model_response,
 )
 
 
@@ -63,6 +66,31 @@ def test_exact_selection_requires_an_active_capable_execution_provider() -> None
     entry.save(update_fields=["enabled"])
     with pytest.raises(ValueError, match="EXECUTOR_PROVIDER_UNAVAILABLE"):
         select_provider(entry.provider_id)
+
+
+@pytest.mark.django_db
+def test_model_selection_and_response_decoding_stay_in_provider_platform() -> None:
+    entry = ExecutionProvider.objects.create(
+        provider_id="model-test",
+        name="Model test",
+        kind=ExecutionProvider.Kind.OPENAI,
+        role=ExecutionProvider.Role.MODEL_API,
+        status=ExecutionProvider.Status.ACTIVE,
+        adapter_key="model-test-adapter",
+        enabled=True,
+        capabilities=["MODEL_INFERENCE"],
+        credential_binding="OPENAI_API_KEY",
+    )
+    assert select_model_provider(entry.provider_id).pk == entry.pk
+    assert model_adapter_for(entry).__class__.__name__ == "OpenAIAdapter"
+    assert structured_model_response(
+        entry,
+        {"output": [{"content": [{"text": '{"schema_version":"1.0"}'}]}]},
+    ) == {"schema_version": "1.0"}
+    entry.enabled = False
+    entry.save(update_fields=["enabled"])
+    with pytest.raises(ValueError, match="MODEL_PROVIDER_UNAVAILABLE"):
+        select_model_provider(entry.provider_id)
 
 
 @pytest.mark.django_db
