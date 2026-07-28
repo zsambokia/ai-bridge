@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from projects.incidents import add_evidence, assess_ownership, record_incident
-from projects.models import Project, RepositoryDependency
+from projects.models import OrchestrationSession, Project, RepositoryDependency
 from projects.orchestrator import PolicyDecision
 
 
@@ -31,6 +31,21 @@ def test_incident_and_evidence_are_idempotent_and_secret_safe() -> None:
     assert first.evidence.count() == 1
     with pytest.raises(ValueError, match="SECRET"):
         add_evidence(first, "run:2", "LOG", "password=not-allowed", "execution-run")
+
+
+@pytest.mark.django_db
+def test_incident_rejects_a_session_from_another_project() -> None:
+    origin = _project("origin", "example/origin")
+    other = _project("other", "example/other")
+    session = OrchestrationSession.objects.create(
+        project=other,
+        idempotency_key="other-session",
+        provider_id="fake",
+        request_summary="x",
+        correlation_id="x",
+    )
+    with pytest.raises(ValueError, match="CONTEXT_SESSION_PROJECT_MISMATCH"):
+        record_incident(origin, "failure", "origin-incident", session=session)
 
 
 @pytest.mark.django_db

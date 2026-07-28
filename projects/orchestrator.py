@@ -15,6 +15,7 @@ from typing import Any, Protocol
 from django.db import IntegrityError, transaction
 
 from .models import OrchestrationDecision, OrchestrationSession, Project
+from .orchestration_context import bind, for_session
 
 
 class AuthorityClassification(StrEnum):
@@ -92,7 +93,9 @@ def evaluate_policy(payload: dict[str, Any]) -> PolicyResult:
     )
 
 
-def validate_response(raw: dict[str, Any], session_id: str) -> dict[str, Any]:
+def validate_response(
+    raw: dict[str, Any], session_id: str, *, repository: str | None = None
+) -> dict[str, Any]:
     required = {
         "schema_version",
         "orchestration_id",
@@ -132,6 +135,8 @@ def validate_response(raw: dict[str, Any], session_id: str) -> dict[str, Any]:
             or not 0 <= candidate["confidence"] <= 1
         ):
             raise ValueError("ORCHESTRATOR_CONFIDENCE_INVALID")
+        if repository is not None and candidate["repository"] != repository:
+            raise ValueError("ORCHESTRATOR_CONTEXT_PROJECT_MISMATCH")
     return raw
 
 
@@ -175,7 +180,9 @@ def build_context(
     project: Project, summary: str, orchestration_id: str
 ) -> dict[str, Any]:
     """Bounded normalized context; repository content, logs and secrets are excluded."""
+    context = bind(project, f"orchestration:{orchestration_id}")
     return {
+        **context.as_dict(),
         "project_id": project.project_id,
         "repository": project.repository_full_name,
         "summary": summary[:500],
@@ -191,7 +198,11 @@ def assess(
 ) -> OrchestrationSession:
     """Persist exactly one decision for an idempotency key; never dispatch it."""
     try:
-        return OrchestrationSession.objects.get(idempotency_key=idempotency_key)
+        existing = OrchestrationSession.objects.get(idempotency_key=idempotency_key)
+        if existing.project_id != project.pk:
+            raise ValueError("ORCHESTRATION_IDEMPOTENCY_CONFLICT")
+        for_session(existing)
+        return existing
     except OrchestrationSession.DoesNotExist:
         pass
     correlation_id = str(uuid.uuid4())
@@ -205,12 +216,20 @@ def assess(
                 correlation_id=correlation_id,
             )
     except IntegrityError:
-        return OrchestrationSession.objects.get(idempotency_key=idempotency_key)
+        existing = OrchestrationSession.objects.get(idempotency_key=idempotency_key)
+        if existing.project_id != project.pk:
+            raise ValueError("ORCHESTRATION_IDEMPOTENCY_CONFLICT")
+        for_session(existing)
+        return existing
+    context_error: ValueError | None = None
     try:
+        for_session(session)
         raw = provider.assess(
             build_context(project, summary, str(session.token)), session.correlation_id
         )
-        payload = validate_response(raw, str(session.token))
+        payload = validate_response(
+            raw, str(session.token), repository=project.repository_full_name
+        )
         policy = evaluate_policy(payload)
         evidence = sorted(
             {
@@ -235,8 +254,14 @@ def assess(
             product_owner_question=str(payload.get("product_owner_question", ""))[:500],
         )
         session.status = OrchestrationSession.Status.COMPLETED
-    except (ValueError, RuntimeError):
+    except (ValueError, RuntimeError) as error:
         session.status = OrchestrationSession.Status.FAILED
+        if isinstance(error, ValueError) and str(error).startswith(
+            "ORCHESTRATOR_CONTEXT_"
+        ):
+            context_error = error
     session.version += 1
     session.save(update_fields=["status", "version", "updated_at"])
+    if context_error is not None:
+        raise context_error
     return session

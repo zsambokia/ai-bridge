@@ -14,6 +14,7 @@ from .models import (
     Project,
     RepositoryDependency,
 )
+from .orchestration_context import bind, for_incident
 from .orchestrator import PolicyDecision
 
 _SECRET_MARKERS = ("openai_api_key", "authorization:", "private_key", "password=")
@@ -30,6 +31,9 @@ def record_incident(
     """Create one durable incident per key; retries never duplicate it."""
     if not summary or not idempotency_key:
         raise ValueError("INCIDENT_INPUT_REQUIRED")
+    bind(project, f"incident-request:{idempotency_key}")
+    if session is not None and session.project_id != project.pk:
+        raise ValueError("CONTEXT_SESSION_PROJECT_MISMATCH")
     try:
         existing = FailureIncident.objects.get(idempotency_key=idempotency_key)
         if existing.project_id != project.pk:
@@ -66,6 +70,7 @@ def add_evidence(
     provenance: str,
 ) -> IncidentEvidence:
     """Store an evidence reference only after bounded, secret-safe validation."""
+    for_incident(incident)
     values = (reference, kind, summary, provenance)
     if not all(isinstance(value, str) and value.strip() for value in values):
         raise ValueError("INCIDENT_EVIDENCE_INVALID")
@@ -90,6 +95,7 @@ def assess_ownership(
     incident: FailureIncident, candidates: list[dict[str, Any]]
 ) -> OwnershipAssessment:
     """Rank only registered, evidence-backed candidates; ambiguity fails closed."""
+    for_incident(incident)
     if not isinstance(candidates, list) or len(candidates) > 10:
         raise ValueError("OWNERSHIP_CANDIDATES_INVALID")
     evidence_refs = set(incident.evidence.values_list("reference", flat=True))

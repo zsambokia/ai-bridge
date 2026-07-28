@@ -23,6 +23,7 @@ from .models import (
     RemediationValidation,
     RemediationWorkflow,
 )
+from .orchestration_context import for_incident, for_remediation
 
 
 class DeploymentAdapter(Protocol):
@@ -84,12 +85,14 @@ def create_remediation(
     incident: FailureIncident, *, idempotency_key: str, summary: str
 ) -> RemediationWorkflow:
     """Create a technical plan only after deterministic ownership allows it."""
+    for_incident(incident)
     existing = RemediationWorkflow.objects.filter(
         idempotency_key=idempotency_key
     ).first()
     if existing is not None:
         if existing.incident_id != incident.pk or existing.summary != summary:
             raise ValueError("REMEDIATION_IDEMPOTENCY_MISMATCH")
+        for_remediation(existing)
         return existing
     try:
         ownership = incident.ownership_assessment
@@ -121,7 +124,9 @@ def create_remediation(
             or existing_workflow.summary != summary
         ):
             raise ValueError("REMEDIATION_IDEMPOTENCY_MISMATCH")
+        for_remediation(existing_workflow)
         return existing_workflow
+    for_remediation(workflow)
     _append(workflow, "REMEDIATION_PLANNED", ownership_policy=ownership.policy_decision)
     workflow.save(update_fields=["timeline", "updated_at"])
     return workflow
@@ -133,6 +138,7 @@ def link_contract(
 ) -> RemediationWorkflow:
     """Link, but never generate, the approved scope and consumed contract."""
     workflow = RemediationWorkflow.objects.select_for_update().get(pk=workflow.pk)
+    for_remediation(workflow)
     if workflow.status not in {
         RemediationWorkflow.Status.AWAITING_CONTRACT,
         RemediationWorkflow.Status.RETRY_REQUIRED,
@@ -172,6 +178,7 @@ def dispatch_remediation(
 ) -> RemediationWorkflow:
     """Dispatch through the existing canonical executor after authority checks."""
     workflow = RemediationWorkflow.objects.select_for_update().get(pk=workflow.pk)
+    context = for_remediation(workflow)
     if workflow.status == RemediationWorkflow.Status.DISPATCHED:
         return workflow
     if (
@@ -194,6 +201,7 @@ def dispatch_remediation(
         project=workflow.project,
         outcome="DISPATCHING",
         details={
+            **context.as_dict(),
             "remediation_id": workflow.pk,
             "contract": contract.handoff_identifier,
             "approval": approval.reference,
@@ -231,6 +239,7 @@ def enforce_timeout(
     now: datetime | None = None,
 ) -> RemediationWorkflow:
     """Cancel under existing authority on deadline; never start a replacement."""
+    for_remediation(workflow)
     now = now or timezone.now()
     if workflow.status != RemediationWorkflow.Status.DISPATCHED:
         return workflow
@@ -263,6 +272,7 @@ def cancel_remediation(
     workflow: RemediationWorkflow, *, approval: GovernanceApproval
 ) -> RemediationWorkflow:
     """Cancel an active run only under the original scope-bound authority."""
+    for_remediation(workflow)
     run = workflow.run
     contract = workflow.contract
     if run is None or contract is None:
@@ -292,6 +302,7 @@ def validate_remediation(
 ) -> RemediationValidation:
     """Persist an independently identified validator result with provenance."""
     workflow = RemediationWorkflow.objects.select_for_update().get(pk=workflow.pk)
+    for_remediation(workflow)
     run = workflow.run
     if run is None or run.lifecycle != ExecutionRun.Lifecycle.COMPLETED:
         raise ValueError("COMPLETED_RUN_REQUIRED")
@@ -337,6 +348,7 @@ def validate_remediation(
 def continue_workflow(workflow: RemediationWorkflow) -> RemediationWorkflow:
     """Deterministically resume, retry, or escalate without execution authority."""
     workflow = RemediationWorkflow.objects.select_for_update().get(pk=workflow.pk)
+    for_remediation(workflow)
     if workflow.status in {
         RemediationWorkflow.Status.RESUMED,
         RemediationWorkflow.Status.ESCALATED,
@@ -378,6 +390,7 @@ def deploy_or_rollback(
     idempotency_key: str,
 ) -> DeploymentRecord:
     """Execute an adapter only with a durable, explicit release authority."""
+    for_remediation(workflow)
     existing = DeploymentRecord.objects.filter(idempotency_key=idempotency_key).first()
     if existing is not None:
         if (

@@ -346,6 +346,13 @@ class RemediationWorkflowTests(TestCase):
         )
         self.assertEqual(dispatched.run, run)
         self.assertEqual(audit.details["approval"], self.approval.reference)
+        self.assertEqual(audit.details["platform_context_id"], "ai-bridge.platform.v1")
+        self.assertEqual(
+            audit.details["project_context_id"], "project:remediation-test"
+        )
+        self.assertEqual(
+            audit.details["work_context_id"], f"remediation:{workflow.token}"
+        )
         self.assertEqual(audit.outcome, "DISPATCHED")
         self.assertEqual(
             dispatch_remediation(
@@ -354,6 +361,25 @@ class RemediationWorkflowTests(TestCase):
             dispatched,
         )
         start_run.assert_called_once()
+
+    def test_rejects_an_unapproved_cross_project_remediation_context(self) -> None:
+        workflow = create_remediation(
+            self.incident, idempotency_key="remediation-foreign", summary="repair"
+        )
+        foreign = Project.objects.create(
+            project_id="foreign-remediation-test",
+            display_name="Foreign remediation test",
+            repository_full_name="example/foreign-remediation-test",
+            definition_path="projects/foreign-remediation-test.yaml",
+            lifecycle=Project.Lifecycle.ACTIVE,
+            onboarding_status=Project.OnboardingStatus.READY,
+        )
+        workflow.project = foreign
+        workflow.save(update_fields=["project"])
+        with self.assertRaisesMessage(
+            ValueError, "CONTEXT_REMEDIATION_PROJECT_MISMATCH"
+        ):
+            continue_workflow(workflow)
 
     def test_deployment_and_rollback_require_separate_explicit_authority(self) -> None:
         workflow = self._completed_workflow()

@@ -95,6 +95,47 @@ def test_assessment_is_durable_idempotent_and_never_dispatches() -> None:
 
 
 @pytest.mark.django_db
+def test_assessment_rejects_cross_project_idempotency_and_llm_repository() -> None:
+    first_project = _project()
+    assess(
+        first_project,
+        "Test failure",
+        "shared-key",
+        FakeOrchestratorProvider(_response()),
+    )
+    other = Project.objects.create(
+        project_id="other-orchestrator-test",
+        display_name="Other",
+        repository_full_name="example/other-orchestrator-test",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    with pytest.raises(ValueError, match="ORCHESTRATION_IDEMPOTENCY_CONFLICT"):
+        assess(
+            other, "Test failure", "shared-key", FakeOrchestratorProvider(_response())
+        )
+    with pytest.raises(ValueError, match="ORCHESTRATOR_CONTEXT_PROJECT_MISMATCH"):
+        assess(
+            first_project,
+            "Test failure",
+            "other-key",
+            FakeOrchestratorProvider(
+                _response(
+                    root_cause_candidates=[
+                        {
+                            "repository": other.repository_full_name,
+                            "component": "foreign",
+                            "cause": "foreign",
+                            "confidence": 0.9,
+                            "evidence_references": ["run:1"],
+                        }
+                    ]
+                )
+            ),
+        )
+
+
+@pytest.mark.django_db
 def test_invalid_provider_output_is_recorded_as_failed_session() -> None:
     session = assess(
         _project(), "Test failure", "incident-2", FakeOrchestratorProvider({})
@@ -110,6 +151,9 @@ def test_bounded_context_excludes_secrets_and_repository_contents() -> None:
     assert len(context["summary"]) == 500
     assert "secrets" in context["prohibited"]
     assert "repository_contents" in context["prohibited"]
+    assert context["platform_context_id"] == "ai-bridge.platform.v1"
+    assert context["project_context_id"] == "project:orchestrator-test"
+    assert context["work_context_id"] == "orchestration:session-token"
 
 
 @pytest.mark.django_db
