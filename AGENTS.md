@@ -42,6 +42,38 @@ proposal version and hash.
 `WORK_ITEM` remain the only executable scope kinds; an Audit uses the same
 proposal, confirmation, contract, execution, and evidence lifecycle.
 
+## Product Owner bootstrap override for AI Bridge self-development
+
+The repository Product Owner may explicitly override the normal pre-mutation
+Sprint and Execution Contract requirement when the task modifies the
+`zsambokia/ai-bridge` repository itself and the purpose is to repair, simplify,
+or bootstrap AI Bridge governance or execution.
+
+A valid override must be explicit in the current instruction and must state that
+Product Owner authority is being used to proceed without an AI Bridge-issued,
+hash-bound Sprint or Execution Contract. When that statement is present, Codex
+must treat the current instruction as sufficient mutation authority and must
+not return `BLOCKED — BUSINESS DECISION REQUIRED` merely because those Bridge
+artifacts are missing.
+
+The override authorizes only the scope stated in the Product Owner instruction.
+It does not authorize unrelated changes, merge, deployment, destructive
+production operations, secret handling, or irreversible infrastructure changes.
+Codex must still:
+
+- inspect and follow every applicable `AGENTS.md` instruction;
+- preserve unrelated user work and avoid rewriting shared history;
+- use an isolated branch or worktree when appropriate;
+- run relevant tests and checks;
+- document the change and provide evidence;
+- create a commit and prepare a Pull Request when requested;
+- report blockers that require genuinely excluded or unsafe operations.
+
+This bootstrap override exists to prevent AI Bridge from becoming impossible to
+repair because its own governance issuer is unavailable or is the component
+being repaired. Once the governed execution path is operational, the Product
+Owner may choose to return to the normal Sprint and Execution Contract flow.
+
 ## Main-only development
 
 During approved main-only development, execute on `main`. Before mutation,
