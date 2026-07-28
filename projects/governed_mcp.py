@@ -22,7 +22,15 @@ from .contracts import (
     supersede_execution_contract,
     validate_execution_contract,
 )
-from .execution import add_event, complete_run, provider, start_run
+from .execution import (
+    add_event,
+    complete_run,
+    provider,
+    reconcile_provider_completion,
+    start_factory_development,
+    start_run,
+    watchdog_recover_runs,
+)
 from .execution_activity import activity_summary, event_view, heartbeat_projection
 from .mcp import invoke_operation
 from .models import (
@@ -127,6 +135,31 @@ _TOOLS = [
         "factory.list_capabilities",
         "List the versioned governed MCP capabilities available to this caller.",
         READ_ONLY,
+    ),
+    _tool(
+        "factory.begin_self_development",
+        (
+            "Start contract-free Factory Development Mode for the AI Bridge "
+            "repository after explicit Product Owner approval."
+        ),
+        EXECUTION_BOUNDARY,
+        {
+            **_PROJECT,
+            **_APPROVAL,
+            "request": {"type": "string", "minLength": 1, "maxLength": 4000},
+            **_IDEMPOTENCY,
+        },
+        ["project_id", "approval_reference", "request", "idempotency_key"],
+    ),
+    _tool(
+        "factory.reconcile_provider_runs",
+        (
+            "Reconcile finished provider processes and resume their validation "
+            "lifecycle idempotently."
+        ),
+        LIFECYCLE_MUTATION,
+        {**_IDEMPOTENCY},
+        ["idempotency_key"],
     ),
     _tool(
         "provider.list",
@@ -1295,7 +1328,10 @@ def _complete_orchestration(
     if pass_closure_state is None:
         raise ValueError("PASS_CLOSURE_STATE_NOT_ALLOWED")
     with transaction.atomic():
-        if run.lifecycle == ExecutionRun.Lifecycle.RUNNING:
+        if run.lifecycle in {
+            ExecutionRun.Lifecycle.RUNNING,
+            ExecutionRun.Lifecycle.VALIDATING,
+        }:
             complete_run(run, arguments["final_commit_sha"], completion_data)
         elif (
             run.lifecycle != ExecutionRun.Lifecycle.COMPLETED
@@ -1509,6 +1545,35 @@ def invoke_public_tool(
                     for t in _TOOLS
                 ],
             }
+        elif name == "factory.begin_self_development":
+            if project is None:
+                raise ValueError("PROJECT_REQUIRED")
+            dispatch_audit = McpAuditEvent.objects.create(
+                caller=caller,
+                tool_name=name,
+                project=project,
+                outcome="DISPATCHING",
+                details={"mode": "FACTORY_DEVELOPMENT"},
+            )
+            run = start_factory_development(
+                project,
+                arguments["approval_reference"],
+                arguments["request"],
+                Path(settings.BASE_DIR),
+                audit_event_id=dispatch_audit.pk,
+            )
+            result = {
+                "status": run.lifecycle,
+                "mode": run.execution_profile,
+                "execution_token": str(run.token),
+                "evidence_root": run.evidence_root,
+                "next_action": (
+                    "Monitor through execution.get_activity_summary; provider "
+                    "completion is reconciled automatically."
+                ),
+            }
+        elif name == "factory.reconcile_provider_runs":
+            result = {"reconciled_runs": watchdog_recover_runs()}
         elif name == "project.list":
             visible_projects = Project.objects.filter(
                 lifecycle="ACTIVE", onboarding_status="READY"
@@ -1753,9 +1818,19 @@ def invoke_public_tool(
             "execution.cancel",
         }:
             run = ExecutionRun.objects.get(token=arguments["execution_token"])
+            if name != "execution.cancel":
+                reconcile_provider_completion(run)
+                run.refresh_from_db()
             if name == "execution.cancel":
+                if run.contract_id is None:
+                    raise ValueError(
+                        "FACTORY_DEVELOPMENT_CANCELLATION_REQUIRES_SERVICE_AUTHORITY"
+                    )
+                run_contract = run.contract
+                if run_contract is None:
+                    raise ValueError("EXECUTION_CONTRACT_UNAVAILABLE")
                 approval = _approval_for_contract(
-                    arguments, run.contract, "execution.cancel"
+                    arguments, run_contract, "execution.cancel"
                 )
                 if run.lifecycle not in {
                     ExecutionRun.Lifecycle.RUNNING,
@@ -1907,7 +1982,11 @@ def invoke_public_tool(
                 _approval_for_contract(arguments, contract, f"contract.{action}")
             if action == "complete":
                 run = ExecutionRun.objects.get(
-                    contract=contract, lifecycle=ExecutionRun.Lifecycle.RUNNING
+                    contract=contract,
+                    lifecycle__in=[
+                        ExecutionRun.Lifecycle.RUNNING,
+                        ExecutionRun.Lifecycle.VALIDATING,
+                    ],
                 )
                 complete_run(
                     run, payload["final_commit_sha"], payload["completion_data"]

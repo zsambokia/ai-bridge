@@ -122,9 +122,7 @@ def generate_scope_execution_contract(
     if not authorized["path"]:
         raise ValueError("SCOPE_NOT_PUBLISHED")
     handoff_identifier = f"bridge:{scope.project.project_id}:contract:{uuid4()}"
-    context = build_execution_context(
-        scope.project, authorized["path"], platform_root
-    )
+    context = build_execution_context(scope.project, authorized["path"], platform_root)
     repository_root = project_repository_root(scope.project, platform_root)
     baseline = _head_sha(repository_root)
     record = scope.record

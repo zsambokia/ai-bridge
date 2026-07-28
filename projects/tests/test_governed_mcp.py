@@ -33,6 +33,8 @@ def test_public_registry_is_versioned_unique_and_schema_bounded() -> None:
     assert len({tool["name"] for tool in tools}) == len(tools)
     assert {
         "factory.get_status",
+        "factory.begin_self_development",
+        "factory.reconcile_provider_runs",
         "project.resolve",
         "akb.search",
         "execution.prepare",

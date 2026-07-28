@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -19,6 +20,7 @@ from .models import (
     ExecutionProgressEvent,
     ExecutionRun,
     ExecutionStartRequest,
+    Project,
 )
 from .models import ExecutionProvider as ExecutionProviderRecord
 from .providers import (
@@ -119,6 +121,204 @@ def _prompt(contract: ExecutionContract) -> str:
         "ISSUED_CONTRACT_JSON:\n"
         + json.dumps(contract.payload, ensure_ascii=False, indent=2, sort_keys=True)
     )
+
+
+def _factory_prompt(run: ExecutionRun) -> str:
+    """Bounded direct authority for AI Bridge repairing itself."""
+    return (
+        "Factory Development Mode is active for AI Bridge self-development. "
+        "The Product Owner approval recorded below is sufficient authority; do "
+        "not request a Sprint, Execution Contract, or further business decision. "
+        "Work only on the approved request, preserve unrelated work, run release "
+        "gates, write truthful evidence under the stated root, and prepare a draft "
+        "Pull Request. never expose credentials. Do not merge or deploy.\n\n"
+        "FACTORY_AUTHORITY_JSON:\n"
+        + json.dumps(
+            run.authority_summary, ensure_ascii=False, indent=2, sort_keys=True
+        )
+    )
+
+
+def _start_provider(
+    run: ExecutionRun, selected_provider: ExecutionProvider, prompt: str
+) -> ExecutionRun:
+    """Start a persisted run and retain a safe activity trail for either profile."""
+    provider_record = ExecutionProviderRecord.objects.get(provider_id=run.provider_name)
+    run.attempt_count += 1
+    run.save(update_fields=["attempt_count", "updated_at"])
+    try:
+        readiness = check_health(provider_record)
+        if readiness["status"] != "HEALTHY":
+            raise ValueError("CODEX_RUNTIME_NOT_READY")
+        start_with_activity = getattr(selected_provider, "start_with_activity", None)
+        if callable(start_with_activity):
+            started = start_with_activity(
+                repository=Path(run.workspace_identifier),
+                prompt=prompt,
+                activity_callback=lambda details: add_event(
+                    run, "PROVIDER_OUTPUT", **details
+                ),
+            )
+        else:
+            started = selected_provider.start(
+                repository=Path(run.workspace_identifier), prompt=prompt
+            )
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        failure_text = str(exc)
+        mark_runtime_unavailable(provider_record, failure_text)
+        run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+        run.current_phase = "PROVIDER_UNAVAILABLE"
+        run.current_blocker = {
+            "category": "unavailable external input",
+            "evidence": failure_text[:300],
+        }
+        run.ended_at = timezone.now()
+        run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+        add_event(
+            run,
+            "PROVIDER_FAILURE",
+            classification="unavailable external input",
+            reason=failure_text[:100],
+        )
+        raise ValueError("EXECUTOR_START_FAILED") from exc
+    run.provider_execution_id = started.execution_id
+    run.workspace_identifier = started.workspace_identifier
+    run.lifecycle = ExecutionRun.Lifecycle.RUNNING
+    run.current_phase = "EXECUTING"
+    run.save(
+        update_fields=[
+            "provider_execution_id",
+            "workspace_identifier",
+            "lifecycle",
+            "current_phase",
+            "updated_at",
+        ]
+    )
+    add_event(
+        run,
+        "EXECUTOR_STARTED",
+        provider=run.provider_name,
+        execution_id=started.execution_id,
+    )
+    add_event(run, "EXECUTION_ACTIVITY_STARTED", message="provider process is running")
+    return run
+
+
+def start_factory_development(
+    project: Project,
+    approval_reference: str,
+    request: str,
+    platform_root: Path,
+    audit_event_id: int | None = None,
+) -> ExecutionRun:
+    """Start the narrowly-scoped, contract-free self-development profile."""
+    if (
+        getattr(project, "project_id", None) != "ai-bridge"
+        or getattr(project, "repository_full_name", None) != "zsambokia/ai-bridge"
+    ):
+        raise ValueError("FACTORY_DEVELOPMENT_AI_BRIDGE_ONLY")
+    existing = (
+        ExecutionRun.objects.filter(
+            execution_profile=ExecutionRun.Profile.FACTORY_DEVELOPMENT,
+            authority_reference=approval_reference,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if existing is not None:
+        return existing
+    workspace = project_repository_root(project, platform_root)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if head.returncode:
+        raise ValueError("FACTORY_BASELINE_UNAVAILABLE")
+    selected_provider = provider()
+    evidence_key = hashlib.sha256(approval_reference.encode()).hexdigest()[:16]
+    run = ExecutionRun.objects.create(
+        repository=project.repository_full_name,
+        branch="main",
+        baseline_commit=head.stdout.strip(),
+        contract_hash="",
+        workspace_identifier=str(workspace),
+        provider_name=getattr(settings, "BRIDGE_EXECUTOR_PROVIDER", "codex-cli"),
+        execution_profile=ExecutionRun.Profile.FACTORY_DEVELOPMENT,
+        authority_reference=approval_reference,
+        authority_summary={
+            "mode": "FACTORY_DEVELOPMENT",
+            "project_id": project.project_id,
+            "approval_reference": approval_reference,
+            "request": request,
+        },
+        audit_event_id=audit_event_id,
+        lifecycle=ExecutionRun.Lifecycle.STARTING,
+        current_phase="PREFLIGHT",
+        evidence_root=f"docs/evidence/factory-development/{evidence_key}",
+        started_at=timezone.now(),
+    )
+    add_event(
+        run, "FACTORY_DEVELOPMENT_APPROVED", approval_reference=approval_reference
+    )
+    add_event(
+        run, "PREFLIGHT_COMPLETED", branch=run.branch, baseline=run.baseline_commit
+    )
+    return _start_provider(run, selected_provider, _factory_prompt(run))
+
+
+def reconcile_provider_completion(run: ExecutionRun) -> ExecutionRun:
+    """Durably advance a finished provider out of RUNNING, idempotently."""
+    if run.lifecycle != ExecutionRun.Lifecycle.RUNNING or not run.provider_execution_id:
+        return run
+    status = provider(run.provider_name).status(run.provider_execution_id)
+    if status != "FINISHED":
+        return run
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        if locked.lifecycle != ExecutionRun.Lifecycle.RUNNING:
+            return locked
+        locked.lifecycle = ExecutionRun.Lifecycle.VALIDATING
+        locked.current_phase = "VALIDATING"
+        locked.current_blocker = {}
+        locked.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "updated_at",
+            ]
+        )
+        add_event(locked, "PROVIDER_FINISHED", provider=locked.provider_name)
+        add_event(
+            locked,
+            "VALIDATION_CONTINUATION_READY",
+            message="provider finished; validation and closure can continue",
+        )
+    return locked
+
+
+def watchdog_recover_runs() -> int:
+    """Reconcile every active run; repeated invocations do not duplicate events."""
+    reconciled = 0
+    for run in ExecutionRun.objects.filter(
+        lifecycle=ExecutionRun.Lifecycle.RUNNING
+    ).iterator():
+        before = run.lifecycle
+        reconciled_run = reconcile_provider_completion(run)
+        if reconciled_run.lifecycle != before:
+            reconciled += 1
+    return reconciled
 
 
 def start_run(
@@ -303,7 +503,10 @@ def complete_run(
     run: ExecutionRun, final_commit_sha: str, completion_data: dict[str, object]
 ) -> ExecutionRun:
     """Record completion only after the provider-owned run has actually run."""
-    if run.lifecycle != ExecutionRun.Lifecycle.RUNNING:
+    if run.lifecycle not in {
+        ExecutionRun.Lifecycle.RUNNING,
+        ExecutionRun.Lifecycle.VALIDATING,
+    }:
         raise ValueError("RUN_NOT_RUNNING")
     required = {
         "execution_result",
@@ -325,7 +528,8 @@ def complete_run(
         or not isinstance(completion_data["failure_classification"], (str, type(None)))
     ):
         raise ValueError("RUN_COMPLETION_EVIDENCE_INVALID")
-    audit = run.contract.payload.get("execution", {}).get("audit")
+    contract_payload = run.contract.payload if run.contract is not None else {}
+    audit = contract_payload.get("execution", {}).get("audit")
     if audit and audit.get("mutation_policy") == "READ_ONLY":
         allowed_prefix = run.evidence_root.rstrip("/") + "/"
         changed_files = completion_data["changed_files"]

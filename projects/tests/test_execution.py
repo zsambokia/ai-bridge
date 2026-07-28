@@ -20,9 +20,12 @@ from projects.execution import (
     ProviderStart,
     _safe_details,
     complete_run,
+    reconcile_provider_completion,
     record_gate_rerun,
     repair_failure,
+    start_factory_development,
     start_run,
+    watchdog_recover_runs,
 )
 from projects.execution_activity import (
     activity_summary,
@@ -70,6 +73,11 @@ class ActivityStubProvider(StubProvider):
             }
         )
         return self.start(repository=repository, prompt=prompt)
+
+
+class FinishedStubProvider(StubProvider):
+    def status(self, execution_id: str) -> str:
+        return "FINISHED"
 
 
 @pytest.fixture
@@ -229,6 +237,92 @@ def test_completion_requires_a_real_completed_run(
     completed = complete_run(run, "b" * 40, completion)
     assert completed.lifecycle == ExecutionRun.Lifecycle.COMPLETED
     assert completed.completion_data == completion
+
+
+@pytest.mark.django_db
+def test_finished_provider_is_reconciled_once_into_validation(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: FinishedStubProvider()
+    )
+
+    reconciled = reconcile_provider_completion(run)
+    second = reconcile_provider_completion(reconciled)
+
+    assert reconciled.lifecycle == ExecutionRun.Lifecycle.VALIDATING
+    assert reconciled.current_phase == "VALIDATING"
+    assert second.pk == run.pk
+    assert list(
+        run.events.filter(
+            event_type__in={"PROVIDER_FINISHED", "VALIDATION_CONTINUATION_READY"}
+        ).values_list("event_type", flat=True)
+    ) == ["PROVIDER_FINISHED", "VALIDATION_CONTINUATION_READY"]
+
+
+@pytest.mark.django_db
+def test_factory_profile_uses_durable_po_authority_without_a_contract(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, _request = consumed_contract
+    project = contract.project
+    project.project_id = "ai-bridge"
+    project.repository_full_name = "zsambokia/ai-bridge"
+    project.save(update_fields=["project_id", "repository_full_name"])
+    monkeypatch.setattr("projects.execution.project_repository_root", lambda *_: root)
+    monkeypatch.setattr(
+        "projects.execution.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="c" * 40 + "\n"),
+    )
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+
+    run = start_factory_development(
+        project,
+        "PO-bootstrap-factory-001",
+        "Repair the execution lifecycle.",
+        root,
+    )
+
+    assert run.contract_id is None
+    assert run.start_request_id is None
+    assert run.execution_profile == ExecutionRun.Profile.FACTORY_DEVELOPMENT
+    assert run.authority_reference == "PO-bootstrap-factory-001"
+    assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    summary = activity_summary(run)
+    assert summary["product_owner_progress"]["mode"] == "FACTORY_DEVELOPMENT"
+    assert (
+        summary["product_owner_progress"]["approval_reference"]
+        == "PO-bootstrap-factory-001"
+    )
+
+
+@pytest.mark.django_db
+def test_watchdog_counts_each_finished_provider_only_once(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: FinishedStubProvider()
+    )
+
+    assert watchdog_recover_runs() == 1
+    assert watchdog_recover_runs() == 0
+    run.refresh_from_db()
+    assert run.lifecycle == ExecutionRun.Lifecycle.VALIDATING
 
 
 @pytest.mark.django_db

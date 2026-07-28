@@ -20,6 +20,19 @@ _EVENTS = {
         "Live activity monitoring started",
     ),
     "PROVIDER_OUTPUT": ("EXECUTING", "Codex", "INFO", "Codex activity received"),
+    "FACTORY_DEVELOPMENT_APPROVED": (
+        "PREFLIGHT",
+        "Product Owner",
+        "INFO",
+        "Factory Development Mode approved",
+    ),
+    "PROVIDER_FINISHED": ("VALIDATING", "Codex", "INFO", "Codex provider finished"),
+    "VALIDATION_CONTINUATION_READY": (
+        "VALIDATING",
+        "AI Bridge",
+        "INFO",
+        "Validation continuation ready",
+    ),
     "PROVIDER_START_RETRYING": (
         "REPAIRING",
         "AI Bridge",
@@ -130,7 +143,8 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
     }
     completed = lifecycle == ExecutionRun.Lifecycle.COMPLETED
     done = {
-        "contract": bool(run.contract_id),
+        "contract": bool(run.contract_id)
+        or run.execution_profile == ExecutionRun.Profile.FACTORY_DEVELOPMENT,
         "preflight": "PREFLIGHT_COMPLETED" in types,
         "provider": "EXECUTOR_STARTED" in types,
         "execution": completed,
@@ -167,4 +181,13 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
         "latest_events": [event_view(event) for event in events[-100:]],
         "events": [event_view(event) for event in events[:100]],
         "heartbeat": heartbeat_projection(run),
+        "product_owner_progress": {
+            "mode": run.execution_profile,
+            "approval_reference": run.authority_reference or None,
+            "summary": (
+                f"{run.current_phase.replace('_', ' ').title()} — "
+                f"{lifecycle.replace('_', ' ').title()}"
+            ),
+            "derived_from": "canonical execution run and persisted progress events",
+        },
     }
