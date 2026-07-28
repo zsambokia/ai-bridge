@@ -64,6 +64,7 @@ from .scopes import (
     answer_clarifications,
     approved_scope,
     bind_approval,
+    close_scope,
     publish_scope,
     review_scope,
 )
@@ -1229,6 +1230,7 @@ def _orchestration_result(flow: ConversationOrchestration) -> dict[str, Any]:
         "current_step": flow.current_step,
         "orchestration_token": str(flow.token),
         "scope_identifier": flow.scope.identifier,
+        "scope_status": flow.scope.status,
         "proposal_version": flow.proposal_version,
     }
     if flow.contract:
@@ -1733,6 +1735,12 @@ def _complete_orchestration(
     )
     if pass_closure_state is None:
         raise ValueError("PASS_CLOSURE_STATE_NOT_ALLOWED")
+    # The original Product Owner approval authorizes this completed scope.  A
+    # second approval for ``scope.complete`` would be both redundant and an
+    # incorrect lifecycle boundary: all evidence has already been verified
+    # above and no scope mutation is being proposed.  Keep every durable
+    # terminal transition together so a failed contract/scope update cannot
+    # leave a successful execution looking actionable.
     with transaction.atomic():
         if run.lifecycle == ExecutionRun.Lifecycle.RUNNING:
             complete_run(run, arguments["final_commit_sha"], completion_data)
@@ -1742,16 +1750,19 @@ def _complete_orchestration(
             or run.completion_data != completion_data
         ):
             raise ValueError("RUN_COMPLETION_NOT_RECOVERABLE")
-    complete_execution_contract(
-        contract,
-        arguments["final_commit_sha"],
-        pass_closure_state,
-        completion_data,
-    )
-    flow.status = "COMPLETED"
-    flow.current_step = "COMPLETED"
-    flow.failure_detail = {}
-    flow.save(update_fields=["status", "current_step", "failure_detail", "updated_at"])
+        complete_execution_contract(
+            contract,
+            arguments["final_commit_sha"],
+            pass_closure_state,
+            completion_data,
+        )
+        close_scope(scope, "COMPLETED")
+        flow.status = "COMPLETED"
+        flow.current_step = "COMPLETED"
+        flow.failure_detail = {}
+        flow.save(
+            update_fields=["status", "current_step", "failure_detail", "updated_at"]
+        )
     _audit(
         caller,
         "scope.complete_execution",
@@ -1762,6 +1773,9 @@ def _complete_orchestration(
             "final_commit": arguments["final_commit_sha"],
         },
     )
+    # ``flow.scope`` may have been relation-cached before ``close_scope``.
+    # Return the terminal status that was actually persisted above.
+    flow.scope = scope
     result = _orchestration_result(flow)
     result.update(
         {

@@ -396,7 +396,10 @@ def complete_run(
     run.lifecycle = ExecutionRun.Lifecycle.COMPLETED
     run.current_phase = "COMPLETED"
     run.final_commit_sha = final_commit_sha
-    run.terminal_state = "PASS — READY FOR PRODUCT OWNER REVIEW"
+    # A verified execution is terminal.  Product Owner approval has already
+    # authorized this scope; any later review is informational and must not
+    # leave the execution lifecycle or scope actionable.
+    run.terminal_state = "PASS"
     run.completion_data = completion_data
     run.ended_at = timezone.now()
     run.save(

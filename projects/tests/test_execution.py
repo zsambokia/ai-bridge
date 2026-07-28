@@ -263,6 +263,7 @@ def test_completion_requires_a_real_completed_run(
     )
     completed = complete_run(run, "b" * 40, completion)
     assert completed.lifecycle == ExecutionRun.Lifecycle.COMPLETED
+    assert completed.terminal_state == "PASS"
     assert completed.completion_data == completion
 
 

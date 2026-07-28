@@ -19,7 +19,7 @@ approved. It includes the requested architecture assessment and evidence.
 **Engineering Audit: PASS.** All required Release Gates passed on the final
 working tree:
 
-- `pytest`: 130 passed
+- `pytest`: 131 passed
 - `ruff check .`: PASS
 - `mypy .`: PASS (106 source files)
 - `python manage.py validate_scopes`: PASS
@@ -36,6 +36,14 @@ ended is documented in
 [`interrupted-codex-running-state.md`](interrupted-codex-running-state.md).
 No lifecycle state was guessed or mutated in this Sprint; recovery requires a
 separately authorized execution-continuity scope.
+
+## Completion lifecycle remediation
+
+The historic label below came from the issued Contract's immutable compatibility
+allow-list. It is superseded as an execution outcome by the completion-lifecycle
+remediation: after this report's PASS gates and evidence are validated, the
+existing approval closes the Execution, Contract, Orchestration, and Scope
+automatically. No second Product Owner decision is required.
 
 ## Closure disposition
 

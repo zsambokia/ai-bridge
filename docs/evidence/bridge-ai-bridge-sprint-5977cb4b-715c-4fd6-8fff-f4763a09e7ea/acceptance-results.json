@@ -6,7 +6,7 @@
   "engineering_audit": "PASS",
   "akb_readiness": "PARTIALLY READY",
   "gates": [
-    {"name": "pytest", "status": "PASS", "detail": "130 passed"},
+    {"name": "pytest", "status": "PASS", "detail": "131 passed"},
     {"name": "ruff check .", "status": "PASS", "detail": "all checks passed"},
     {"name": "mypy .", "status": "PASS", "detail": "no issues in 106 source files"},
     {"name": "validate_scopes", "status": "PASS", "detail": "all canonical scopes valid"}

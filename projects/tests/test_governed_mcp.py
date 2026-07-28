@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -210,6 +211,123 @@ def test_provider_terminal_activity_event_overrides_a_stale_pid_probe(
     )
 
     assert governed_mcp._provider_has_completed(run) is True
+
+
+@pytest.mark.django_db
+def test_evidence_backed_completion_closes_the_approved_scope_without_new_review(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A PASS completes the run, contract, orchestration, and approved scope."""
+    project = Project.objects.create(
+        project_id="automatic-completion-project",
+        display_name="Automatic Completion Project",
+        repository_full_name="example/automatic-completion-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Close this evidence-backed sprint.", kind="SPRINT")
+    approval = GovernanceApproval.objects.create(
+        reference="PO-automatic-completion",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="Product Owner",
+    )
+    scope = bind_approval(scope, approval.reference)
+    contract = ExecutionContract.objects.create(
+        project=project,
+        handoff_identifier="automatic-completion-contract",
+        approved_sprint_path="docs/sprints/automatic-completion.md",
+        contract_hash="a" * 64,
+        lifecycle=ExecutionContract.Lifecycle.RUNNING,
+        payload={
+            "schema_version": "2.0",
+            "allowed_terminal_states": ["PASS — READY FOR PRODUCT OWNER REVIEW"],
+        },
+    )
+    request = ExecutionStartRequest.objects.create(contract=contract, approval=approval)
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository=project.repository_full_name,
+        branch="main",
+        baseline_commit="b" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(tmp_path),
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/automatic-completion",
+    )
+    flow = ConversationOrchestration.objects.create(
+        scope=scope,
+        product_owner_identity="test-product-owner",
+        confirmation_reference="conversation-confirmation:v1:automatic-completion",
+        proposal_version=scope.record["proposal_version"],
+        proposal_hash=scope.record["proposal_hash"],
+        status="EXECUTION_STARTED",
+        current_step="EXECUTION",
+        contract=contract,
+        run=run,
+    )
+    evidence_path = "docs/evidence/automatic-completion/CLOSURE_REPORT.md"
+    (tmp_path / evidence_path).parent.mkdir(parents=True)
+    (tmp_path / evidence_path).write_text("evidence", encoding="utf-8")
+    completion_data = {
+        "execution_result": "PASS",
+        "gate_results": {"pytest": "PASS"},
+        "evidence_manifest": {"closure_report": evidence_path},
+        "changed_files": ["projects/governed_mcp.py"],
+        "failure_classification": None,
+    }
+
+    def complete_without_subprocess(
+        candidate: ExecutionRun, final_commit_sha: str, data: dict[str, object]
+    ) -> ExecutionRun:
+        candidate.lifecycle = ExecutionRun.Lifecycle.COMPLETED
+        candidate.current_phase = "COMPLETED"
+        candidate.final_commit_sha = final_commit_sha
+        candidate.terminal_state = "PASS"
+        candidate.completion_data = data
+        candidate.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "final_commit_sha",
+                "terminal_state",
+                "completion_data",
+                "updated_at",
+            ]
+        )
+        return candidate
+
+    monkeypatch.setattr(governed_mcp, "_provider_has_completed", lambda _run: True)
+    monkeypatch.setattr(governed_mcp, "complete_run", complete_without_subprocess)
+    monkeypatch.setattr(governed_mcp, "project_repository_root", lambda *_: tmp_path)
+
+    result = invoke_public_tool(
+        "scope.complete_execution",
+        {
+            "project_id": project.project_id,
+            "scope_identifier": scope.identifier,
+            "orchestration_token": str(flow.token),
+            "final_commit_sha": "c" * 40,
+            "completion_data": completion_data,
+            "idempotency_key": "automatic-completion-001",
+        },
+        caller="test-product-owner",
+    )
+
+    scope.refresh_from_db()
+    contract.refresh_from_db()
+    run.refresh_from_db()
+    flow.refresh_from_db()
+    assert result["status"] == "COMPLETED"
+    assert result["scope_status"] == "COMPLETED"
+    assert scope.status == ExecutableScope.Status.COMPLETED
+    assert scope.record["execution_authorization"] == "NONE"
+    assert contract.lifecycle == ExecutionContract.Lifecycle.COMPLETED
+    assert run.lifecycle == ExecutionRun.Lifecycle.COMPLETED
+    assert flow.status == "COMPLETED"
+    assert GovernanceApproval.objects.filter(project=project).count() == 1
 
 
 @pytest.mark.django_db
