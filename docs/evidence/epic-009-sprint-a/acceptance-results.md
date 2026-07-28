@@ -24,6 +24,19 @@ All commands ran from the implementation commit working tree on 2026-07-28.
 | `.\\.venv\\Scripts\\python.exe manage.py check` | PASS |
 | `.\\.venv\\Scripts\\python.exe manage.py makemigrations --check` | PASS — no changes detected |
 
+## Post-acceptance architecture correction
+
+The Sprint B entry review identified a provider-neutrality boundary violation in the
+Sprint A composition: the OpenAI adapter lived in the Orchestrator domain module
+and the MCP operation constructed it directly. Commit
+`bd4f53145c3e4d1e8e96aa1c17038bbb832abaa1` moves that adapter and the configured
+provider composition into `projects.orchestrator_providers`. The domain now exposes
+only the provider protocol, registry, context construction, validation, and policy.
+
+All Release Gates were rerun from that corrected final state on 2026-07-28:
+105 tests passed, Ruff and mypy passed (94 source files), scope validation and
+Django system checks passed, and `makemigrations --check` reported no changes.
+
 ## Deferred scope
 
 Incident/ownership ingestion, remediation dispatch, independent validation and workflow continuation, deployment, rollback, and end-to-end proof remain the explicitly separate Sprints B–E. They were not represented as completed by Sprint A.
