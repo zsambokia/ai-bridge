@@ -1,7 +1,7 @@
 # EPIC 009 — Sprint A acceptance evidence
 
-Implementation commit: `816c807065f659dd5397907647b3c45936b297df`  
-Baseline commit: `be83279d7a40f8673d6bbedbecedcd600641112a`  
+Implementation commit: `816c807065f659dd5397907647b3c45936b297df`
+Baseline commit: `be83279d7a40f8673d6bbedbecedcd600641112a`
 Execution authority: explicit Product Owner bootstrap authorization in the EPIC #9 request; no AI Bridge-issued Sprint or Execution Contract was consumed for this self-development bootstrap.
 
 ## Implemented boundary
