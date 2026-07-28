@@ -241,3 +241,12 @@ cancellation approval and lifecycle checks, makes an already-cancelled run
 safe to retry, and contains unexpected transport-boundary failures without
 exposing diagnostic details. Evidence is recorded under
 `docs/evidence/bridge-ai-bridge-sprint-47744803-a3bf-4963-bea5-47f0c9035fcb/`.
+
+## Conflicting execution-token discovery
+
+For an orchestration blocked by `CONFLICTING_ACTIVE_EXECUTION`, the public
+`scope.orchestration_status` response now includes the conflicting active
+execution token and lifecycle. This lets an authorized caller use the existing
+governed cancellation operation while retaining the conflicting run's original
+contract ownership and approval boundary. Evidence is recorded under
+`docs/evidence/bridge-ai-bridge-sprint-b97d6773-17ea-4643-b2a5-61965eb4f57c/`.

@@ -23,7 +23,7 @@ from .contracts import (
     supersede_execution_contract,
     validate_execution_contract,
 )
-from .execution import add_event, complete_run, provider, start_run
+from .execution import ACTIVE_STATES, add_event, complete_run, provider, start_run
 from .execution_activity import activity_summary, event_view, heartbeat_projection
 from .mcp import invoke_operation
 from .models import (
@@ -959,7 +959,43 @@ def _execution_run(execution_token: str) -> ExecutionRun:
         raise ValueError("EXECUTION_NOT_FOUND") from exc
 
 
+def _conflicting_execution_details(contract: ExecutionContract) -> dict[str, str]:
+    """Expose the actionable token for a run that blocks this contract.
+
+    The flow must not bind ``run`` to a run owned by another contract: doing so
+    would make later completion operate on the wrong contract.  Instead, keep
+    that ownership intact and return only the public token needed by the
+    separately authorized ``execution.cancel`` operation.
+    """
+    branch = contract.payload.get("execution", {}).get("target_branch")
+    if not isinstance(branch, str) or not branch:
+        return {}
+    conflicting_run = (
+        ExecutionRun.objects.filter(
+            contract__project=contract.project,
+            branch=branch,
+            lifecycle__in=ACTIVE_STATES,
+        )
+        .order_by("created_at", "pk")
+        .first()
+    )
+    if conflicting_run is None:
+        return {}
+    return {
+        "execution_token": str(conflicting_run.token),
+        "execution_lifecycle": conflicting_run.lifecycle,
+    }
+
+
 def _orchestration_result(flow: ConversationOrchestration) -> dict[str, Any]:
+    failure_detail = dict(flow.failure_detail or {})
+    if (
+        failure_detail.get("code") == "CONFLICTING_ACTIVE_EXECUTION"
+        and not failure_detail.get("execution_token")
+        and flow.contract is not None
+    ):
+        failure_detail.update(_conflicting_execution_details(flow.contract))
+
     result: dict[str, Any] = {
         "status": flow.status,
         "current_step": flow.current_step,
@@ -973,8 +1009,16 @@ def _orchestration_result(flow: ConversationOrchestration) -> dict[str, Any]:
     if flow.run:
         result["execution_token"] = str(flow.run.token)
         result["execution_lifecycle"] = flow.run.lifecycle
-    if flow.failure_detail:
-        result["failure_detail"] = flow.failure_detail
+    if failure_detail:
+        result["failure_detail"] = failure_detail
+        # A conflict is owned by another contract, so it intentionally is not
+        # ``flow.run``.  Promote its public token to the response shape used by
+        # execution.cancel while retaining the ownership boundary above.
+        if "execution_token" not in result and failure_detail.get("execution_token"):
+            result["execution_token"] = failure_detail["execution_token"]
+            result["execution_lifecycle"] = failure_detail.get(
+                "execution_lifecycle", ""
+            )
     return result
 
 
@@ -1156,7 +1200,14 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
         _transition(flow, caller, "EXECUTION", "EXECUTION_STARTED")
     except (OSError, ValueError) as exc:
         flow.status = "BLOCKED"
-        flow.failure_detail = {"code": str(exc), "resume_available": True}
+        failure_detail: dict[str, Any] = {
+            "code": str(exc),
+            "resume_available": True,
+        }
+        conflicting_contract = flow.contract
+        if str(exc) == "CONFLICTING_ACTIVE_EXECUTION" and conflicting_contract:
+            failure_detail.update(_conflicting_execution_details(conflicting_contract))
+        flow.failure_detail = failure_detail
         flow.save(update_fields=["status", "failure_detail", "updated_at"])
         _audit(
             caller,

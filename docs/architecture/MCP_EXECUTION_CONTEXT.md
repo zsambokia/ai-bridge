@@ -210,3 +210,17 @@ approval and active-lifecycle requirements, returns a safe idempotent result
 for an already cancelled run, and maps unavailable provider access to a bounded
 tool error. The HTTP adapter also contains unexpected failures so no exception
 detail is exposed through the public protocol.
+
+## Conflicting active execution discovery
+
+When a new orchestration is blocked at `EXECUTION` by
+`CONFLICTING_ACTIVE_EXECUTION`, `scope.orchestration_status` exposes the
+conflicting active run's `execution_token` and `execution_lifecycle` both in
+`failure_detail` and at the top level. This makes the existing governed
+`execution.cancel` path actionable without introducing a scope-wide destructive
+operation.
+
+The token is a discovery result, not a transfer of ownership:
+`ConversationOrchestration.run` remains unset when the conflicting run belongs
+to another contract. Cancelling it still requires the durable approval and
+active-lifecycle validation for that run's own contract.

@@ -17,6 +17,8 @@ from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
+    ExecutionRun,
+    ExecutionStartRequest,
     GovernanceApproval,
     McpAuditEvent,
     McpIdempotencyRecord,
@@ -57,6 +59,80 @@ def test_execution_tools_reject_invalid_tokens_as_controlled_errors() -> None:
         invoke_public_tool(
             "execution.get_run_status", {"execution_token": "not-a-uuid"}
         )
+
+
+@pytest.mark.django_db
+def test_orchestration_status_exposes_conflicting_execution_token_without_rebinding(
+) -> None:
+    project = Project.objects.create(
+        project_id="conflicting-execution-project",
+        display_name="Conflicting Execution Project",
+        repository_full_name="example/conflicting-execution-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(
+        project, "Return the conflicting execution token.", kind="WORK_ITEM"
+    )
+    blocked_contract = ExecutionContract.objects.create(
+        project=project,
+        handoff_identifier="blocked-contract",
+        approved_sprint_path="docs/sprints/blocked.md",
+        contract_hash="a" * 64,
+        payload={"execution": {"target_branch": "main"}},
+    )
+    active_contract = ExecutionContract.objects.create(
+        project=project,
+        handoff_identifier="active-contract",
+        approved_sprint_path="docs/sprints/active.md",
+        contract_hash="b" * 64,
+        payload={"execution": {"target_branch": "main"}},
+    )
+    approval = GovernanceApproval.objects.create(
+        reference="PO-conflicting-execution",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="Product Owner",
+    )
+    request = ExecutionStartRequest.objects.create(
+        contract=active_contract, approval=approval
+    )
+    active_run = ExecutionRun.objects.create(
+        contract=active_contract,
+        start_request=request,
+        repository=project.repository_full_name,
+        branch="main",
+        baseline_commit="c" * 40,
+        contract_hash=active_contract.contract_hash,
+        workspace_identifier="test-workspace",
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/test",
+    )
+    flow = ConversationOrchestration.objects.create(
+        scope=scope,
+        product_owner_identity="test-product-owner",
+        confirmation_reference="conversation-confirmation:v1:test",
+        proposal_version=1,
+        proposal_hash="d" * 64,
+        status="BLOCKED",
+        current_step="EXECUTION",
+        contract=blocked_contract,
+        failure_detail={
+            "code": "CONFLICTING_ACTIVE_EXECUTION",
+            "resume_available": True,
+        },
+    )
+
+    result = invoke_public_tool(
+        "scope.orchestration_status",
+        {"project_id": project.project_id, "scope_identifier": scope.identifier},
+    )
+
+    assert flow.run is None
+    assert result["execution_token"] == str(active_run.token)
+    assert result["execution_lifecycle"] == ExecutionRun.Lifecycle.RUNNING
+    assert result["failure_detail"]["execution_token"] == str(active_run.token)
 
 
 @pytest.mark.django_db
