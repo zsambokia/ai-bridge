@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -344,6 +345,44 @@ def test_authentication_and_protocol_failures_are_json_not_html() -> None:
     wrong_method = client.get("/mcp/", HTTP_AUTHORIZATION=f"Bearer {TOKEN}")
     assert wrong_method.status_code == 405
     assert wrong_method["Content-Type"].startswith("application/json")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "name, arguments",
+    [
+        ("execution.get_run_status", {}),
+        ("execution.get_activity_summary", {}),
+        ("execution.list_events", {}),
+        (
+            "execution.cancel",
+            {
+                "approval_reference": "PO-missing-execution",
+                "idempotency_key": "cancel-missing-execution-001",
+            },
+        ),
+    ],
+)
+def test_execution_tools_return_controlled_missing_run_errors_over_mcp(
+    name: str, arguments: dict[str, str]
+) -> None:
+    response = _post(
+        Client(),
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {
+                "name": name,
+                "arguments": {"execution_token": str(uuid.uuid4()), **arguments},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["isError"] is True
+    assert result["content"][0]["text"] == "EXECUTION_NOT_FOUND"
 
 
 @pytest.mark.django_db

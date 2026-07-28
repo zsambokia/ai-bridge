@@ -305,7 +305,9 @@ These may remain part of the long-term product vision, but they must not distrac
 
 ## 6. Immediate next actions
 
-1. complete the Sprint 007 staging migration recovery and authenticated live MCP tool-call proof;
+1. retain the authenticated live MCP tool-call proof, including the controlled
+   `EXECUTION_NOT_FOUND` response for unknown execution tokens; no public tool
+   may regress to a JSON-RPC internal error for this expected lookup case;
 2. refresh and rescan the Bridge app in ChatGPT Business;
 3. use Sprint 011's conversational Product Owner confirmation flow as the normal
    entry point for new Work Items and Sprints; its one-time Sprint bootstrap is

@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import unicodedata
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -946,6 +947,18 @@ def _akb(project: Project, document_id: str) -> tuple[str, str]:
     )[:12000]
 
 
+def _execution_run(execution_token: str) -> ExecutionRun:
+    """Resolve a public execution token without leaking ORM failures to MCP."""
+    try:
+        token = uuid.UUID(execution_token)
+    except (AttributeError, ValueError) as exc:
+        raise ValueError("INVALID_EXECUTION_TOKEN") from exc
+    try:
+        return ExecutionRun.objects.get(token=token)
+    except ExecutionRun.DoesNotExist as exc:
+        raise ValueError("EXECUTION_NOT_FOUND") from exc
+
+
 def _orchestration_result(flow: ConversationOrchestration) -> dict[str, Any]:
     result: dict[str, Any] = {
         "status": flow.status,
@@ -1752,24 +1765,34 @@ def invoke_public_tool(
             "execution.evidence_summary",
             "execution.cancel",
         }:
-            run = ExecutionRun.objects.get(token=arguments["execution_token"])
+            run = _execution_run(arguments["execution_token"])
             if name == "execution.cancel":
                 approval = _approval_for_contract(
                     arguments, run.contract, "execution.cancel"
                 )
-                if run.lifecycle not in {
+                if run.lifecycle == ExecutionRun.Lifecycle.CANCELLED:
+                    result = {
+                        "status": "CANCELLED",
+                        "execution_token": str(run.token),
+                        "idempotent": True,
+                    }
+                elif run.lifecycle not in {
                     ExecutionRun.Lifecycle.RUNNING,
                     ExecutionRun.Lifecycle.STARTING,
                 }:
                     raise ValueError("EXECUTION_NOT_CANCELLABLE")
-                adapter = provider(run.provider_name)
-                if adapter.status(run.provider_execution_id) != "FINISHED":
-                    adapter.cancel(run.provider_execution_id)
-                run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
-                run.current_phase = "CANCELLED"
-                run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
-                add_event(run, "EXECUTION_CANCELLED", approval=approval.reference)
-                result = {"status": "CANCELLED", "execution_token": str(run.token)}
+                else:
+                    try:
+                        adapter = provider(run.provider_name)
+                        if adapter.status(run.provider_execution_id) != "FINISHED":
+                            adapter.cancel(run.provider_execution_id)
+                    except OSError as exc:
+                        raise ValueError("EXECUTION_PROVIDER_UNAVAILABLE") from exc
+                    run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
+                    run.current_phase = "CANCELLED"
+                    run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+                    add_event(run, "EXECUTION_CANCELLED", approval=approval.reference)
+                    result = {"status": "CANCELLED", "execution_token": str(run.token)}
             elif name == "execution.list_events":
                 result = {
                     "execution_token": str(run.token),

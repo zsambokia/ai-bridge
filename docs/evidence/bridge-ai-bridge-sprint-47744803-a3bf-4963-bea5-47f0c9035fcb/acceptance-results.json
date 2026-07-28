@@ -1,0 +1,18 @@
+{
+  "scope_identifier": "bridge:ai-bridge:sprint:47744803-a3bf-4963-bea5-47f0c9035fcb",
+  "contract_identifier": "bridge:ai-bridge:contract:8d98e1c9-3304-43e6-bd4b-b9dcb44d917c",
+  "contract_hash": "90c07ca58d3f2d14dc4103c53f88eb18dcd007f044fb72417d1bbf1080053f33",
+  "local_release_gates": {
+    "ruff check .": "PASS",
+    "mypy .": "PASS",
+    "python manage.py validate_scopes": "PASS",
+    "pytest -q": "PASS (83 passed)"
+  },
+  "stage_smoke_test": {
+    "execution_token": "baa36d2a-e7c7-44a8-a65a-accee9e56f67",
+    "execution.get_run_status": "EXECUTION_NOT_FOUND",
+    "execution.get_activity_summary": "EXECUTION_NOT_FOUND",
+    "execution.list_events": "EXECUTION_NOT_FOUND",
+    "execution.cancel": "EXECUTION_NOT_FOUND"
+  }
+}

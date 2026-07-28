@@ -28,6 +28,38 @@ from projects.scopes import bind_approval, propose_scope
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "tool, arguments",
+    [
+        ("execution.get_run_status", {"execution_token": str(uuid.uuid4())}),
+        ("execution.get_activity_summary", {"execution_token": str(uuid.uuid4())}),
+        ("execution.list_events", {"execution_token": str(uuid.uuid4())}),
+        (
+            "execution.cancel",
+            {
+                "execution_token": str(uuid.uuid4()),
+                "approval_reference": "PO-cancel",
+                "idempotency_key": "cancel-missing-run-001",
+            },
+        ),
+    ],
+)
+def test_execution_tools_report_missing_runs_as_controlled_errors(
+    tool: str, arguments: dict[str, str]
+) -> None:
+    with pytest.raises(ValueError, match="EXECUTION_NOT_FOUND"):
+        invoke_public_tool(tool, arguments)
+
+
+@pytest.mark.django_db
+def test_execution_tools_reject_invalid_tokens_as_controlled_errors() -> None:
+    with pytest.raises(ValueError, match="INVALID_EXECUTION_TOKEN"):
+        invoke_public_tool(
+            "execution.get_run_status", {"execution_token": "not-a-uuid"}
+        )
+
+
+@pytest.mark.django_db
 def test_public_registry_is_versioned_unique_and_schema_bounded() -> None:
     tools = public_tools()
     assert len({tool["name"] for tool in tools}) == len(tools)

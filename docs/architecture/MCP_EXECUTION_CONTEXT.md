@@ -197,3 +197,16 @@ gate, evidence, and status fields, so a provider cannot create authority.
 
 Windows cancellation uses the native process-tree command, completed providers
 are not killed, and execution-event writes retry transient SQLite contention.
+
+## MCP execution lookup failure handling
+
+The four public execution-token tools (`execution.get_run_status`,
+`execution.get_activity_summary`, `execution.list_events`, and
+`execution.cancel`) share one UUID-aware run resolver. A malformed token now
+returns `INVALID_EXECUTION_TOKEN`; an otherwise valid token that has no
+canonical `ExecutionRun` returns `EXECUTION_NOT_FOUND`. These are normal MCP
+tool errors, not JSON-RPC internal errors. Cancellation keeps its existing
+approval and active-lifecycle requirements, returns a safe idempotent result
+for an already cancelled run, and maps unavailable provider access to a bounded
+tool error. The HTTP adapter also contains unexpected failures so no exception
+detail is exposed through the public protocol.

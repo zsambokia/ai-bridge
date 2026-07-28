@@ -230,3 +230,14 @@ has bounded retry. The read-only `governance.prepare_codex_handoff` returns
 actual durable identifiers and a copyable Codex prompt only after it finds the
 approved scope, contract, and run; otherwise it returns an explicit incomplete
 state. Provider execution cannot mint governance authority.
+
+## MCP execution internal-error repair
+
+The public execution-token tools now resolve tokens through one validated
+canonical lookup. Missing runs return `EXECUTION_NOT_FOUND` and malformed
+tokens return `INVALID_EXECUTION_TOKEN` as MCP tool errors, instead of escaping
+as JSON-RPC `-32603` internal errors. The repair preserves the governed
+cancellation approval and lifecycle checks, makes an already-cancelled run
+safe to retry, and contains unexpected transport-boundary failures without
+exposing diagnostic details. Evidence is recorded under
+`docs/evidence/bridge-ai-bridge-sprint-47744803-a3bf-4963-bea5-47f0c9035fcb/`.

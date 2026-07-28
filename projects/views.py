@@ -58,6 +58,13 @@ def _tool_result(name: str, arguments: Any, caller: str) -> dict[str, Any]:
         status = invoke_public_tool(name, arguments, caller=caller)
     except (ValueError, KeyError) as exc:
         return {"content": [{"type": "text", "text": str(exc)}], "isError": True}
+    except Exception:
+        # The public MCP boundary must never turn an operational failure into a
+        # JSON-RPC internal error. Do not expose exception details here.
+        return {
+            "content": [{"type": "text", "text": "INTERNAL_ERROR"}],
+            "isError": True,
+        }
     return {
         "content": [{"type": "text", "text": json.dumps(status, sort_keys=True)}],
         "structuredContent": status,
