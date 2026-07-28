@@ -50,7 +50,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-28.2"
+TOOL_SURFACE_VERSION = "2026-07-28.3"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -523,6 +523,41 @@ _TOOLS.extend(
             ["project_id", "scope_identifier"],
         ),
         _tool(
+            "scope.resume",
+            (
+                "Read the durable recovery state for a scope after a client or "
+                "MCP session interruption. This is read-only and returns the "
+                "exact proposal version/hash required for a later confirmation."
+            ),
+            READ_ONLY,
+            {**_PROJECT, "scope_identifier": {"type": "string", "minLength": 1}},
+            ["project_id", "scope_identifier"],
+        ),
+        _tool(
+            "scope.resume_confirm_and_execute",
+            (
+                "From a new authenticated session, confirm and resume exactly the "
+                "version/hash returned by scope.resume. The caller supplies an "
+                "affirmative Product Owner reply; Bridge derives the durable "
+                "identity, approval reference, and idempotency key."
+            ),
+            EXECUTION_BOUNDARY,
+            {
+                **_PROJECT,
+                "scope_identifier": {"type": "string", "minLength": 1},
+                "proposal_version": {"type": "integer", "minimum": 1},
+                "proposal_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "confirmation_text": {"type": "string", "minLength": 1},
+            },
+            [
+                "project_id",
+                "scope_identifier",
+                "proposal_version",
+                "proposal_hash",
+                "confirmation_text",
+            ],
+        ),
+        _tool(
             "scope.complete_execution",
             "Verify a finished provider run and record its evidence-backed result.",
             EXECUTION_BOUNDARY,
@@ -819,6 +854,39 @@ def _derived_conversation_confirmation(
     }
 
 
+def _derived_recovery_confirmation(
+    arguments: dict[str, Any], caller: str
+) -> dict[str, Any]:
+    """Bind an explicit recovery confirmation without relying on session state.
+
+    Unlike ``conversation.confirm``, this path deliberately does not require a
+    fresh proposal review: another authenticated Product Owner session may be
+    resuming an already-approved scope.  The caller must instead echo the
+    exact version and hash obtained from ``scope.resume``.
+    """
+    if _normalise_confirmation(arguments["confirmation_text"]) not in (
+        _PRODUCT_OWNER_CONFIRMATIONS
+    ):
+        raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
+    caller_fingerprint = hashlib.sha256(caller.encode("utf-8")).hexdigest()
+    product_owner_identity = f"authenticated-mcp-caller:{caller_fingerprint}"
+    binding = {
+        "caller": caller_fingerprint,
+        "project_id": arguments["project_id"],
+        "scope_identifier": arguments["scope_identifier"],
+        "proposal_version": arguments["proposal_version"],
+        "proposal_hash": arguments["proposal_hash"],
+    }
+    digest = hashlib.sha256(
+        json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {
+        "product_owner_identity": product_owner_identity,
+        "confirmation_reference": f"scope-resume-confirmation:v1:{digest}",
+        "idempotency_key": f"scope-resume-confirm:v1:{digest}",
+    }
+
+
 def _approval(
     arguments: dict[str, Any], project: Project, action: str
 ) -> GovernanceApproval:
@@ -1022,6 +1090,52 @@ def _orchestration_result(flow: ConversationOrchestration) -> dict[str, Any]:
     return result
 
 
+def _resume_result(scope: ExecutableScope) -> dict[str, Any]:
+    """Render the session-independent recovery projection for one scope."""
+    record = scope.record
+    flow = (
+        ConversationOrchestration.objects.filter(scope=scope)
+        .order_by("-created_at")
+        .first()
+    )
+    result: dict[str, Any] = {
+        "scope": {
+            "id": scope.identifier,
+            "version": record["proposal_version"],
+            "hash": record["proposal_hash"],
+            "status": scope.status,
+        },
+        # Approval records are durable and deliberately have no implicit expiry.
+        # A later revision, revocation, or final scope state is the authoritative
+        # invalidation mechanism; clients must always submit this exact binding.
+        "expires_at": None,
+        "can_resume": scope.status in {
+            ExecutableScope.Status.PROPOSED,
+            ExecutableScope.Status.APPROVED,
+        },
+        "can_confirm": scope.status == ExecutableScope.Status.PROPOSED,
+        "required_next_action": "scope.resume_confirm_and_execute",
+    }
+    if flow is None:
+        result["status"] = "PENDING_APPROVAL"
+        return result
+    orchestration = _orchestration_result(flow)
+    result["orchestration"] = orchestration
+    if flow.status == "COMPLETED":
+        result.update(
+            {"status": "ALREADY_COMPLETED", "can_resume": False, "can_confirm": False,
+             "required_next_action": "review_completion_evidence"}
+        )
+    elif flow.run_id is not None and flow.run and flow.run.lifecycle in ACTIVE_STATES:
+        result.update(
+            {"status": "ALREADY_EXECUTING", "can_confirm": False,
+             "required_next_action": "poll_execution_status"}
+        )
+    else:
+        result.update({"status": "RECOVERABLE", "can_confirm": True})
+    return result
+
+
 def _transition(
     flow: ConversationOrchestration, caller: str, step: str, outcome: str
 ) -> None:
@@ -1092,6 +1206,24 @@ def _recover_incomplete_contract_binding(
     flow.save(update_fields=["contract", "run", "failure_detail", "updated_at"])
 
 
+def _provider_has_completed(run: ExecutionRun) -> bool:
+    """Recognize a durable provider terminal event when PID probing is stale.
+
+    A provider process identifier is only an observation. On Windows it can
+    outlive the child process or be reused, while the activity projector has
+    already persisted the provider's terminal ``turn.completed`` event. That
+    event is generated by the provider stream itself and is the authoritative
+    fallback for releasing the governed completion transition.
+    """
+    if provider(run.provider_name).status(run.provider_execution_id) == "FINISHED":
+        return True
+    return ExecutionProgressEvent.objects.filter(
+        run=run,
+        event_type="PROVIDER_OUTPUT",
+        details__activity_type="turn.completed",
+    ).exists()
+
+
 def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None:
     """Resume only missing canonical transitions; never duplicate authority."""
     scope = ExecutableScope.objects.get(pk=flow.scope_id)
@@ -1156,10 +1288,13 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
             raise ValueError("CONTRACT_LIFECYCLE_NOT_EXECUTABLE")
         _transition(flow, caller, "EXECUTION", "CONTRACT_CONSUMED")
         persisted_run = flow.run if flow.run_id is not None else None
-        if (
-            persisted_run is not None
-            and persisted_run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
-        ):
+        if persisted_run is not None and persisted_run.lifecycle in {
+            ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+            ExecutionRun.Lifecycle.CANCELLED,
+        }:
+            # A cancelled provider no longer owns an active execution slot.  Keep
+            # the same approved contract and conversation binding, but let a
+            # durable recovery confirmation dispatch a replacement run.
             flow.run = None
             flow.save(update_fields=["run", "updated_at"])
         if flow.run_id is None:
@@ -1218,11 +1353,12 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
         )
 
 
+@transaction.atomic
 def _confirm_and_execute(
     arguments: dict[str, Any], project: Project, caller: str
 ) -> dict[str, Any]:
     """One durable orchestration, composed exclusively from canonical services."""
-    scope = ExecutableScope.objects.get(
+    scope = ExecutableScope.objects.select_for_update().get(
         project=project, identifier=arguments["scope_identifier"]
     )
     review = review_scope(scope)
@@ -1269,6 +1405,77 @@ def _confirm_and_execute(
     )
     _advance_orchestration(flow, caller)
     return _orchestration_result(flow)
+
+
+@transaction.atomic
+def _resume_confirm_and_execute(
+    arguments: dict[str, Any], project: Project, caller: str
+) -> dict[str, Any]:
+    """Continue a reviewed scope after a lost client session.
+
+    The explicit proposal binding makes the recovery request safe to replay in a
+    fresh session.  We reuse the existing durable approval/orchestration record
+    whenever one already exists; a retry never creates another contract or run.
+    """
+    if _normalise_confirmation(arguments["confirmation_text"]) not in (
+        _PRODUCT_OWNER_CONFIRMATIONS
+    ):
+        raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
+    scope = ExecutableScope.objects.select_for_update().get(
+        project=project, identifier=arguments["scope_identifier"]
+    )
+    record = scope.record
+    if arguments["proposal_version"] != record["proposal_version"]:
+        raise ValueError(
+            "SCOPE_VERSION_MISMATCH: review the current proposal version "
+            f"{record['proposal_version']}"
+        )
+    if arguments["proposal_hash"] != record["proposal_hash"]:
+        raise ValueError("SCOPE_HASH_MISMATCH: review the current proposal hash")
+    existing = (
+        ConversationOrchestration.objects.filter(scope=scope)
+        .order_by("created_at")
+        .first()
+    )
+    if existing is not None:
+        if (
+            existing.proposal_version != arguments["proposal_version"]
+            or existing.proposal_hash != arguments["proposal_hash"]
+        ):
+            raise ValueError("SCOPE_CONFIRMATION_SUPERSEDED")
+        _audit(
+        caller,
+        "scope.resume_confirm_and_execute",
+        project,
+        "APPROVAL_REPLAYED",
+        {
+            "scope_identifier": scope.identifier,
+            "orchestration_token": str(existing.token),
+        },
+        )
+        _advance_orchestration(existing, caller)
+        result = _orchestration_result(existing)
+        return {**result, "resumed": True, "approval_replayed": True}
+    result = _confirm_and_execute(
+        {
+            **arguments,
+            "proposal_version": arguments["proposal_version"],
+            "proposal_hash": arguments["proposal_hash"],
+        },
+        project,
+        caller,
+    )
+    _audit(
+        caller,
+        "scope.resume_confirm_and_execute",
+        project,
+        "APPROVED",
+        {
+            "scope_identifier": scope.identifier,
+            "orchestration_token": result["orchestration_token"],
+        },
+    )
+    return {**result, "resumed": True, "approval_replayed": False}
 
 
 def _normalise_confirmation(value: str) -> str:
@@ -1323,7 +1530,7 @@ def _complete_orchestration(
     contract = flow.contract
     if run is None or contract is None:
         raise ValueError("EXECUTION_NOT_STARTED")
-    if provider(run.provider_name).status(run.provider_execution_id) != "FINISHED":
+    if not _provider_has_completed(run):
         raise ValueError("EXECUTION_STILL_RUNNING")
     completion_data = arguments["completion_data"]
     required = {
@@ -1500,9 +1707,14 @@ def invoke_public_tool(
     _validate_arguments(schema, arguments)
     if name == "conversation.confirm":
         arguments = _derived_conversation_confirmation(arguments, caller)
+    elif name == "scope.resume_confirm_and_execute":
+        arguments = {
+            **arguments,
+            **_derived_recovery_confirmation(arguments, caller),
+        }
     replay = _idempotent(caller, name, arguments)
     if replay is not None:
-        if name == "conversation.confirm":
+        if name in {"conversation.confirm", "scope.resume_confirm_and_execute"}:
             replay_project = _project(arguments)
             flow = ConversationOrchestration.objects.filter(
                 scope__project=replay_project,
@@ -1695,6 +1907,22 @@ def invoke_public_tool(
                     "scope_identifier": scope.identifier,
                 }
             )
+        elif name == "scope.resume":
+            assert project is not None
+            scope = ExecutableScope.objects.get(
+                identifier=arguments["scope_identifier"], project=project
+            )
+            result = _resume_result(scope)
+            _audit(
+                caller,
+                "scope.resume",
+                project,
+                "RECOVERY_STATE_RETRIEVED",
+                {"scope_identifier": scope.identifier},
+            )
+        elif name == "scope.resume_confirm_and_execute":
+            assert project is not None
+            result = _resume_confirm_and_execute(arguments, project, caller)
         elif name == "scope.complete_execution":
             assert project is not None
             result = _complete_orchestration(arguments, project, caller)

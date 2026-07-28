@@ -86,6 +86,15 @@ read-only operational admin view, and a compact MCP activity summary for
 ChatGPT. This strengthens the proving loop without adding a parallel lifecycle
 or simulated organizational actors.
 
+### Interrupted approval recovery
+
+The governed conversation path now survives a browser refresh, MCP reconnect,
+new ChatGPT tool session, or missed affirmative reply. It reuses the existing
+canonical approval and orchestration records, provides a safe recovery
+projection, and requires an authenticated, exact proposal version/hash-bound
+resume confirmation. This is a reliability repair to Milestone 5, not a new
+approval or execution architecture.
+
 ## Milestone 1 — Project Bootstrap and Onboarding
 
 **Implemented foundation awaiting Product Owner review:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`

@@ -224,3 +224,30 @@ The token is a discovery result, not a transfer of ownership:
 `ConversationOrchestration.run` remains unset when the conflicting run belongs
 to another contract. Cancelling it still requires the durable approval and
 active-lifecycle validation for that run's own contract.
+
+## Interrupted approval recovery
+
+`ConversationOrchestration` and `GovernanceApproval` are the durable recovery
+records; a browser refresh, a new ChatGPT tool session, or an MCP reconnect
+must never require a second approval store or a client-held continuation token.
+`scope.resume` is a safe discovery projection for an authenticated caller. It
+returns the canonical scope identifier, current proposal version and hash,
+scope status, and any persisted orchestration state. It deliberately exposes
+no approval secret and has no implicit expiry: revocation remains governed by
+the canonical approval record.
+
+An authenticated Product Owner can then call
+`scope.resume_confirm_and_execute` with the returned exact version/hash and a
+positive confirmation. The service derives a new caller-bound confirmation
+reference and deterministic idempotency key server-side, locks the scope, and
+compares the supplied version/hash with canonical state before doing any
+lifecycle work. If a durable orchestration already exists for that binding, it
+is reused and advanced; no duplicate approval, contract, or execution is
+created. If none exists, the existing canonical confirmation workflow creates
+the one durable approval and orchestration. Stale version/hash values fail
+closed, and recovery lookups and approvals are recorded in MCP audit events.
+
+This is complementary to, not a replacement for, `conversation.confirm` and
+`scope.confirm_and_execute`: ordinary same-session confirmation keeps its
+minimal conversational input, while recovery supplies the explicit displayed
+proposal binding required to safely cross a session boundary.

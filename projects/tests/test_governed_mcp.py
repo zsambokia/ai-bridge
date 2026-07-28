@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from django.utils import timezone
 
+import projects.governed_mcp as governed_mcp
 from projects.contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPES
 from projects.governed_mcp import (
     TOOL_SURFACE_VERSION,
@@ -17,6 +19,7 @@ from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
+    ExecutionProgressEvent,
     ExecutionRun,
     ExecutionStartRequest,
     GovernanceApproval,
@@ -153,6 +156,59 @@ def test_public_registry_is_versioned_unique_and_schema_bounded() -> None:
         invoke_public_tool("factory.list_capabilities", {})["tool_surface_version"]
         == TOOL_SURFACE_VERSION
     )
+
+
+@pytest.mark.django_db
+def test_provider_terminal_activity_event_overrides_a_stale_pid_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="terminal-event-project",
+        display_name="Terminal Event Project",
+        repository_full_name="example/terminal-event-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    contract = ExecutionContract.objects.create(
+        project=project,
+        handoff_identifier="terminal-event-contract",
+        approved_sprint_path="docs/sprints/terminal-event.md",
+        contract_hash="c" * 64,
+        payload={"execution": {"target_branch": "main"}},
+    )
+    approval = GovernanceApproval.objects.create(
+        reference="PO-terminal-event",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="Product Owner",
+    )
+    request = ExecutionStartRequest.objects.create(contract=contract, approval=approval)
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository=project.repository_full_name,
+        branch="main",
+        baseline_commit="d" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier="terminal-event-workspace",
+        provider_name="codex-cli",
+        provider_execution_id="stale-pid",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/test",
+    )
+    ExecutionProgressEvent.objects.create(
+        run=run,
+        sequence=1,
+        event_type="PROVIDER_OUTPUT",
+        details={"activity_type": "turn.completed"},
+    )
+    monkeypatch.setattr(
+        governed_mcp,
+        "provider",
+        lambda _name: SimpleNamespace(status=lambda _identifier: "RUNNING"),
+    )
+
+    assert governed_mcp._provider_has_completed(run) is True
 
 
 @pytest.mark.django_db
@@ -471,6 +527,115 @@ def test_conversation_confirmation_retries_a_started_durable_flow(
     assert result["idempotent_replay"] is True
     assert result["resumed"] is True
     assert resumed == [flow]
+
+
+@pytest.mark.django_db
+def test_scope_resume_recovers_an_approved_scope_from_a_new_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="recovery-session-project",
+        display_name="Recovery Session Project",
+        repository_full_name="example/recovery-session-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Recover a disconnected approval.", kind="WORK_ITEM")
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", lambda *_: None)
+
+    initial = invoke_public_tool(
+        "conversation.confirm",
+        {
+            "project_id": project.project_id,
+            "scope_identifier": scope.identifier,
+            "confirmation_text": "igen",
+        },
+        caller="lost-chatgpt-session",
+    )
+    flow = ConversationOrchestration.objects.get(scope=scope)
+    scope.status = ExecutableScope.Status.APPROVED
+    scope.save(update_fields=["status"])
+    flow.status = "BLOCKED"
+    flow.failure_detail = {"code": "MCP_SESSION_LOST"}
+    flow.save(update_fields=["status", "failure_detail"])
+
+    recovery = invoke_public_tool(
+        "scope.resume",
+        {"project_id": project.project_id, "scope_identifier": scope.identifier},
+        caller="new-chatgpt-session",
+    )
+    assert recovery["status"] == "RECOVERABLE"
+    assert recovery["scope"]["version"] == flow.proposal_version
+    assert recovery["scope"]["hash"] == flow.proposal_hash
+
+    resumed: list[ConversationOrchestration] = []
+
+    def advance(candidate: ConversationOrchestration, caller: str) -> None:
+        resumed.append(candidate)
+        candidate.status = "EXECUTION_STARTED"
+        candidate.current_step = "EXECUTION"
+        candidate.failure_detail = {}
+        candidate.save(update_fields=["status", "current_step", "failure_detail"])
+
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", advance)
+    arguments = {
+        "project_id": project.project_id,
+        "scope_identifier": scope.identifier,
+        "proposal_version": recovery["scope"]["version"],
+        "proposal_hash": recovery["scope"]["hash"],
+        "confirmation_text": "igen",
+    }
+    result = invoke_public_tool(
+        "scope.resume_confirm_and_execute", arguments, caller="new-chatgpt-session"
+    )
+
+    assert result["resumed"] is True
+    assert result["approval_replayed"] is True
+    assert result["orchestration_token"] == initial["orchestration_token"]
+    assert resumed == [flow]
+    assert GovernanceApproval.objects.filter(scope=scope).count() == 1
+    assert McpAuditEvent.objects.filter(
+        tool_name="scope.resume_confirm_and_execute", outcome="APPROVAL_REPLAYED"
+    ).exists()
+
+    replay = invoke_public_tool(
+        "scope.resume_confirm_and_execute", arguments, caller="new-chatgpt-session"
+    )
+    assert replay["idempotent_replay"] is True
+    assert GovernanceApproval.objects.filter(scope=scope).count() == 1
+
+
+@pytest.mark.django_db
+def test_scope_resume_rejects_a_stale_hash_before_reusing_approval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="recovery-stale-project",
+        display_name="Recovery Stale Project",
+        repository_full_name="example/recovery-stale-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Reject stale recovery binding.", kind="WORK_ITEM")
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", lambda *_: None)
+    recovery = invoke_public_tool(
+        "scope.resume",
+        {"project_id": project.project_id, "scope_identifier": scope.identifier},
+    )
+
+    with pytest.raises(ValueError, match="SCOPE_HASH_MISMATCH"):
+        invoke_public_tool(
+            "scope.resume_confirm_and_execute",
+            {
+                "project_id": project.project_id,
+                "scope_identifier": scope.identifier,
+                "proposal_version": recovery["scope"]["version"],
+                "proposal_hash": "0" * 64,
+                "confirmation_text": "igen",
+            },
+            caller="new-chatgpt-session",
+        )
+    assert not GovernanceApproval.objects.filter(scope=scope).exists()
 
 
 @pytest.mark.django_db

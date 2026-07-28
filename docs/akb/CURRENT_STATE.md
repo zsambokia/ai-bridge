@@ -250,3 +250,15 @@ execution token and lifecycle. This lets an authorized caller use the existing
 governed cancellation operation while retaining the conflicting run's original
 contract ownership and approval boundary. Evidence is recorded under
 `docs/evidence/bridge-ai-bridge-sprint-b97d6773-17ea-4643-b2a5-61965eb4f57c/`.
+
+## Interrupted approval recovery
+
+An interrupted browser, ChatGPT tool session, or MCP connection can now resume
+the existing governed approval flow without creating a second approval system.
+`scope.resume` exposes only the current canonical scope binding and durable
+orchestration state. An authenticated Product Owner resumes through
+`scope.resume_confirm_and_execute`, echoing the returned proposal version and
+hash; Bridge derives the new caller-bound confirmation reference and reuses the
+existing `GovernanceApproval` and `ConversationOrchestration` records. Stale
+bindings fail closed and all recovery actions are audited. Evidence is recorded
+under `docs/evidence/bridge-ai-bridge-sprint-e626a32e-b18a-415e-bfe2-5d2baf8bf1b2/`.

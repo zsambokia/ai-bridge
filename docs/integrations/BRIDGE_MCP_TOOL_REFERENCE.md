@@ -15,7 +15,7 @@ raw Django mutation APIs.
 | Execution boundary | `execution.request_start`, `execution.cancel` | execution boundary | start or cancel an owned run |
 | Execution observability | `execution.get_run_status`, `execution.list_events`, `execution.evidence_summary` | read-only | monitor the returned execution token |
 | Canonical scope | `scope.classify`, `sprint.propose`, `work_item.propose`, `scope.validate`, `scope.approve`, `scope.publish`, `scope.get`, `scope.contract.generate`, `scope.complete`, `scope.cancel`, `scope.supersede` | canonical planning and lifecycle | bind approval and publish before contract generation |
-| Conversational review | `scope.review`, `scope.answer_clarifications`, `conversation.confirm`, `scope.confirm_and_execute`, `scope.orchestration_status`, `scope.complete_execution` | review, execution boundary, and read-only status | review the exact version; one confirmation drives the bounded lifecycle |
+| Conversational review and recovery | `scope.review`, `scope.answer_clarifications`, `conversation.confirm`, `scope.confirm_and_execute`, `scope.orchestration_status`, `scope.resume`, `scope.resume_confirm_and_execute`, `scope.complete_execution` | review, recovery, execution boundary, and read-only status | review the exact version; resume an interrupted session with the returned version/hash |
 
 `project.resolve` returns `PROJECT_RESOLVED`, `USER_INPUT_REQUIRED`, or
 `PROJECT_NOT_FOUND`; never select an ambiguous project silently.
@@ -92,6 +92,18 @@ consumption, and run records. `scope.orchestration_status` is read-only.
 `scope.complete_execution` requires a stopped provider, all-PASS gates,
 non-empty evidence manifest, changed files, and final commit SHA before it
 returns the evidence-backed completion message `Főnök, kész!`.
+
+### Interrupted-session recovery
+
+Use `scope.resume` after a browser refresh, a new ChatGPT tool session, or an
+MCP reconnect. It is read-only and returns the current canonical scope version
+and hash plus safe orchestration state; it neither exposes an approval secret
+nor creates a new approval. An authenticated Product Owner then calls
+`scope.resume_confirm_and_execute` with that exact version/hash and an
+affirmative confirmation. The service derives the caller binding, approval
+reference, and idempotency key server-side, rejects stale bindings, and reuses
+the existing durable approval, contract, and execution where present. Retrying
+the same request returns the existing result rather than starting another run.
 
 ## Audit work type and provider boundary (Sprint 013)
 

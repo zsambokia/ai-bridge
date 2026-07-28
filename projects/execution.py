@@ -128,7 +128,10 @@ def start_run(
     audit_event_id: int | None = None,
 ) -> ExecutionRun:
     """Persist authorization and ownership before an external start is active."""
-    if contract.lifecycle != ExecutionContract.Lifecycle.CONSUMED:
+    if contract.lifecycle not in {
+        ExecutionContract.Lifecycle.CONSUMED,
+        ExecutionContract.Lifecycle.RUNNING,
+    }:
         raise ValueError("CONTRACT_NOT_CONSUMED")
     receipt = ContractConsumption.objects.filter(contract=contract).first()
     if receipt is None:
@@ -160,6 +163,25 @@ def start_run(
             .order_by("id")
             .first()
         )
+    if recoverable_run is None:
+        # ``ExecutionRun.start_request`` is intentionally one-to-one: a
+        # recovery must retain the original authorization and audit binding.
+        # A cancelled provider has no active slot, so reuse that durable run
+        # record instead of attempting to create a second row for the same
+        # request.
+        recoverable_run = (
+            ExecutionRun.objects.filter(
+                contract=contract,
+                lifecycle=ExecutionRun.Lifecycle.CANCELLED,
+            )
+            .order_by("id")
+            .first()
+        )
+    if (
+        contract.lifecycle == ExecutionContract.Lifecycle.RUNNING
+        and recoverable_run is None
+    ):
+        raise ValueError("CONTRACT_RUNNING_REQUIRES_RECOVERY")
     active_runs = ExecutionRun.objects.filter(
         contract__project=contract.project,
         branch=execution["target_branch"],

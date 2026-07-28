@@ -197,6 +197,17 @@ def test_codex_cancel_uses_taskkill_on_windows(monkeypatch: pytest.MonkeyPatch) 
     assert captured == [["taskkill", "/PID", "42", "/T", "/F"]]
 
 
+def test_codex_status_uses_native_windows_process_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("projects.providers.os.name", "nt")
+    monkeypatch.setattr(
+        "projects.providers._windows_process_is_running", lambda process_id: False
+    )
+
+    assert CodexCliAdapter().status("42") == "FINISHED"
+
+
 @pytest.mark.django_db
 def test_codex_launch_context_excludes_api_credentials(
     monkeypatch: pytest.MonkeyPatch,

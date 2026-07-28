@@ -55,6 +55,32 @@ SAFE_SUBPROCESS_ENVIRONMENT_KEYS = (
 )
 
 
+def _windows_process_is_running(process_id: int) -> bool:
+    """Return whether a PID still has an active Windows process handle.
+
+    ``os.kill(pid, 0)`` is not a reliable existence probe on Windows: it can
+    report success for an already-exited PID.  Use the native process handle
+    and exit code instead so status polling cannot preserve a ghost run.
+    """
+    import ctypes
+
+    process_query_limited_information = 0x1000
+    still_active = 259
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(
+        process_query_limited_information, False, process_id
+    )
+    if not handle:
+        return False
+    try:
+        exit_code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return False
+        return exit_code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 @dataclass(frozen=True)
 class ProviderStart:
     execution_id: str
@@ -367,8 +393,11 @@ class CodexCliAdapter:
             )
 
     def status(self, execution_id: str) -> str:
+        process_id = int(execution_id)
+        if os.name == "nt":
+            return "RUNNING" if _windows_process_is_running(process_id) else "FINISHED"
         try:
-            os.kill(int(execution_id), 0)
+            os.kill(process_id, 0)
         except OSError:
             return "FINISHED"
         return "RUNNING"

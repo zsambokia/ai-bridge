@@ -175,6 +175,41 @@ def test_start_recovers_an_unbound_starting_run(
 
 
 @pytest.mark.django_db
+def test_start_recovers_a_cancelled_run_with_its_original_request(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    cancelled_run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository=contract.payload["project"]["repository"],
+        branch=contract.payload["execution"]["target_branch"],
+        baseline_commit=contract.payload["execution"]["baseline_commit"],
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        provider_execution_id="cancelled-provider",
+        lifecycle=ExecutionRun.Lifecycle.CANCELLED,
+        current_phase="CANCELLED",
+        evidence_root=contract.payload["evidence"]["root"],
+        started_at=None,
+    )
+    contract.lifecycle = ExecutionContract.Lifecycle.RUNNING
+    contract.save(update_fields=["lifecycle"])
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+
+    run = start_run(contract, request, root)
+
+    assert run.pk == cancelled_run.pk
+    assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert ExecutionRun.objects.filter(contract=contract).count() == 1
+    assert run.provider_execution_id == "provider-42"
+
+
+@pytest.mark.django_db
 def test_start_retries_a_transient_provider_launch_once(
     consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,
