@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from time import sleep
 from typing import Protocol
@@ -13,7 +14,7 @@ from django.conf import settings
 from django.db import OperationalError, transaction
 from django.utils import timezone
 
-from .execution_activity import console_line
+from .execution_activity import console_line, heartbeat_projection
 from .models import (
     ContractConsumption,
     ExecutionContract,
@@ -308,17 +309,68 @@ def reconcile_provider_completion(run: ExecutionRun) -> ExecutionRun:
     return locked
 
 
-def watchdog_recover_runs() -> int:
-    """Reconcile every active run; repeated invocations do not duplicate events."""
-    reconciled = 0
-    for run in ExecutionRun.objects.filter(
-        lifecycle=ExecutionRun.Lifecycle.RUNNING
-    ).iterator():
+def _block_stale_run(
+    run: ExecutionRun, *, observed_at: datetime | None = None
+) -> ExecutionRun:
+    """Close an overdue active run with durable, actionable evidence."""
+    observed_at = observed_at or timezone.now()
+    if run.lifecycle not in ACTIVE_STATES or (
+        heartbeat_projection(run, observed_at=observed_at)["heartbeat_status"]
+        != "POSSIBLY_STALLED"
+    ):
+        return run
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        if locked.lifecycle not in ACTIVE_STATES or (
+            heartbeat_projection(locked, observed_at=observed_at)["heartbeat_status"]
+            != "POSSIBLY_STALLED"
+        ):
+            return locked
+        locked.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+        locked.current_phase = "BLOCKED"
+        locked.current_blocker = {
+            "category": "unavailable external input",
+            "code": "EXECUTION_WATCHDOG_STALE",
+            "evidence": "No persisted execution activity before the watchdog deadline.",
+        }
+        locked.terminal_state = "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+        locked.ended_at = observed_at
+        locked.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "terminal_state",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+        add_event(
+            locked,
+            "WATCHDOG_STALE_BLOCKED",
+            classification="unavailable external input",
+            reason="No persisted execution activity before the watchdog deadline.",
+        )
+    return locked
+
+
+def recover_execution_run(
+    run: ExecutionRun, *, observed_at: datetime | None = None
+) -> ExecutionRun:
+    """Use one idempotent path for provider completion and stale-run recovery."""
+    reconciled = reconcile_provider_completion(run)
+    return _block_stale_run(reconciled, observed_at=observed_at)
+
+
+def watchdog_recover_runs(*, observed_at: datetime | None = None) -> int:
+    """Recover every active run without duplicate transitions or events."""
+    recovered = 0
+    for run in ExecutionRun.objects.filter(lifecycle__in=ACTIVE_STATES).iterator():
         before = run.lifecycle
-        reconciled_run = reconcile_provider_completion(run)
-        if reconciled_run.lifecycle != before:
-            reconciled += 1
-    return reconciled
+        recovered_run = recover_execution_run(run, observed_at=observed_at)
+        if recovered_run.lifecycle != before:
+            recovered += 1
+    return recovered
 
 
 def start_run(

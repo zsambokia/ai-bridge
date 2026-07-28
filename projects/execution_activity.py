@@ -51,6 +51,12 @@ _EVENTS = {
     "GATE_RERUN_PASSED": ("VALIDATING", "AI Bridge", "INFO", "Gate rerun passed"),
     "REPAIR_VERIFIED": ("REPAIRING", "AI Bridge", "INFO", "Repair verified"),
     "PROVIDER_FAILURE": ("BLOCKED", "AI Bridge", "ERROR", "Provider unavailable"),
+    "WATCHDOG_STALE_BLOCKED": (
+        "BLOCKED",
+        "AI Bridge",
+        "ERROR",
+        "Watchdog blocked a stale execution",
+    ),
     "EXECUTION_COMPLETED": ("CLOSING", "AI Bridge", "INFO", "Execution completed"),
 }
 
@@ -113,6 +119,7 @@ def heartbeat_projection(
         ExecutionRun.Lifecycle.CANCELLED,
         ExecutionRun.Lifecycle.BLOCKED_BUSINESS_DECISION,
         ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+        ExecutionRun.Lifecycle.FAILED_GOVERNANCE,
     }
     if terminal:
         classification = "TERMINAL"

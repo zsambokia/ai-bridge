@@ -53,7 +53,10 @@ through the environment or the platform secret manager and retain the same
 
 Do not edit execution lifecycle fields in Django admin. A provider can finish
 after its caller has disconnected; reconciliation records the terminal fact
-and moves the canonical run from `RUNNING` to `VALIDATING` exactly once.
+and moves the canonical run from `RUNNING` to `VALIDATING` exactly once. The
+same recovery path closes an active run past the persisted-activity deadline
+as `BLOCKED` with a `WATCHDOG_STALE_BLOCKED` event; it never silently remains
+active after a detectable stall.
 
 Run the bounded, idempotent recovery command from the repository root:
 

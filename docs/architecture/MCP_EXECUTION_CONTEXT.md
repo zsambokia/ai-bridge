@@ -220,8 +220,12 @@ A provider terminal state is reconciled durably: a finished provider moves a
 so a repeated read, retry, or watchdog invocation cannot start a second
 continuation. Read-side execution status reconciles before reporting it, and
 `reconcile_provider_runs` provides the same bounded recovery path for
-operations. Validation, release gates, evidence, documentation, final commit,
-and draft Pull Request review remain required before closure.
+operations. It also closes an active run whose persisted activity has exceeded
+the configured stalled-heartbeat deadline as `BLOCKED` with durable watchdog
+evidence. Read-side status uses that same recovery function, so an execution
+cannot remain silently active after a detectable stall. Validation, release
+gates, evidence, documentation, final commit, and draft Pull Request review
+remain required before closure.
 
 The Product Owner projection is a second read model over those same durable
 facts, not a second activity store. Each stream item includes its title,

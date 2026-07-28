@@ -34,6 +34,14 @@ canonical event stream: source-event mapping, icon, confidence, provider
 status, blocker, next expected action, and deterministic terminal category are
 now available without a parallel activity service or mutable heartbeat state.
 
+Final pre-merge recovery validation added durable stale-run terminalization:
+the shared reconciliation path first advances provider `FINISHED` to
+`VALIDATING`, then closes an overdue active run as
+`BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE` with a persisted
+`WATCHDOG_STALE_BLOCKED` event. This path is row-locked and repeat-safe, is
+used by both the watchdog command and status/activity/evidence reads, and has
+separate regression coverage for the persisted facts from `ExecutionRun #20`.
+
 ## Verification
 
 All commands were run in the isolated implementation worktree after the final
@@ -44,13 +52,19 @@ python -m ruff check .                            PASS
 python -m ruff format --check .                   PASS (91 files)
 python manage.py check                            PASS
 python manage.py makemigrations --check --dry-run PASS (No changes detected)
-python -m pytest -q                               PASS (82 passed)
-python -m mypy projects                            PASS (49 source files)
+python -m pytest -q                               PASS (84 passed)
+python -m mypy .                                  PASS (91 source files)
 ```
 
 Focused lifecycle and MCP regression coverage also passed before the complete
 suite: `python -m pytest projects/tests/test_execution.py
 projects/tests/test_governed_mcp.py -q` — `24 passed`.
+
+## Final pre-merge result
+
+PASS — READY FOR PRODUCT OWNER REVIEW. The focused lifecycle and MCP command
+`python -m pytest projects/tests/test_execution.py projects/tests/test_governed_mcp.py -q`
+returned `28 passed`; the complete suite above returned `84 passed`.
 
 ## Closure handoff
 

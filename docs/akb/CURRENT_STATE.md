@@ -234,11 +234,13 @@ customer Projects.
 Provider completion is now a durable lifecycle fact. When the provider is
 finished, reconciliation advances the canonical run from `RUNNING` to
 `VALIDATING`, records terminal and continuation events, and is safe to retry.
-`execution.get_run_status` reconciles before returning Product Owner progress;
-operations can also run `python manage.py reconcile_provider_runs`. A
-provider terminal signal is therefore not closure: evidence, validation,
-release gates, documentation, a commit, and draft Pull Request review still
-determine the final result.
+`execution.get_run_status` uses the same recovery path before returning Product
+Owner progress; operations can also run `python manage.py
+reconcile_provider_runs`. The watchdog closes a detectable stale active run as
+`BLOCKED` with a durable `WATCHDOG_STALE_BLOCKED` event, rather than leaving it
+silently running. A provider terminal signal is therefore not closure:
+evidence, validation, release gates, documentation, a commit, and draft Pull
+Request review still determine the final result.
 
 Product Owner progress is derived from the same canonical run and ordered
 progress events. It now exposes source-event mapping, icon, confidence,

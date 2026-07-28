@@ -365,6 +365,12 @@ Contract. The provider-terminal watchdog and read-time reconciliation ensure a
 finished local Codex process advances to validation rather than remaining
 indefinitely `RUNNING`, `EXECUTING`, or `WAITING_FOR_PROVIDER`.
 
+The same watchdog now terminalizes a detectably stale active run as
+`BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE`, records
+`WATCHDOG_STALE_BLOCKED`, and is also invoked by read-time reconciliation.
+This makes the active lifecycle recoverable after a restart without hiding a
+provider or supervision failure.
+
 The next operational step is to schedule or invoke
 `reconcile_provider_runs` wherever provider supervision is unavailable. This
 does not loosen release gates or authorise Factory Development Mode for a

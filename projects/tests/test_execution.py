@@ -19,6 +19,7 @@ from projects.contracts import (
 from projects.execution import (
     ProviderStart,
     _safe_details,
+    add_event,
     complete_run,
     reconcile_provider_completion,
     record_gate_rerun,
@@ -268,6 +269,35 @@ def test_finished_provider_is_reconciled_once_into_validation(
 
 
 @pytest.mark.django_db
+def test_execution_run_20_finished_provider_is_reconciled_into_validation(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for durable Run #20: provider 2776 finished after turn.completed."""
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    run.provider_execution_id = "2776"
+    run.save(update_fields=["provider_execution_id", "updated_at"])
+    add_event(run, "PROVIDER_OUTPUT", message="turn.completed")
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: FinishedStubProvider()
+    )
+
+    reconciled = reconcile_provider_completion(run)
+
+    assert reconciled.lifecycle == ExecutionRun.Lifecycle.VALIDATING
+    assert reconciled.current_phase == "VALIDATING"
+    assert list(
+        reconciled.events.filter(
+            event_type__in={"PROVIDER_FINISHED", "VALIDATION_CONTINUATION_READY"}
+        ).values_list("event_type", flat=True)
+    ) == ["PROVIDER_FINISHED", "VALIDATION_CONTINUATION_READY"]
+
+
+@pytest.mark.django_db
 def test_factory_profile_uses_durable_po_authority_without_a_contract(
     consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,
@@ -304,6 +334,15 @@ def test_factory_profile_uses_durable_po_authority_without_a_contract(
         summary["product_owner_progress"]["approval_reference"]
         == "PO-bootstrap-factory-001"
     )
+    assert (
+        start_factory_development(
+            project,
+            "PO-bootstrap-factory-001",
+            "Repair the execution lifecycle.",
+            root,
+        ).pk
+        == run.pk
+    )
 
 
 @pytest.mark.django_db
@@ -324,6 +363,35 @@ def test_watchdog_counts_each_finished_provider_only_once(
     assert watchdog_recover_runs() == 0
     run.refresh_from_db()
     assert run.lifecycle == ExecutionRun.Lifecycle.VALIDATING
+
+
+@pytest.mark.django_db
+def test_watchdog_closes_a_silent_active_execution_once(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    latest = run.events.order_by("-sequence").first()
+    assert latest is not None
+
+    observed_at = latest.created_at + timedelta(seconds=901)
+    assert watchdog_recover_runs(observed_at=observed_at) == 1
+    assert watchdog_recover_runs(observed_at=observed_at) == 0
+    run.refresh_from_db()
+
+    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    assert run.current_phase == "BLOCKED"
+    assert run.terminal_state == "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+    assert run.current_blocker["code"] == "EXECUTION_WATCHDOG_STALE"
+    assert list(
+        run.events.filter(event_type="WATCHDOG_STALE_BLOCKED").values_list(
+            "event_type", flat=True
+        )
+    ) == ["WATCHDOG_STALE_BLOCKED"]
 
 
 @pytest.mark.django_db
@@ -414,6 +482,7 @@ def test_terminal_outcome_is_deterministic_for_each_terminal_lifecycle(
     for lifecycle, outcome in expected.items():
         run.lifecycle = lifecycle
         assert terminal_outcome(run) == outcome
+        assert heartbeat_projection(run)["heartbeat_status"] == "TERMINAL"
 
 
 @pytest.mark.django_db

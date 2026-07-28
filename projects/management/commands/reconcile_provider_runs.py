@@ -6,7 +6,7 @@ from projects.execution import watchdog_recover_runs
 
 
 class Command(BaseCommand):
-    help = "Advance finished provider runs from RUNNING to VALIDATING."
+    help = "Reconcile finished providers and close stale active execution runs."
 
     def handle(self, *args: object, **options: object) -> None:
         reconciled = watchdog_recover_runs()

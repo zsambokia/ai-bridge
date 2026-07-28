@@ -26,7 +26,7 @@ from .execution import (
     add_event,
     complete_run,
     provider,
-    reconcile_provider_completion,
+    recover_execution_run,
     start_factory_development,
     start_run,
     watchdog_recover_runs,
@@ -1819,7 +1819,7 @@ def invoke_public_tool(
         }:
             run = ExecutionRun.objects.get(token=arguments["execution_token"])
             if name != "execution.cancel":
-                reconcile_provider_completion(run)
+                recover_execution_run(run)
                 run.refresh_from_db()
             if name == "execution.cancel":
                 if run.contract_id is None:
