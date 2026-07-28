@@ -33,6 +33,8 @@ def test_public_registry_is_versioned_unique_and_schema_bounded() -> None:
     assert len({tool["name"] for tool in tools}) == len(tools)
     assert {
         "factory.get_status",
+        "factory.begin_self_development",
+        "factory.reconcile_provider_runs",
         "project.resolve",
         "akb.search",
         "execution.prepare",
@@ -79,6 +81,30 @@ def test_preparation_is_idempotent_and_audited() -> None:
     assert McpAuditEvent.objects.filter(
         tool_name="execution.prepare", outcome="SUCCESS"
     ).exists()
+
+
+@pytest.mark.django_db
+def test_codex_handoff_refuses_to_invent_missing_execution_authority() -> None:
+    project = Project.objects.create(
+        project_id="handoff-project",
+        display_name="Handoff Project",
+        repository_full_name="example/handoff-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Prepare a bound Codex handoff.", kind="SPRINT")
+
+    result = invoke_public_tool(
+        "governance.prepare_codex_handoff",
+        {"project_id": project.project_id, "scope_identifier": scope.identifier},
+    )
+
+    assert "governance.prepare_codex_handoff" in TOOLS
+    assert result == {
+        "status": "HANDOFF_INCOMPLETE",
+        "scope_identifier": scope.identifier,
+        "missing_fields": ["execution_contract"],
+    }
 
 
 @pytest.mark.django_db
@@ -215,7 +241,7 @@ def test_conversational_confirmation_binds_the_current_exact_review(
         {
             "project_id": project.project_id,
             "scope_identifier": scope.identifier,
-            "confirmation_text": "Igen, jó lesz.",
+            "confirmation_text": "igen",
         },
         caller="chatgpt-connector-principal",
     )
@@ -244,7 +270,7 @@ def test_conversational_confirmation_binds_the_current_exact_review(
             {
                 "project_id": project.project_id,
                 "scope_identifier": scope.identifier,
-                "confirmation_text": "Igen, jó lesz.",
+                "confirmation_text": "Igen, jo lesz.",
             },
             caller="chatgpt-connector-principal",
         )["idempotent_replay"]
@@ -259,6 +285,86 @@ def test_conversational_confirmation_binds_the_current_exact_review(
                 "confirmation_text": "Maybe later",
             },
         )
+
+
+@pytest.mark.django_db
+def test_conversation_confirmation_retries_a_persisted_blocked_flow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="conversation-resume-project",
+        display_name="Conversation Resume Project",
+        repository_full_name="example/conversation-resume-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Resume the provider.", kind="WORK_ITEM")
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", lambda *_: None)
+    arguments = {
+        "project_id": project.project_id,
+        "scope_identifier": scope.identifier,
+        "confirmation_text": "Igen, jĂł lesz.",
+    }
+    arguments["confirmation_text"] = "igen"
+    invoke_public_tool("conversation.confirm", arguments, caller="resume-caller")
+    flow = ConversationOrchestration.objects.get(scope=scope)
+    flow.status = "BLOCKED"
+    flow.failure_detail = {"code": "EXECUTOR_START_FAILED"}
+    flow.save(update_fields=["status", "failure_detail"])
+    resumed: list[ConversationOrchestration] = []
+
+    def advance(candidate: ConversationOrchestration, caller: str) -> None:
+        resumed.append(candidate)
+        candidate.status = "EXECUTION_STARTED"
+        candidate.current_step = "EXECUTION"
+        candidate.failure_detail = {}
+        candidate.save(update_fields=["status", "current_step", "failure_detail"])
+
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", advance)
+    result = invoke_public_tool(
+        "conversation.confirm", arguments, caller="resume-caller"
+    )
+
+    assert result["idempotent_replay"] is True
+    assert result["resumed"] is True
+    assert resumed == [flow]
+
+
+@pytest.mark.django_db
+def test_conversation_confirmation_retries_a_started_durable_flow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="conversation-started-project",
+        display_name="Conversation Started Project",
+        repository_full_name="example/conversation-started-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Resume an exited provider.", kind="WORK_ITEM")
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", lambda *_: None)
+    arguments = {
+        "project_id": project.project_id,
+        "scope_identifier": scope.identifier,
+        "confirmation_text": "igen",
+    }
+    invoke_public_tool("conversation.confirm", arguments, caller="started-caller")
+    flow = ConversationOrchestration.objects.get(scope=scope)
+    flow.status = "EXECUTION_STARTED"
+    flow.save(update_fields=["status"])
+    resumed: list[ConversationOrchestration] = []
+
+    def advance(candidate: ConversationOrchestration, caller: str) -> None:
+        resumed.append(candidate)
+
+    monkeypatch.setattr("projects.governed_mcp._advance_orchestration", advance)
+    result = invoke_public_tool(
+        "conversation.confirm", arguments, caller="started-caller"
+    )
+
+    assert result["idempotent_replay"] is True
+    assert result["resumed"] is True
+    assert resumed == [flow]
 
 
 @pytest.mark.django_db

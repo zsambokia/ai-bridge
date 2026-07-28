@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
 from .contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPES
 from .contracts import (
@@ -17,9 +19,19 @@ from .contracts import (
     consume_execution_contract,
     generate_scope_execution_contract,
     issue_execution_contract,
+    supersede_execution_contract,
     validate_execution_contract,
 )
-from .execution import add_event, complete_run, provider, start_run
+from .execution import (
+    add_event,
+    complete_run,
+    provider,
+    recover_execution_run,
+    start_factory_development,
+    start_run,
+    watchdog_recover_runs,
+)
+from .execution_activity import activity_summary, event_view, heartbeat_projection
 from .mcp import invoke_operation
 from .models import (
     ConversationOrchestration,
@@ -43,8 +55,9 @@ from .scopes import (
     publish_scope,
     review_scope,
 )
+from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-27.1"
+TOOL_SURFACE_VERSION = "2026-07-28.2"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -122,6 +135,31 @@ _TOOLS = [
         "factory.list_capabilities",
         "List the versioned governed MCP capabilities available to this caller.",
         READ_ONLY,
+    ),
+    _tool(
+        "factory.begin_self_development",
+        (
+            "Start contract-free Factory Development Mode for the AI Bridge "
+            "repository after explicit Product Owner approval."
+        ),
+        EXECUTION_BOUNDARY,
+        {
+            **_PROJECT,
+            **_APPROVAL,
+            "request": {"type": "string", "minLength": 1, "maxLength": 4000},
+            **_IDEMPOTENCY,
+        },
+        ["project_id", "approval_reference", "request", "idempotency_key"],
+    ),
+    _tool(
+        "factory.reconcile_provider_runs",
+        (
+            "Reconcile finished provider processes and resume their validation "
+            "lifecycle idempotently."
+        ),
+        LIFECYCLE_MUTATION,
+        {**_IDEMPOTENCY},
+        ["idempotency_key"],
     ),
     _tool(
         "provider.list",
@@ -280,6 +318,26 @@ _TOOLS = [
         READ_ONLY,
         {"execution_token": {"type": "string"}},
         ["execution_token"],
+    ),
+    _tool(
+        "execution.get_activity_summary",
+        "Read the canonical live execution activity and derived checklist.",
+        READ_ONLY,
+        {"execution_token": {"type": "string"}},
+        ["execution_token"],
+    ),
+    _tool(
+        "governance.prepare_codex_handoff",
+        (
+            "Return a copyable, fully bound Codex handoff only when durable "
+            "execution authority exists."
+        ),
+        READ_ONLY,
+        {
+            **_PROJECT,
+            "scope_identifier": {"type": "string", "minLength": 1},
+        },
+        ["project_id", "scope_identifier"],
     ),
     _tool(
         "execution.cancel",
@@ -784,7 +842,9 @@ def _derived_conversation_confirmation(
         json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return {
-        **arguments,
+        "project_id": arguments["project_id"],
+        "scope_identifier": arguments["scope_identifier"],
+        "confirmation_text": "igen",
         "product_owner_identity": product_owner_identity,
         "confirmation_reference": f"conversation-confirmation:v1:{digest}",
         "idempotency_key": f"conversation-confirm:v1:{digest}",
@@ -865,7 +925,27 @@ def _idempotent(
     ).first()
     if record:
         if record.request_fingerprint != fingerprint:
-            raise ValueError("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST")
+            # Earlier conversation confirmations stored their fingerprint before
+            # the public reply was reduced to its governed, caller-bound form.
+            # Permit that one-way normalization only when the durable flow proves
+            # that this caller, project, scope and confirmation reference are the
+            # same conversation.  All other key reuse remains a hard failure.
+            if tool == "conversation.confirm":
+                flow = ConversationOrchestration.objects.filter(
+                    scope__project__project_id=arguments["project_id"],
+                    scope__identifier=arguments["scope_identifier"],
+                    confirmation_reference=arguments["confirmation_reference"],
+                    product_owner_identity=arguments["product_owner_identity"],
+                ).first()
+                if flow is not None and record.result.get("orchestration_token") == str(
+                    flow.token
+                ):
+                    record.request_fingerprint = fingerprint
+                    record.save(update_fields=["request_fingerprint"])
+                else:
+                    raise ValueError("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST")
+            else:
+                raise ValueError("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST")
         return record.result
     return None
 
@@ -935,6 +1015,59 @@ def _transition(
     )
 
 
+def _recover_incomplete_contract_binding(
+    flow: ConversationOrchestration, root: Path
+) -> None:
+    """Replace only an exited, pre-fix contract that lacked scope authority.
+
+    Older contracts named the Bridge-side projection but did not carry its
+    contents.  A provider running in a separately registered workspace cannot
+    verify that projection.  Once that provider has exited without a commit,
+    superseding it is safe and retains the same conversation confirmation.
+    """
+    contract = flow.contract
+    run = flow.run
+    if (
+        contract is None
+        or run is None
+        or contract.lifecycle != ExecutionContract.Lifecycle.RUNNING
+        or "content" in contract.payload.get("approved_scope", {})
+        or provider(run.provider_name).status(run.provider_execution_id) != "FINISHED"
+    ):
+        return
+    workspace_root = project_repository_root(contract.project, root)
+    if _head_sha(workspace_root) != contract.payload["execution"]["baseline_commit"]:
+        raise ValueError("LEGACY_CONTRACT_RECOVERY_MUTATION_DETECTED")
+
+    run.lifecycle = ExecutionRun.Lifecycle.FAILED_GOVERNANCE
+    run.current_phase = "CONTRACT_BINDING_REPAIRED"
+    run.current_blocker = {
+        "category": "contract binding defect",
+        "evidence": "Issued contract omitted approved scope content.",
+    }
+    run.ended_at = timezone.now()
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "ended_at",
+            "updated_at",
+        ]
+    )
+    add_event(run, "CONTRACT_SUPERSEDED", reason="missing approved scope content")
+    replacement = generate_scope_execution_contract(flow.scope, root)
+    supersede_execution_contract(
+        contract,
+        replacement,
+        allow_running_binding_repair=True,
+    )
+    flow.contract = replacement
+    flow.run = None
+    flow.failure_detail = {}
+    flow.save(update_fields=["contract", "run", "failure_detail", "updated_at"])
+
+
 def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None:
     """Resume only missing canonical transitions; never duplicate authority."""
     scope = ExecutableScope.objects.get(pk=flow.scope_id)
@@ -949,6 +1082,7 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
         if not scope.published_path:
             publish_scope(scope, root)
         _transition(flow, caller, "PREPARATION", "PUBLISHED")
+        _recover_incomplete_contract_binding(flow, root)
         if flow.preparation_id is None:
             authorized = approved_scope(scope)
             flow.preparation = ExecutionPreparation.objects.create(
@@ -997,6 +1131,13 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
         }:
             raise ValueError("CONTRACT_LIFECYCLE_NOT_EXECUTABLE")
         _transition(flow, caller, "EXECUTION", "CONTRACT_CONSUMED")
+        persisted_run = flow.run if flow.run_id is not None else None
+        if (
+            persisted_run is not None
+            and persisted_run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+        ):
+            flow.run = None
+            flow.save(update_fields=["run", "updated_at"])
         if flow.run_id is None:
             request, _ = ExecutionStartRequest.objects.get_or_create(
                 contract=contract,
@@ -1016,7 +1157,18 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
                     "contract": contract.handoff_identifier,
                 },
             )
-            flow.run = start_run(contract, request, root, audit_event_id=audit.pk)
+            try:
+                flow.run = start_run(
+                    contract,
+                    request,
+                    root,
+                    audit_event_id=audit.pk,
+                )
+            except (OSError, ValueError):
+                flow.run = ExecutionRun.objects.filter(contract=contract).first()
+                if flow.run is not None:
+                    flow.save(update_fields=["run", "updated_at"])
+                raise
             request.status = "EXECUTION_STARTED"
             request.next_action = "Provider result must be verified before completion."
             request.save(update_fields=["status", "next_action"])
@@ -1157,7 +1309,7 @@ def _complete_orchestration(
         raise ValueError("RELEASE_GATES_NOT_PASSED")
     if not completion_data["changed_files"]:
         raise ValueError("EXECUTION_CHANGED_FILES_REQUIRED")
-    root = Path(settings.BASE_DIR)
+    root = project_repository_root(project, Path(settings.BASE_DIR))
     manifest = completion_data["evidence_manifest"]
     if not isinstance(manifest, dict) or not manifest:
         raise ValueError("RUN_COMPLETION_EVIDENCE_INVALID")
@@ -1165,11 +1317,32 @@ def _complete_orchestration(
         isinstance(path, str) and (root / path).is_file() for path in manifest.values()
     ):
         raise ValueError("EVIDENCE_MANIFEST_MISSING")
-    complete_run(run, arguments["final_commit_sha"], completion_data)
+    pass_closure_state = next(
+        (
+            state
+            for state in contract.payload["allowed_terminal_states"]
+            if state.startswith("PASS ")
+        ),
+        None,
+    )
+    if pass_closure_state is None:
+        raise ValueError("PASS_CLOSURE_STATE_NOT_ALLOWED")
+    with transaction.atomic():
+        if run.lifecycle in {
+            ExecutionRun.Lifecycle.RUNNING,
+            ExecutionRun.Lifecycle.VALIDATING,
+        }:
+            complete_run(run, arguments["final_commit_sha"], completion_data)
+        elif (
+            run.lifecycle != ExecutionRun.Lifecycle.COMPLETED
+            or run.final_commit_sha != arguments["final_commit_sha"]
+            or run.completion_data != completion_data
+        ):
+            raise ValueError("RUN_COMPLETION_NOT_RECOVERABLE")
     complete_execution_contract(
         contract,
         arguments["final_commit_sha"],
-        "PASS — READY FOR PRODUCT OWNER REVIEW",
+        pass_closure_state,
         completion_data,
     )
     flow.status = "COMPLETED"
@@ -1199,6 +1372,93 @@ def _complete_orchestration(
     return result
 
 
+def _prepared_codex_handoff(scope: ExecutableScope) -> dict[str, Any]:
+    """Render a handoff from durable authority only, never client-supplied hints."""
+    contract = next(
+        (
+            candidate
+            for candidate in ExecutionContract.objects.filter(project=scope.project)
+            if candidate.payload.get("approved_scope", {}).get("identifier")
+            == scope.identifier
+        ),
+        None,
+    )
+    if contract is None:
+        return {
+            "status": "HANDOFF_INCOMPLETE",
+            "scope_identifier": scope.identifier,
+            "missing_fields": ["execution_contract"],
+        }
+    run = ExecutionRun.objects.filter(contract=contract).order_by("-created_at").first()
+    if run is None:
+        return {
+            "status": "HANDOFF_INCOMPLETE",
+            "scope_identifier": scope.identifier,
+            "contract_identifier": contract.handoff_identifier,
+            "missing_fields": ["execution_run"],
+        }
+    payload = contract.payload
+    execution = payload.get("execution", {})
+    evidence = payload.get("evidence", {})
+    required = {
+        "project_id": payload.get("project", {}).get("id"),
+        "repository": payload.get("project", {}).get("repository"),
+        "sprint_document_path": payload.get("approved_scope", {}).get("path"),
+        "proposal_version": scope.record.get("proposal_version"),
+        "proposal_hash": scope.record.get("proposal_hash"),
+        "product_owner_approval_reference": payload.get("approval_reference"),
+        "contract_identifier": contract.handoff_identifier,
+        "contract_hash": contract.contract_hash,
+        "execution_token": str(run.token),
+        "baseline_commit_sha": execution.get("baseline_commit"),
+        "target_branch": execution.get("target_branch"),
+        "evidence_root": evidence.get("root"),
+    }
+    missing = sorted(key for key, value in required.items() if not value)
+    if missing:
+        return {
+            "status": "HANDOFF_INCOMPLETE",
+            "scope_identifier": scope.identifier,
+            "missing_fields": missing,
+        }
+    release_gates = payload.get("policy", {}).get("required_release_gates", [])
+    evidence_artifacts = payload.get("policy", {}).get(
+        "required_evidence_artifacts", []
+    )
+    handoff = {
+        "status": "HANDOFF_READY",
+        "scope_identifier": scope.identifier,
+        **required,
+        "release_gates": release_gates,
+        "required_evidence_artifacts": evidence_artifacts,
+        "execution_status": run.lifecycle,
+    }
+    handoff["codex_prompt"] = "\n".join(
+        (
+            "Execute only the following already-consumed AI Bridge contract.",
+            f"Scope identifier: {scope.identifier}",
+            "Proposal version/hash: "
+            f"{scope.record.get('proposal_version')} / "
+            f"{scope.record.get('proposal_hash')}",
+            f"Product Owner approval: {payload['approval_reference']}",
+            "Contract identifier/hash: "
+            f"{contract.handoff_identifier} / {contract.contract_hash}",
+            f"Execution token: {run.token}",
+            "Repository/branch/baseline: "
+            f"{required['repository']} / {execution['target_branch']} / "
+            f"{execution['baseline_commit']}",
+            f"Release gates: {', '.join(release_gates)}",
+            f"Evidence root: {evidence['root']}",
+            f"Required evidence: {', '.join(evidence_artifacts)}",
+            (
+                "Preserve unrelated worktree changes. Record final evidence "
+                "before requesting closure."
+            ),
+        )
+    )
+    return handoff
+
+
 def invoke_public_tool(
     name: str, arguments: Any, caller: str = "bearer-token"
 ) -> dict[str, Any]:
@@ -1214,6 +1474,21 @@ def invoke_public_tool(
         arguments = _derived_conversation_confirmation(arguments, caller)
     replay = _idempotent(caller, name, arguments)
     if replay is not None:
+        if name == "conversation.confirm":
+            replay_project = _project(arguments)
+            flow = ConversationOrchestration.objects.filter(
+                scope__project=replay_project,
+                confirmation_reference=arguments["confirmation_reference"],
+            ).first()
+            if flow is not None and flow.status in {"BLOCKED", "EXECUTION_STARTED"}:
+                _advance_orchestration(flow, caller)
+                resumed = _orchestration_result(flow)
+                McpIdempotencyRecord.objects.filter(
+                    caller=caller,
+                    tool_name=name,
+                    key=arguments["idempotency_key"],
+                ).update(result=resumed)
+                return {**resumed, "idempotent_replay": True, "resumed": True}
         return {**replay, "idempotent_replay": True}
     project = _project(arguments) if "project_id" in arguments else None
     try:
@@ -1270,6 +1545,35 @@ def invoke_public_tool(
                     for t in _TOOLS
                 ],
             }
+        elif name == "factory.begin_self_development":
+            if project is None:
+                raise ValueError("PROJECT_REQUIRED")
+            dispatch_audit = McpAuditEvent.objects.create(
+                caller=caller,
+                tool_name=name,
+                project=project,
+                outcome="DISPATCHING",
+                details={"mode": "FACTORY_DEVELOPMENT"},
+            )
+            run = start_factory_development(
+                project,
+                arguments["approval_reference"],
+                arguments["request"],
+                Path(settings.BASE_DIR),
+                audit_event_id=dispatch_audit.pk,
+            )
+            result = {
+                "status": run.lifecycle,
+                "mode": run.execution_profile,
+                "execution_token": str(run.token),
+                "evidence_root": run.evidence_root,
+                "next_action": (
+                    "Monitor through execution.get_activity_summary; provider "
+                    "completion is reconciled automatically."
+                ),
+            }
+        elif name == "factory.reconcile_provider_runs":
+            result = {"reconciled_runs": watchdog_recover_runs()}
         elif name == "project.list":
             visible_projects = Project.objects.filter(
                 lifecycle="ACTIVE", onboarding_status="READY"
@@ -1352,6 +1656,12 @@ def invoke_public_tool(
                     ["confirmation_text"] if review["confirmation_eligible"] else []
                 ),
             }
+        elif name == "governance.prepare_codex_handoff":
+            assert project is not None
+            scope = ExecutableScope.objects.get(
+                identifier=arguments["scope_identifier"], project=project
+            )
+            result = _prepared_codex_handoff(scope)
         elif name == "scope.answer_clarifications":
             assert project is not None
             scope = ExecutableScope.objects.get(
@@ -1503,20 +1813,33 @@ def invoke_public_tool(
         elif name in {
             "execution.get_run_status",
             "execution.list_events",
+            "execution.get_activity_summary",
             "execution.evidence_summary",
             "execution.cancel",
         }:
             run = ExecutionRun.objects.get(token=arguments["execution_token"])
+            if name != "execution.cancel":
+                recover_execution_run(run)
+                run.refresh_from_db()
             if name == "execution.cancel":
+                if run.contract_id is None:
+                    raise ValueError(
+                        "FACTORY_DEVELOPMENT_CANCELLATION_REQUIRES_SERVICE_AUTHORITY"
+                    )
+                run_contract = run.contract
+                if run_contract is None:
+                    raise ValueError("EXECUTION_CONTRACT_UNAVAILABLE")
                 approval = _approval_for_contract(
-                    arguments, run.contract, "execution.cancel"
+                    arguments, run_contract, "execution.cancel"
                 )
                 if run.lifecycle not in {
                     ExecutionRun.Lifecycle.RUNNING,
                     ExecutionRun.Lifecycle.STARTING,
                 }:
                     raise ValueError("EXECUTION_NOT_CANCELLABLE")
-                provider(run.provider_name).cancel(run.provider_execution_id)
+                adapter = provider(run.provider_name)
+                if adapter.status(run.provider_execution_id) != "FINISHED":
+                    adapter.cancel(run.provider_execution_id)
                 run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
                 run.current_phase = "CANCELLED"
                 run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
@@ -1526,17 +1849,14 @@ def invoke_public_tool(
                 result = {
                     "execution_token": str(run.token),
                     "events": [
-                        {
-                            "sequence": event.sequence,
-                            "type": event.event_type,
-                            "details": event.details,
-                            "created_at": event.created_at.isoformat(),
-                        }
+                        event_view(event)
                         for event in ExecutionProgressEvent.objects.filter(run=run)[
                             :100
                         ]
                     ],
                 }
+            elif name == "execution.get_activity_summary":
+                result = activity_summary(run)
             elif name == "execution.evidence_summary":
                 result = {
                     "execution_token": str(run.token),
@@ -1554,6 +1874,7 @@ def invoke_public_tool(
                     "provider_execution_id": run.provider_execution_id,
                     "attempt_count": run.attempt_count,
                     "current_blocker": run.current_blocker,
+                    "heartbeat": heartbeat_projection(run),
                 }
         elif name.startswith("scope.") or name in {
             "sprint.propose",
@@ -1661,7 +1982,11 @@ def invoke_public_tool(
                 _approval_for_contract(arguments, contract, f"contract.{action}")
             if action == "complete":
                 run = ExecutionRun.objects.get(
-                    contract=contract, lifecycle=ExecutionRun.Lifecycle.RUNNING
+                    contract=contract,
+                    lifecycle__in=[
+                        ExecutionRun.Lifecycle.RUNNING,
+                        ExecutionRun.Lifecycle.VALIDATING,
+                    ],
                 )
                 complete_run(
                     run, payload["final_commit_sha"], payload["completion_data"]

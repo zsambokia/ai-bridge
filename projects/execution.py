@@ -2,26 +2,37 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
+from datetime import datetime
 from pathlib import Path
+from time import sleep
 from typing import Protocol
 
 from django.conf import settings
-from django.db import transaction
+from django.db import OperationalError, transaction
 from django.utils import timezone
 
+from .execution_activity import console_line, heartbeat_projection
 from .models import (
     ContractConsumption,
     ExecutionContract,
     ExecutionProgressEvent,
     ExecutionRun,
     ExecutionStartRequest,
+    Project,
 )
-from .models import (
-    ExecutionProvider as ExecutionProviderRecord,
+from .models import ExecutionProvider as ExecutionProviderRecord
+from .providers import (
+    CodexCliAdapter,
+    ProviderStart,
+    adapter_for,
+    check_health,
+    mark_runtime_unavailable,
+    select_provider,
 )
-from .providers import CodexCliAdapter, ProviderStart, adapter_for, select_provider
+from .services import project_repository_root
 
 ACTIVE_STATES = {
     ExecutionRun.Lifecycle.REQUESTED,
@@ -33,6 +44,7 @@ ACTIVE_STATES = {
     ExecutionRun.Lifecycle.CLOSING,
 }
 SECRET_MARKERS = ("token", "secret", "password", "authorization", "bearer")
+MAX_PROVIDER_START_ATTEMPTS = 2
 
 
 class ExecutionProvider(Protocol):
@@ -61,6 +73,10 @@ def _safe_details(details: dict[str, object]) -> dict[str, object]:
         if any(marker in key.lower() for marker in SECRET_MARKERS):
             continue
         rendered = str(value)
+        # Provider output is observational only and must never preserve a
+        # credential-shaped value even when it appears in free text.
+        if any(marker in rendered.lower() for marker in SECRET_MARKERS):
+            rendered = "[redacted]"
         safe[key] = rendered[:500] if isinstance(value, str) else value
     return safe
 
@@ -68,19 +84,29 @@ def _safe_details(details: dict[str, object]) -> dict[str, object]:
 def add_event(
     run: ExecutionRun, event_type: str, **details: object
 ) -> ExecutionProgressEvent:
-    with transaction.atomic():
-        last = (
-            ExecutionProgressEvent.objects.select_for_update()
-            .filter(run=run)
-            .order_by("-sequence")
-            .first()
-        )
-        return ExecutionProgressEvent.objects.create(
-            run=run,
-            sequence=1 if last is None else last.sequence + 1,
-            event_type=event_type,
-            details=_safe_details(details),
-        )
+    for attempt in range(3):
+        try:
+            with transaction.atomic():
+                last = (
+                    ExecutionProgressEvent.objects.select_for_update()
+                    .filter(run=run)
+                    .order_by("-sequence")
+                    .first()
+                )
+                event = ExecutionProgressEvent.objects.create(
+                    run=run,
+                    sequence=1 if last is None else last.sequence + 1,
+                    event_type=event_type,
+                    details=_safe_details(details),
+                )
+            break
+        except OperationalError:
+            if attempt == 2:
+                raise
+            sleep(0.05 * (attempt + 1))
+    if settings.AI_BRIDGE_DEV_EXECUTION_ACTIVITY:
+        print(console_line(event), flush=True)
+    return event
 
 
 def _prompt(contract: ExecutionContract) -> str:
@@ -98,10 +124,259 @@ def _prompt(contract: ExecutionContract) -> str:
     )
 
 
+def _factory_prompt(run: ExecutionRun) -> str:
+    """Bounded direct authority for AI Bridge repairing itself."""
+    return (
+        "Factory Development Mode is active for AI Bridge self-development. "
+        "The Product Owner approval recorded below is sufficient authority; do "
+        "not request a Sprint, Execution Contract, or further business decision. "
+        "Work only on the approved request, preserve unrelated work, run release "
+        "gates, write truthful evidence under the stated root, and prepare a draft "
+        "Pull Request. never expose credentials. Do not merge or deploy.\n\n"
+        "FACTORY_AUTHORITY_JSON:\n"
+        + json.dumps(
+            run.authority_summary, ensure_ascii=False, indent=2, sort_keys=True
+        )
+    )
+
+
+def _start_provider(
+    run: ExecutionRun, selected_provider: ExecutionProvider, prompt: str
+) -> ExecutionRun:
+    """Start a persisted run and retain a safe activity trail for either profile."""
+    provider_record = ExecutionProviderRecord.objects.get(provider_id=run.provider_name)
+    run.attempt_count += 1
+    run.save(update_fields=["attempt_count", "updated_at"])
+    try:
+        readiness = check_health(provider_record)
+        if readiness["status"] != "HEALTHY":
+            raise ValueError("CODEX_RUNTIME_NOT_READY")
+        start_with_activity = getattr(selected_provider, "start_with_activity", None)
+        if callable(start_with_activity):
+            started = start_with_activity(
+                repository=Path(run.workspace_identifier),
+                prompt=prompt,
+                activity_callback=lambda details: add_event(
+                    run, "PROVIDER_OUTPUT", **details
+                ),
+            )
+        else:
+            started = selected_provider.start(
+                repository=Path(run.workspace_identifier), prompt=prompt
+            )
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        failure_text = str(exc)
+        mark_runtime_unavailable(provider_record, failure_text)
+        run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+        run.current_phase = "PROVIDER_UNAVAILABLE"
+        run.current_blocker = {
+            "category": "unavailable external input",
+            "evidence": failure_text[:300],
+        }
+        run.ended_at = timezone.now()
+        run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+        add_event(
+            run,
+            "PROVIDER_FAILURE",
+            classification="unavailable external input",
+            reason=failure_text[:100],
+        )
+        raise ValueError("EXECUTOR_START_FAILED") from exc
+    run.provider_execution_id = started.execution_id
+    run.workspace_identifier = started.workspace_identifier
+    run.lifecycle = ExecutionRun.Lifecycle.RUNNING
+    run.current_phase = "EXECUTING"
+    run.save(
+        update_fields=[
+            "provider_execution_id",
+            "workspace_identifier",
+            "lifecycle",
+            "current_phase",
+            "updated_at",
+        ]
+    )
+    add_event(
+        run,
+        "EXECUTOR_STARTED",
+        provider=run.provider_name,
+        execution_id=started.execution_id,
+    )
+    add_event(run, "EXECUTION_ACTIVITY_STARTED", message="provider process is running")
+    return run
+
+
+def start_factory_development(
+    project: Project,
+    approval_reference: str,
+    request: str,
+    platform_root: Path,
+    audit_event_id: int | None = None,
+) -> ExecutionRun:
+    """Start the narrowly-scoped, contract-free self-development profile."""
+    if (
+        getattr(project, "project_id", None) != "ai-bridge"
+        or getattr(project, "repository_full_name", None) != "zsambokia/ai-bridge"
+    ):
+        raise ValueError("FACTORY_DEVELOPMENT_AI_BRIDGE_ONLY")
+    existing = (
+        ExecutionRun.objects.filter(
+            execution_profile=ExecutionRun.Profile.FACTORY_DEVELOPMENT,
+            authority_reference=approval_reference,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if existing is not None:
+        return existing
+    workspace = project_repository_root(project, platform_root)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if head.returncode:
+        raise ValueError("FACTORY_BASELINE_UNAVAILABLE")
+    selected_provider = provider()
+    evidence_key = hashlib.sha256(approval_reference.encode()).hexdigest()[:16]
+    run = ExecutionRun.objects.create(
+        repository=project.repository_full_name,
+        branch="main",
+        baseline_commit=head.stdout.strip(),
+        contract_hash="",
+        workspace_identifier=str(workspace),
+        provider_name=getattr(settings, "BRIDGE_EXECUTOR_PROVIDER", "codex-cli"),
+        execution_profile=ExecutionRun.Profile.FACTORY_DEVELOPMENT,
+        authority_reference=approval_reference,
+        authority_summary={
+            "mode": "FACTORY_DEVELOPMENT",
+            "project_id": project.project_id,
+            "approval_reference": approval_reference,
+            "request": request,
+        },
+        audit_event_id=audit_event_id,
+        lifecycle=ExecutionRun.Lifecycle.STARTING,
+        current_phase="PREFLIGHT",
+        evidence_root=f"docs/evidence/factory-development/{evidence_key}",
+        started_at=timezone.now(),
+    )
+    add_event(
+        run, "FACTORY_DEVELOPMENT_APPROVED", approval_reference=approval_reference
+    )
+    add_event(
+        run, "PREFLIGHT_COMPLETED", branch=run.branch, baseline=run.baseline_commit
+    )
+    return _start_provider(run, selected_provider, _factory_prompt(run))
+
+
+def reconcile_provider_completion(run: ExecutionRun) -> ExecutionRun:
+    """Durably advance a finished provider out of RUNNING, idempotently."""
+    if run.lifecycle != ExecutionRun.Lifecycle.RUNNING or not run.provider_execution_id:
+        return run
+    status = provider(run.provider_name).status(run.provider_execution_id)
+    if status != "FINISHED":
+        return run
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        if locked.lifecycle != ExecutionRun.Lifecycle.RUNNING:
+            return locked
+        locked.lifecycle = ExecutionRun.Lifecycle.VALIDATING
+        locked.current_phase = "VALIDATING"
+        locked.current_blocker = {}
+        locked.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "updated_at",
+            ]
+        )
+        add_event(locked, "PROVIDER_FINISHED", provider=locked.provider_name)
+        add_event(
+            locked,
+            "VALIDATION_CONTINUATION_READY",
+            message="provider finished; validation and closure can continue",
+        )
+    return locked
+
+
+def _block_stale_run(
+    run: ExecutionRun, *, observed_at: datetime | None = None
+) -> ExecutionRun:
+    """Close an overdue active run with durable, actionable evidence."""
+    observed_at = observed_at or timezone.now()
+    if run.lifecycle not in ACTIVE_STATES or (
+        heartbeat_projection(run, observed_at=observed_at)["heartbeat_status"]
+        != "POSSIBLY_STALLED"
+    ):
+        return run
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        if locked.lifecycle not in ACTIVE_STATES or (
+            heartbeat_projection(locked, observed_at=observed_at)["heartbeat_status"]
+            != "POSSIBLY_STALLED"
+        ):
+            return locked
+        locked.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+        locked.current_phase = "BLOCKED"
+        locked.current_blocker = {
+            "category": "unavailable external input",
+            "code": "EXECUTION_WATCHDOG_STALE",
+            "evidence": "No persisted execution activity before the watchdog deadline.",
+        }
+        locked.terminal_state = "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+        locked.ended_at = observed_at
+        locked.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "terminal_state",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+        add_event(
+            locked,
+            "WATCHDOG_STALE_BLOCKED",
+            classification="unavailable external input",
+            reason="No persisted execution activity before the watchdog deadline.",
+        )
+    return locked
+
+
+def recover_execution_run(
+    run: ExecutionRun, *, observed_at: datetime | None = None
+) -> ExecutionRun:
+    """Use one idempotent path for provider completion and stale-run recovery."""
+    reconciled = reconcile_provider_completion(run)
+    return _block_stale_run(reconciled, observed_at=observed_at)
+
+
+def watchdog_recover_runs(*, observed_at: datetime | None = None) -> int:
+    """Recover every active run without duplicate transitions or events."""
+    recovered = 0
+    for run in ExecutionRun.objects.filter(lifecycle__in=ACTIVE_STATES).iterator():
+        before = run.lifecycle
+        recovered_run = recover_execution_run(run, observed_at=observed_at)
+        if recovered_run.lifecycle != before:
+            recovered += 1
+    return recovered
+
+
 def start_run(
     contract: ExecutionContract,
     request: ExecutionStartRequest,
-    root: Path,
+    platform_root: Path,
     audit_event_id: int | None = None,
 ) -> ExecutionRun:
     """Persist authorization and ownership before an external start is active."""
@@ -112,7 +387,10 @@ def start_run(
         raise ValueError("CONSUMPTION_RECEIPT_REQUIRED")
     from .contracts import validate_issued_execution_contract
 
-    validate_issued_execution_contract(contract, root)
+    # Scope authority is published by AI Bridge, while the provider must run in
+    # the Project registry's resolved workspace.  Keep those roots distinct.
+    validate_issued_execution_contract(contract, platform_root)
+    workspace_root = project_repository_root(contract.project, platform_root)
     execution = contract.payload["execution"]
     recoverable_run = (
         ExecutionRun.objects.filter(
@@ -123,6 +401,17 @@ def start_run(
         .order_by("id")
         .first()
     )
+    if recoverable_run is None:
+        recoverable_run = (
+            ExecutionRun.objects.filter(
+                contract=contract,
+                lifecycle=ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+                provider_execution_id="",
+                attempt_count__lt=MAX_PROVIDER_START_ATTEMPTS,
+            )
+            .order_by("id")
+            .first()
+        )
     active_runs = ExecutionRun.objects.filter(
         contract__project=contract.project,
         branch=execution["target_branch"],
@@ -147,7 +436,7 @@ def start_run(
             branch=execution["target_branch"],
             baseline_commit=execution["baseline_commit"],
             contract_hash=contract.contract_hash,
-            workspace_identifier=str(root),
+            workspace_identifier=str(workspace_root),
             provider_name=selected_provider.name,
             audit_event_id=audit_event_id,
             lifecycle=ExecutionRun.Lifecycle.STARTING,
@@ -160,22 +449,83 @@ def start_run(
         )
     else:
         run = recoverable_run
-        add_event(run, "START_RECOVERED", reason="unbound starting run")
-    try:
-        started = selected_provider.start(repository=root, prompt=_prompt(contract))
-    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        run.lifecycle = ExecutionRun.Lifecycle.STARTING
+        run.current_phase = "STARTING"
+        run.current_blocker = {}
+        run.ended_at = None
+        run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+        add_event(run, "START_RECOVERED", reason="resuming persisted blocked run")
+
+    started: ProviderStart | None = None
+    failure: Exception | None = None
+    for attempt in range(1, MAX_PROVIDER_START_ATTEMPTS + 1):
+        run.attempt_count += 1
+        run.save(update_fields=["attempt_count", "updated_at"])
+        try:
+            readiness = check_health(provider_record)
+            if readiness["status"] != "HEALTHY":
+                raise ValueError("CODEX_RUNTIME_NOT_READY")
+            start_with_activity = getattr(
+                selected_provider, "start_with_activity", None
+            )
+            if callable(start_with_activity):
+                started = start_with_activity(
+                    repository=workspace_root,
+                    prompt=_prompt(contract),
+                    activity_callback=lambda details: add_event(
+                        run, "PROVIDER_OUTPUT", **details
+                    ),
+                )
+            else:
+                started = selected_provider.start(
+                    repository=workspace_root, prompt=_prompt(contract)
+                )
+            break
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            failure = exc
+            retryable = str(exc) in {
+                "CODEX_SUBPROCESS_EXITED_EARLY",
+                "CODEX_RUNTIME_EXECUTABLE_UNAVAILABLE",
+            }
+            if retryable and attempt < MAX_PROVIDER_START_ATTEMPTS:
+                add_event(
+                    run,
+                    "PROVIDER_START_RETRYING",
+                    attempt=attempt,
+                    reason=str(exc)[:100],
+                )
+                continue
+            break
+    if started is None:
+        assert failure is not None
+        failure_text = str(failure)
+        mark_runtime_unavailable(provider_record, failure_text)
         run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
         run.current_blocker = {
             "category": "unavailable external input",
             "question": "Restore Codex provider access.",
-            "evidence": str(exc)[:300],
+            "evidence": failure_text[:300],
         }
         run.ended_at = timezone.now()
         run.save(
             update_fields=["lifecycle", "current_blocker", "ended_at", "updated_at"]
         )
-        add_event(run, "PROVIDER_FAILURE", classification="unavailable external input")
-        raise ValueError("EXECUTOR_START_FAILED") from exc
+        add_event(
+            run,
+            "PROVIDER_FAILURE",
+            classification="unavailable external input",
+            reason=failure_text[:100],
+            readiness_invalidated=True,
+        )
+        raise ValueError("EXECUTOR_START_FAILED") from failure
     run.provider_execution_id = started.execution_id
     run.workspace_identifier = started.workspace_identifier
     run.lifecycle = ExecutionRun.Lifecycle.RUNNING
@@ -195,6 +545,7 @@ def start_run(
         provider=run.provider_name,
         execution_id=started.execution_id,
     )
+    add_event(run, "EXECUTION_ACTIVITY_STARTED", message="provider process is running")
     contract.lifecycle = ExecutionContract.Lifecycle.RUNNING
     contract.save(update_fields=["lifecycle"])
     return run
@@ -204,7 +555,10 @@ def complete_run(
     run: ExecutionRun, final_commit_sha: str, completion_data: dict[str, object]
 ) -> ExecutionRun:
     """Record completion only after the provider-owned run has actually run."""
-    if run.lifecycle != ExecutionRun.Lifecycle.RUNNING:
+    if run.lifecycle not in {
+        ExecutionRun.Lifecycle.RUNNING,
+        ExecutionRun.Lifecycle.VALIDATING,
+    }:
         raise ValueError("RUN_NOT_RUNNING")
     required = {
         "execution_result",
@@ -226,7 +580,8 @@ def complete_run(
         or not isinstance(completion_data["failure_classification"], (str, type(None)))
     ):
         raise ValueError("RUN_COMPLETION_EVIDENCE_INVALID")
-    audit = run.contract.payload.get("execution", {}).get("audit")
+    contract_payload = run.contract.payload if run.contract is not None else {}
+    audit = contract_payload.get("execution", {}).get("audit")
     if audit and audit.get("mutation_policy") == "READ_ONLY":
         allowed_prefix = run.evidence_root.rstrip("/") + "/"
         changed_files = completion_data["changed_files"]
@@ -297,3 +652,24 @@ def repair_failure(run: ExecutionRun, signature: str) -> str:
     add_event(run, "ROOT_CAUSE_IDENTIFIED", classification=classification)
     add_event(run, "REPAIR_APPLIED", classification=classification)
     return classification
+
+
+def record_gate_rerun(run: ExecutionRun, gate: str, passed: bool) -> ExecutionRun:
+    """Persist a repair verification rerun on the canonical execution stream."""
+    if run.lifecycle != ExecutionRun.Lifecycle.REPAIRING:
+        raise ValueError("GATE_RERUN_REQUIRES_REPAIRING_RUN")
+    run.gate_rerun_count += 1
+    run.current_phase = "VALIDATING"
+    run.save(update_fields=["gate_rerun_count", "current_phase", "updated_at"])
+    add_event(run, "GATE_RERUN_STARTED", gate=gate)
+    if not passed:
+        run.current_phase = "REPAIRING"
+        run.save(update_fields=["current_phase", "updated_at"])
+        add_event(run, "GATE_RERUN_FAILED", gate=gate)
+        return run
+    add_event(run, "GATE_RERUN_PASSED", gate=gate)
+    add_event(run, "REPAIR_VERIFIED", gate=gate)
+    run.lifecycle = ExecutionRun.Lifecycle.RUNNING
+    run.current_phase = "EXECUTING"
+    run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+    return run

@@ -158,3 +158,78 @@ configuration and credential-binding references remain private; the public MCP
 surface exposes only `provider.list`, `provider.get`, `provider.capabilities`,
 and `provider.health` safe projections. Credentials are supplied by a configured
 environment/backend reference and are never persisted in the Django database.
+
+## Sprint 015 real-time execution activity
+
+Sprint 015 adds a read-only activity projection over the existing
+`ExecutionRun` and append-only `ExecutionProgressEvent` stream. It introduces
+no lifecycle, actor model, or manually maintained progress state. The derived
+checklist maps persisted lifecycle and event facts to pending, in-progress,
+completed, repairing, and blocked states; its entries change only when those
+canonical facts change.
+
+In DEV mode, the Codex CLI adapter consumes its real JSON output while the
+process is running and writes only a safe occurrence/type projection to the
+same event stream. Raw provider text and credentials are not retained. Django
+admin exposes the run and events read-only, while
+`execution.get_activity_summary` packages the otherwise separate run status
+and ordered events into the same derived projection for MCP/ChatGPT clients.
+It is retained because `execution.get_run_status` and `execution.list_events`
+cannot provide one bounded, continuously recomputed checklist without making
+every client reproduce Bridge lifecycle semantics.
+
+Technical repair stays inside the same stream: `ROOT_CAUSE_IDENTIFIED`,
+`REPAIR_APPLIED`, `GATE_RERUN_STARTED`, and either `GATE_RERUN_PASSED` plus
+`REPAIR_VERIFIED` or `GATE_RERUN_FAILED` are persisted in order. A repair item
+is completed only after verification; while it is unresolved the derived state
+is `FAILED_REPAIRING`. In DEV mode the console renders this exact persisted
+projection as a short emoji-decorated line, never raw provider output.
+
+### Sprint 015 V3 continuity and handoff repair
+
+The activity projection additionally derives heartbeat and possible-stall state
+from the newest persisted event timestamp (or the run start). It adds no
+mutable heartbeat record. `governance.prepare_codex_handoff` is read-only and
+returns a copyable package only from an approved scope, immutable contract, and
+durable run; otherwise it reports exactly which authority is absent. The
+package contains actual proposal, approval, contract, execution, baseline,
+gate, evidence, and status fields, so a provider cannot create authority.
+
+Windows cancellation uses the native process-tree command, completed providers
+are not killed, and execution-event writes retry transient SQLite contention.
+
+## Factory Development Mode and provider-terminal reconciliation
+
+Factory Development Mode is the single, deliberately narrow exception to the
+normal contract-first execution path. It is available only when the canonical
+Project is `ai-bridge` and its repository is `zsambokia/ai-bridge`; customer
+Projects continue to require the ordinary approved scope and consumed
+Execution Contract. A Product Owner approval reference is persisted with the
+run, its durable audit event, repository, branch, baseline, and deterministic
+evidence root. This retains the canonical `ExecutionRun` and append-only
+`ExecutionProgressEvent` model instead of creating a parallel lifecycle.
+
+`factory.begin_self_development` is idempotent for an approval reference. It
+starts the already approved local `codex-cli` provider without issuing another
+Sprint or contract, while retaining the provider allow-list and safe prompt
+handling. It rejects every other Project or repository.
+
+A provider terminal state is reconciled durably: a finished provider moves a
+`RUNNING` run to `VALIDATING` and writes `PROVIDER_FINISHED` followed by
+`VALIDATION_CONTINUATION_READY`. The transition is row-locked and idempotent,
+so a repeated read, retry, or watchdog invocation cannot start a second
+continuation. Read-side execution status reconciles before reporting it, and
+`reconcile_provider_runs` provides the same bounded recovery path for
+operations. It also closes an active run whose persisted activity has exceeded
+the configured stalled-heartbeat deadline as `BLOCKED` with durable watchdog
+evidence. Read-side status uses that same recovery function, so an execution
+cannot remain silently active after a detectable stall. Validation, release
+gates, evidence, documentation, final commit, and draft Pull Request review
+remain required before closure.
+
+The Product Owner projection is a second read model over those same durable
+facts, not a second activity store. Each stream item includes its title,
+message, icon, confidence, timestamp, and source event sequence. The summary
+also derives provider state, current blocker, next expected action, and one
+terminal category (`PASS`, `FAIL`, `BLOCKED`, or `CANCELLED`). This is the
+payload used by both MCP/ChatGPT and the read-only Django administration view.

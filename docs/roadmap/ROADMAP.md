@@ -78,6 +78,14 @@ credential references, provider audit events, and exact contract-bound Codex
 execution selection. Remote providers require separately configured external
 credentials and are not treated as available merely because a record exists.
 
+### Sprint 015 â€” Real-time DEV execution activity and checklist
+
+Implemented under its approved governed Sprint: a secret-safe live activity
+projection over the existing execution event stream, a derived checklist, a
+read-only operational admin view, and a compact MCP activity summary for
+ChatGPT. This strengthens the proving loop without adding a parallel lifecycle
+or simulated organizational actors.
+
 ## Milestone 1 — Project Bootstrap and Onboarding
 
 **Implemented foundation awaiting Product Owner review:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
@@ -307,15 +315,20 @@ These may remain part of the long-term product vision, but they must not distrac
    `scope.approve`;
 5. review the completed Sprint 009 autonomous execution and repair-loop evidence;
 
-6. Sprint 013: retain `SPRINT` and `WORK_ITEM` as the executable hierarchy,
-   introduce `AUDIT` as a governed work type, and make the existing `codex-cli`
-   provider binding explicit from contract generation through consumption and
-   dispatch. Dynamic provider management remains out of scope unless a later
-   assessment proves a genuine gap.
-6. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop;
-7. keep `.bridge/project.yaml` as the static Project definition;
-8. use the smallest sufficient tiered Execution Contract for every implementation, repair, migration, and recovery task.
-9. use Bridge-managed canonical Sprint or Work Item scope records for all new executable work; legacy Markdown is read-only history.
+6. retain `SPRINT` and `WORK_ITEM` as the executable hierarchy, `AUDIT` as a
+   governed work type, and the exact `codex-cli` provider binding from contract
+   generation through consumption and dispatch; dynamic provider management is
+   deferred unless assessment proves a genuine gap;
+7. use Sprint 015's canonical live activity stream and derived checklist when
+   observing DEV execution, including repair diagnosis and gate-rerun outcome;
+8. select a bounded proving application Sprint for the first complete
+   frontend-and-backend execution loop;
+9. keep `.bridge/project.yaml` as the static Project definition and use the
+   smallest sufficient tiered Execution Contract for every customer-project
+   implementation, repair, migration, and recovery task; Factory Development
+   Mode is the documented, `ai-bridge`-only Product Owner exception;
+10. use Bridge-managed canonical Sprint or Work Item scope records for all new
+    executable work; legacy Markdown is read-only history.
 
 ## 7. Roadmap success criterion
 
@@ -333,3 +346,32 @@ The roadmap's first major success is reached when AI Bridge can demonstrate, wit
 - pass all Release Gates;
 - present exact final evidence for Product Owner Review;
 - do so without Project-specific execution logic, hidden manual context, or routine technical escalation to the Product Owner.
+
+## Sprint 015 V3 continuity
+
+Sprint 015 V3 extends the existing activity projection with timestamp-derived
+heartbeat and stall semantics, repairable Windows/provider/console failures,
+and a read-only Codex handoff bound to durable identifiers. These are
+continuity and governance improvements, not a second lifecycle or
+provider-created authority.
+
+## Factory Development Mode delivery
+
+Factory Development Mode removes repeat governance friction only while AI
+Bridge repairs or develops itself. It keeps the canonical execution, provider,
+event, evidence, validation, and closure components, but records a Product
+Owner approval reference in place of an AI Bridge-issued Sprint and Execution
+Contract. The provider-terminal watchdog and read-time reconciliation ensure a
+finished local Codex process advances to validation rather than remaining
+indefinitely `RUNNING`, `EXECUTING`, or `WAITING_FOR_PROVIDER`.
+
+The same watchdog now terminalizes a detectably stale active run as
+`BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE`, records
+`WATCHDOG_STALE_BLOCKED`, and is also invoked by read-time reconciliation.
+This makes the active lifecycle recoverable after a restart without hiding a
+provider or supervision failure.
+
+The next operational step is to schedule or invoke
+`reconcile_provider_runs` wherever provider supervision is unavailable. This
+does not loosen release gates or authorise Factory Development Mode for a
+customer Project.

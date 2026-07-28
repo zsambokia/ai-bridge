@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,31 @@ from django.test import Client, override_settings
 from projects.models import GovernanceApproval, Project, ProjectContext
 
 TOKEN = "test-mcp-token"
+
+
+def test_local_settings_bind_the_ignored_e2e_token_to_mcp_runtime() -> None:
+    """The local settings process reuses the existing .env loader safely."""
+    environment = os.environ.copy()
+    environment["MCP_API_TOKEN"] = ""
+    environment["MCP_TEST_API_TOKEN"] = "test-local-e2e-token"
+    environment["DJANGO_SETTINGS_MODULE"] = "bridge.settings.local"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from django.conf import settings; "
+                "import os; "
+                "print(settings.MCP_API_TOKEN == os.environ['MCP_TEST_API_TOKEN'])"
+            ),
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.stdout.strip() == "True"
 
 
 def _post(client: Client, body: dict[str, object], token: str = TOKEN) -> Any:

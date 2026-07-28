@@ -1,0 +1,40 @@
+{
+  "contract_id": "bridge:ai-bridge:contract:c0d0bbe4-3c37-4e41-bbd8-98b6c775a403",
+  "approved_scope_hash": "b0b67798dbe0cf8f28820e97b883c2a683e3dac5db0774cf11e238102ca185a0",
+  "branch": "main",
+  "baseline_commit": "630b5cf77c2f9b0ed5729310e3a5119059b1c3aa",
+  "validated_implementation_commit": "af3e43a5bcb747a16cc1d338fa95e3ff28c99624",
+  "results": [
+    {
+      "id": "local-mcp-e2e-token-binding",
+      "command": "pytest projects/tests/test_remote_mcp.py::test_local_settings_bind_the_ignored_e2e_token_to_mcp_runtime -q",
+      "status": "PASS",
+      "summary": "1 passed; the existing local settings path bound the test-only token to the MCP bearer runtime setting."
+    },
+    {
+      "id": "backend-tests",
+      "command": "pytest",
+      "status": "PASS",
+      "summary": "68 passed. The sandbox-required pytest base temporary directory was configured outside the repository."
+    },
+    {
+      "id": "lint",
+      "command": "ruff check .",
+      "status": "PASS",
+      "summary": "All checks passed."
+    },
+    {
+      "id": "type-check",
+      "command": "mypy .",
+      "status": "PASS",
+      "summary": "Success: no issues found in 87 source files."
+    },
+    {
+      "id": "scope-schema",
+      "command": "python manage.py validate_scopes",
+      "status": "PASS",
+      "summary": "All canonical scopes are valid."
+    }
+  ],
+  "terminal_state": "PASS — READY FOR PRODUCT OWNER REVIEW"
+}

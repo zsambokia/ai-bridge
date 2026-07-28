@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -15,6 +16,34 @@ from projects.providers import (
     public_provider,
     select_provider,
 )
+
+
+def test_codex_activity_projection_never_retains_provider_text() -> None:
+    received: list[dict[str, object]] = []
+
+    CodexCliAdapter._project_activity(
+        BytesIO(b'{"type":"item.completed","message":"token=secret"}\nplain output\n'),
+        received.append,
+    )
+
+    assert received == [
+        {"activity_type": "item.completed", "message": "Codex reported item.completed"},
+        {"activity_type": "output", "message": "Codex reported output"},
+    ]
+
+
+def configure_codex_runtime(
+    entry: ExecutionProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    related = ExecutionProvider.objects.get(provider_id="openai")
+    related.status = ExecutionProvider.Status.ACTIVE
+    related.credential_binding = "OPENAI_API_KEY"
+    related.save(update_fields=["status", "credential_binding"])
+    entry.related_provider = related
+    entry.configuration = {"runtime_executable_environment": "BRIDGE_CODEX_EXECUTABLE"}
+    entry.save(update_fields=["related_provider", "configuration"])
+    monkeypatch.setenv("BRIDGE_CODEX_EXECUTABLE", "codex")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-value")
 
 
 @pytest.mark.django_db
@@ -97,6 +126,7 @@ def test_codex_health_requires_authenticated_runtime_without_serializing_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entry = ExecutionProvider.objects.get(adapter_key="codex-cli")
+    configure_codex_runtime(entry, monkeypatch)
     monkeypatch.setattr("projects.providers.shutil.which", lambda value: value)
     monkeypatch.setattr(
         "projects.providers.subprocess.run",
@@ -120,9 +150,18 @@ def test_codex_health_accepts_authenticated_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entry = ExecutionProvider.objects.get(adapter_key="codex-cli")
+    configure_codex_runtime(entry, monkeypatch)
+    monkeypatch.setenv("MCP_API_TOKEN", "test-mcp-token")
+    monkeypatch.setenv("MCP_TEST_API_TOKEN", "test-local-e2e-token")
     monkeypatch.setattr("projects.providers.shutil.which", lambda value: value)
     monkeypatch.setattr(
-        CodexCliAdapter, "is_authenticated", staticmethod(lambda value: True)
+        CodexCliAdapter,
+        "is_authenticated",
+        staticmethod(lambda value, environment: True),
+    )
+    monkeypatch.setattr(
+        "projects.providers.subprocess.run",
+        lambda *args, **kwargs: CompletedProcess(args, 0),
     )
 
     assert check_health(entry)["status"] == "HEALTHY"
@@ -131,13 +170,59 @@ def test_codex_health_accepts_authenticated_runtime(
 def test_codex_start_refuses_an_unauthenticated_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("BRIDGE_CODEX_EXECUTABLE", "codex")
     monkeypatch.setattr("projects.providers.shutil.which", lambda value: value)
     monkeypatch.setattr(
-        CodexCliAdapter, "is_authenticated", staticmethod(lambda value: False)
+        CodexCliAdapter,
+        "is_authenticated",
+        staticmethod(lambda value, environment: False),
     )
 
-    with pytest.raises(ValueError, match="CODEX_RUNTIME_UNAVAILABLE"):
+    with pytest.raises(ValueError, match="codex authentication unavailable"):
         CodexCliAdapter().start(repository=Path("C:/tmp"), prompt="safe prompt")
+
+
+def test_codex_cancel_uses_taskkill_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[list[str]] = []
+
+    def taskkill(args: list[str], **kwargs: object) -> CompletedProcess[str]:
+        captured.append(args)
+        return CompletedProcess(args, 0)
+
+    monkeypatch.setattr("projects.providers.os.name", "nt")
+    monkeypatch.setattr("projects.providers.subprocess.run", taskkill)
+
+    CodexCliAdapter().cancel("42")
+
+    assert captured == [["taskkill", "/PID", "42", "/T", "/F"]]
+
+
+@pytest.mark.django_db
+def test_codex_launch_context_excludes_api_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = ExecutionProvider.objects.get(adapter_key="codex-cli")
+    configure_codex_runtime(entry, monkeypatch)
+    monkeypatch.setattr("projects.providers.shutil.which", lambda value: value)
+    monkeypatch.setattr(
+        CodexCliAdapter,
+        "is_authenticated",
+        staticmethod(lambda value, environment: True),
+    )
+    captured: list[dict[str, object]] = []
+
+    def run(*args: object, **kwargs: object) -> CompletedProcess[str]:
+        captured.append(dict(kwargs))
+        return CompletedProcess([], 0)
+
+    monkeypatch.setattr("projects.providers.subprocess.run", run)
+    assert check_health(entry)["status"] == "HEALTHY"
+    assert captured
+    environment = captured[0].get("env")
+    assert isinstance(environment, dict)
+    assert "OPENAI_API_KEY" not in environment
+    assert "MCP_API_TOKEN" not in environment
+    assert "MCP_TEST_API_TOKEN" not in environment
 
 
 @pytest.mark.django_db

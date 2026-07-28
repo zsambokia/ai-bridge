@@ -24,7 +24,12 @@ from .models import (
     Project,
 )
 from .scopes import approved_scope, render_scope
-from .services import _current_branch, _head_sha, _repository_identity
+from .services import (
+    _current_branch,
+    _head_sha,
+    _repository_identity,
+    project_repository_root,
+)
 
 
 def _normalized_hash(payload: dict[str, Any]) -> str:
@@ -81,10 +86,20 @@ def _scope_for_contract(contract: ExecutionContract) -> ExecutableScope:
         )
     except (ExecutableScope.DoesNotExist, KeyError) as exc:
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_AUTHORITY_MISSING") from exc
-    authorized = approved_scope(scope)
+    authorized = {
+        **approved_scope(scope),
+        # The projection itself is published in the Bridge repository, while a
+        # provider executes in the registered project workspace.  Persist the
+        # exact projection inside the hash-bound contract so the provider can
+        # verify and execute the approved authority without assuming the two
+        # repositories share a filesystem.
+        "content": render_scope(scope),
+    }
     for key in ("identifier", "path", "content_hash", "approval_reference"):
         if declared.get(key) != authorized.get(key):
             raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_BINDING_MISMATCH")
+    if declared.get("content") != render_scope(scope):
+        raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_CONTENT_MISMATCH")
     return scope
 
 
@@ -95,18 +110,20 @@ def _assert_scope_publication(scope: ExecutableScope, repository_root: Path) -> 
 
 
 def generate_scope_execution_contract(
-    scope: ExecutableScope, repository_root: Path, *, issuer: str = "AI_BRIDGE"
+    scope: ExecutableScope, platform_root: Path, *, issuer: str = "AI_BRIDGE"
 ) -> ExecutionContract:
     """Generate a provider-neutral contract from Bridge-managed scope authority."""
     if issuer != "AI_BRIDGE":
         raise ValueError("CONTRACT_AUTHORITY_REQUIRED")
-    authorized = approved_scope(scope)
+    authorized = {
+        **approved_scope(scope),
+        "content": render_scope(scope),
+    }
     if not authorized["path"]:
         raise ValueError("SCOPE_NOT_PUBLISHED")
     handoff_identifier = f"bridge:{scope.project.project_id}:contract:{uuid4()}"
-    context = build_execution_context(
-        scope.project, authorized["path"], repository_root
-    )
+    context = build_execution_context(scope.project, authorized["path"], platform_root)
+    repository_root = project_repository_root(scope.project, platform_root)
     baseline = _head_sha(repository_root)
     record = scope.record
     selected_provider = provider().name
@@ -207,7 +224,7 @@ def issue_execution_contract(
 
 
 def validate_issued_execution_contract(
-    contract: ExecutionContract, repository_root: Path
+    contract: ExecutionContract, platform_root: Path
 ) -> None:
     """Validate immutable issued inputs immediately before execution starts."""
     if contract.payload.get("schema_version") != "2.0":
@@ -215,6 +232,7 @@ def validate_issued_execution_contract(
     if contract.contract_hash != _normalized_hash(contract.payload):
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:HASH_MISMATCH")
     execution = contract.payload["execution"]
+    repository_root = project_repository_root(contract.project, platform_root)
     if (
         _repository_identity(repository_root)
         != contract.payload["project"]["repository"]
@@ -223,7 +241,7 @@ def validate_issued_execution_contract(
     current_branch = _current_branch(repository_root)
     if current_branch != execution["target_branch"]:
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:BRANCH_MISMATCH")
-    _assert_scope_publication(_scope_for_contract(contract), repository_root)
+    _assert_scope_publication(_scope_for_contract(contract), platform_root)
     baseline = execution["baseline_commit"]
     if not _baseline_exists(repository_root, baseline):
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:BASELINE_NOT_FOUND")
@@ -361,12 +379,18 @@ def complete_execution_contract(
 
 
 def supersede_execution_contract(
-    contract: ExecutionContract, replacement: ExecutionContract
+    contract: ExecutionContract,
+    replacement: ExecutionContract,
+    *,
+    allow_running_binding_repair: bool = False,
 ) -> ExecutionContract:
-    if contract.lifecycle not in {
+    allowed_lifecycles = {
         ExecutionContract.Lifecycle.ISSUED,
         ExecutionContract.Lifecycle.VALIDATED,
-    }:
+    }
+    if allow_running_binding_repair:
+        allowed_lifecycles.add(ExecutionContract.Lifecycle.RUNNING)
+    if contract.lifecycle not in allowed_lifecycles:
         raise ValueError("CONTRACT_NOT_SUPERSEDABLE")
     if replacement.project_id != contract.project_id:
         raise ValueError("CONTRACT_PROJECT_MISMATCH")

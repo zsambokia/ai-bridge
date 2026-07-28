@@ -1,0 +1,33 @@
+{
+  "contract_id": "bridge:ai-bridge:contract:1fb3aa0b-794f-4e4f-a66a-a4269cb7e0f5",
+  "scope_identifier": "bridge:ai-bridge:sprint:35af7b24-0555-472d-b3ab-55549f1e3e17",
+  "scope_content_hash": "bdf8cb2144d857e15c4514d997d3cb9bbbee22097660bff088dd5ad0c14c03df",
+  "baseline_commit": "a901567a02114469003ddb0cdae753de802f8819",
+  "target_branch": "main",
+  "result": "PASS",
+  "release_gates": [
+    {"id": "backend-tests", "command": "pytest", "result": "PASS", "detail": "75 passed; one sandbox cache-write warning"},
+    {"id": "lint", "command": "ruff check .", "result": "PASS", "detail": "All checks passed"},
+    {"id": "type-check", "command": "mypy .", "result": "PASS", "detail": "Success: no issues found in 89 source files"},
+    {"id": "scope-schema", "command": "python manage.py validate_scopes", "result": "PASS", "detail": "All canonical scopes are valid"},
+    {"id": "migration-drift", "command": "python manage.py makemigrations --check --dry-run", "result": "PASS", "detail": "No changes detected"},
+    {"id": "sprint-tests", "command": "pytest -q", "result": "PASS", "detail": "75 passed; one sandbox cache-write warning"},
+    {"id": "format", "command": "ruff format --check .", "result": "PASS", "detail": "263 files already formatted"},
+    {"id": "diff", "command": "git diff --check", "result": "PASS", "detail": "No whitespace errors"}
+  ],
+  "proving_execution": {
+    "result": "PASS",
+    "controller_test": "projects.tests.test_execution.test_repair_gate_rerun_updates_the_derived_activity_checklist",
+    "provider_projection_test": "projects.tests.test_providers.test_codex_activity_projection_never_retains_provider_text",
+    "observed": [
+      "live structured provider activity is projected into the canonical event stream",
+      "technical failure is classified and starts diagnosis and repair",
+      "repair records a gate rerun and verifies it before the repair checklist becomes completed",
+      "the derived checklist changes from in progress to repairing to completed",
+      "provider text and credential-like content are not retained"
+    ],
+    "limitation": "The proof uses the repository-native deterministic provider boundary test; it makes no claim that an external Codex job was completed during verification."
+  },
+  "secret_safety": "PASS",
+  "final_commit_binding": "The commit that includes this evidence is the final local repository binding; its SHA is verified after commit with git rev-parse HEAD."
+}

@@ -66,6 +66,10 @@ and production must inject the actual value through their platform secret
 manager. The operational configuration steps are in
 `docs/operations/DJANGO_ADMIN.md`.
 
+For local conversational MCP E2E authentication, the existing settings loader
+reads `MCP_TEST_API_TOKEN` from the ignored local `.env` and binds it only to
+the MCP bearer runtime setting; the token is neither persisted nor logged.
+
 Sprint 004's operation registry remains the canonical internal service surface
 for Project resolution and contract lifecycle. Sprint 006 replaces its former
 public proprietary `operation`/`payload` adapter with an authenticated remote
@@ -200,3 +204,55 @@ provider is rejected rather than falling back. The current single-provider
 implementation is intentionally classified as
 `EXECUTION_PROVIDER_IS_HARD_CODED`, not represented as a multi-provider
 capability.
+
+## Sprint 015 real-time DEV execution activity
+
+Sprint 015 adds a safe, live operational view for governed development runs.
+`ExecutionRun` and its append-only progress events remain the only canonical
+state: the checklist, current phase, blocker, diagnosis, repair, and closure
+view are derived from them. During DEV execution Codex JSON output creates
+safe event-type projections as it arrives; raw output and secrets are not
+stored. The same event sequence serves admin diagnostics and the read-only MCP
+activity summary, so ChatGPT cannot receive a separate or invented progress
+story. The Django admin view is read-only and no ASF employee, meeting, or
+channel layer was introduced.
+The repair checklist is verified, not optimistic: a technical failure records
+diagnosis and applied repair, then a persisted gate rerun changes the repair
+item to completed only after that gate passes. DEV console lines and MCP use
+the identical secret-safe event projection.
+
+## Factory Development Mode and completed-provider recovery
+
+AI Bridge self-development has a constrained Factory Development Mode. An
+explicit Product Owner approval reference can start the `ai-bridge` canonical
+repository through the local approved Codex provider without repeatedly
+creating Sprint or Execution Contract artifacts. The exception is encoded as
+an execution profile on the existing `ExecutionRun`, with authority, audit,
+baseline, branch, and evidence facts persisted there; it does not apply to
+customer Projects.
+
+Provider completion is now a durable lifecycle fact. When the provider is
+finished, reconciliation advances the canonical run from `RUNNING` to
+`VALIDATING`, records terminal and continuation events, and is safe to retry.
+`execution.get_run_status` uses the same recovery path before returning Product
+Owner progress; operations can also run `python manage.py
+reconcile_provider_runs`. The watchdog closes a detectable stale active run as
+`BLOCKED` with a durable `WATCHDOG_STALE_BLOCKED` event, rather than leaving it
+silently running. A provider terminal signal is therefore not closure:
+evidence, validation, release gates, documentation, a commit, and draft Pull
+Request review still determine the final result.
+
+Product Owner progress is derived from the same canonical run and ordered
+progress events. It now exposes source-event mapping, icon, confidence,
+provider state, blocker, next expected action, and deterministic terminal
+category without storing a parallel progress or heartbeat record.
+
+### Sprint 015 V3 execution continuity
+
+Heartbeat and possible-stall signals are read-time projections of canonical
+event timestamps, never manually maintained state. Windows cancellation uses
+the native process-tree command and transient SQLite activity-write contention
+has bounded retry. The read-only `governance.prepare_codex_handoff` returns
+actual durable identifiers and a copyable Codex prompt only after it finds the
+approved scope, contract, and run; otherwise it returns an explicit incomplete
+state. Provider execution cannot mint governance authority.
