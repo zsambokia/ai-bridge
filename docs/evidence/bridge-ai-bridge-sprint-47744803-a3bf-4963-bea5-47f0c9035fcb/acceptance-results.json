@@ -6,7 +6,7 @@
     "ruff check .": "PASS",
     "mypy .": "PASS",
     "python manage.py validate_scopes": "PASS",
-    "pytest -q": "PASS (83 passed)"
+    "pytest -q": "PASS (87 passed)"
   },
   "stage_smoke_test": {
     "execution_token": "baa36d2a-e7c7-44a8-a65a-accee9e56f67",
