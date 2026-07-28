@@ -81,3 +81,12 @@ MCP_API_TOKEN = os.environ.get("MCP_API_TOKEN", "")
 AI_BRIDGE_DEV_EXECUTION_ACTIVITY = os.environ.get(
     "AI_BRIDGE_DEV_EXECUTION_ACTIVITY", "true"
 ).strip().lower() in {"1", "true", "yes", "on"}
+AI_BRIDGE_HEARTBEAT_ACTIVE_SECONDS = int(
+    os.environ.get("AI_BRIDGE_HEARTBEAT_ACTIVE_SECONDS", "60")
+)
+AI_BRIDGE_HEARTBEAT_WAITING_SECONDS = int(
+    os.environ.get("AI_BRIDGE_HEARTBEAT_WAITING_SECONDS", "300")
+)
+AI_BRIDGE_HEARTBEAT_STALLED_SECONDS = int(
+    os.environ.get("AI_BRIDGE_HEARTBEAT_STALLED_SECONDS", "900")
+)

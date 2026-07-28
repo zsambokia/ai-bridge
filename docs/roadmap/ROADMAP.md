@@ -345,3 +345,11 @@ The roadmap's first major success is reached when AI Bridge can demonstrate, wit
 - pass all Release Gates;
 - present exact final evidence for Product Owner Review;
 - do so without Project-specific execution logic, hidden manual context, or routine technical escalation to the Product Owner.
+
+## Sprint 015 V3 continuity
+
+Sprint 015 V3 extends the existing activity projection with timestamp-derived
+heartbeat and stall semantics, repairable Windows/provider/console failures,
+and a read-only Codex handoff bound to durable identifiers. These are
+continuity and governance improvements, not a second lifecycle or
+provider-created authority.

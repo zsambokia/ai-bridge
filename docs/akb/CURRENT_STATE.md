@@ -220,3 +220,13 @@ The repair checklist is verified, not optimistic: a technical failure records
 diagnosis and applied repair, then a persisted gate rerun changes the repair
 item to completed only after that gate passes. DEV console lines and MCP use
 the identical secret-safe event projection.
+
+### Sprint 015 V3 execution continuity
+
+Heartbeat and possible-stall signals are read-time projections of canonical
+event timestamps, never manually maintained state. Windows cancellation uses
+the native process-tree command and transient SQLite activity-write contention
+has bounded retry. The read-only `governance.prepare_codex_handoff` returns
+actual durable identifiers and a copyable Codex prompt only after it finds the
+approved scope, contract, and run; otherwise it returns an explicit incomplete
+state. Provider execution cannot mint governance authority.

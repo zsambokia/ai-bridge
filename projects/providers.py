@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -373,7 +374,21 @@ class CodexCliAdapter:
         return "RUNNING"
 
     def cancel(self, execution_id: str) -> None:
-        os.kill(int(execution_id), 15)
+        """Terminate the governed child process using the host platform API."""
+        process_id = int(execution_id)
+        if os.name == "nt":
+            completed = subprocess.run(
+                ["taskkill", "/PID", str(process_id), "/T", "/F"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                shell=False,
+            )  # noqa: S603
+            if completed.returncode:
+                raise OSError("CODEX_PROCESS_TERMINATION_FAILED")
+            return
+        os.kill(process_id, signal.SIGTERM)
 
 
 def adapter_for(entry: ExecutionProvider) -> ExecutionAdapter:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable, Iterator
@@ -23,7 +24,11 @@ from projects.execution import (
     repair_failure,
     start_run,
 )
-from projects.execution_activity import activity_summary, event_view
+from projects.execution_activity import (
+    activity_summary,
+    event_view,
+    heartbeat_projection,
+)
 from projects.models import (
     ExecutionContract,
     ExecutionRun,
@@ -284,6 +289,30 @@ def test_activity_summary_is_derived_from_canonical_run_and_events(
         "activity_type": "task_started",
         "message": "Codex reported task_started",
     }
+
+
+@pytest.mark.django_db
+def test_heartbeat_is_derived_without_mutating_a_run(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    original_updated_at = run.updated_at
+    latest = run.events.order_by("-sequence").first()
+    assert latest is not None
+
+    projection = heartbeat_projection(
+        run, observed_at=latest.created_at + timedelta(seconds=901)
+    )
+
+    run.refresh_from_db()
+    assert projection["heartbeat_status"] == "POSSIBLY_STALLED"
+    assert projection["latest_event_type"] == "EXECUTION_ACTIVITY_STARTED"
+    assert run.updated_at == original_updated_at
 
 
 @pytest.mark.django_db

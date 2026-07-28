@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+
+from django.conf import settings
+from django.utils import timezone
 
 from .models import ExecutionProgressEvent, ExecutionRun
 
@@ -49,6 +53,42 @@ _STAGES = (
 )
 
 
+def heartbeat_projection(
+    run: ExecutionRun, *, observed_at: datetime | None = None
+) -> dict[str, Any]:
+    """Derive a non-mutating heartbeat from persisted events and run timestamps."""
+    observed_at = observed_at or timezone.now()
+    latest = run.events.order_by("-sequence").first()
+    last_activity_at = (
+        latest.created_at if latest else (run.started_at or run.created_at)
+    )
+    age_seconds = max(0, int((observed_at - last_activity_at).total_seconds()))
+    terminal = run.lifecycle in {
+        ExecutionRun.Lifecycle.COMPLETED,
+        ExecutionRun.Lifecycle.CANCELLED,
+        ExecutionRun.Lifecycle.BLOCKED_BUSINESS_DECISION,
+        ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+    }
+    if terminal:
+        classification = "TERMINAL"
+    elif age_seconds <= settings.AI_BRIDGE_HEARTBEAT_ACTIVE_SECONDS:
+        classification = "ACTIVE"
+    elif age_seconds <= settings.AI_BRIDGE_HEARTBEAT_WAITING_SECONDS:
+        classification = "QUIET"
+    elif age_seconds <= settings.AI_BRIDGE_HEARTBEAT_STALLED_SECONDS:
+        classification = "WAITING_FOR_PROVIDER"
+    else:
+        classification = "POSSIBLY_STALLED"
+    return {
+        "last_activity_at": last_activity_at.isoformat(),
+        "activity_age_seconds": age_seconds,
+        "heartbeat_status": classification,
+        "heartbeat_observed_at": observed_at.isoformat(),
+        "latest_event_type": latest.event_type if latest else None,
+        "derived_only": True,
+    }
+
+
 def event_view(event: ExecutionProgressEvent) -> dict[str, Any]:
     """Render one persisted event without inventing activity or actors."""
     phase, actor, severity, title = _EVENTS.get(
@@ -73,17 +113,15 @@ def event_view(event: ExecutionProgressEvent) -> dict[str, Any]:
 def console_line(event: ExecutionProgressEvent) -> str:
     """Produce a brief, human-readable DEV activity line from persisted state."""
     view = event_view(event)
-    icon = {
-        "INFO": "\U0001f539",
-        "WARNING": "\U0001f6e0\ufe0f",
-        "ERROR": "\U0001f6a7",
-    }.get(view["severity"], "\U0001f4cc")
-    return f"{icon} [{view['sequence']}] {view['title']}: {view['message']}"
+    label = {"INFO": "INFO", "WARNING": "WARNING", "ERROR": "ERROR"}.get(
+        view["severity"], "EVENT"
+    )
+    return f"[{label}] [{view['sequence']}] {view['title']}: {view['message']}"
 
 
 def activity_summary(run: ExecutionRun) -> dict[str, Any]:
     """Compute a checklist solely from canonical run state and persisted events."""
-    events = list(run.events.all())
+    events = list(run.events.order_by("sequence"))
     types = {event.event_type for event in events}
     lifecycle = run.lifecycle
     blocked = lifecycle in {
@@ -125,5 +163,8 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
         "phase": run.current_phase,
         "current_blocker": run.current_blocker,
         "checklist": checklist,
+        "current_activity": event_view(events[-1]) if events else None,
+        "latest_events": [event_view(event) for event in events[-100:]],
         "events": [event_view(event) for event in events[:100]],
+        "heartbeat": heartbeat_projection(run),
     }

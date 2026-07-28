@@ -82,6 +82,30 @@ def test_preparation_is_idempotent_and_audited() -> None:
 
 
 @pytest.mark.django_db
+def test_codex_handoff_refuses_to_invent_missing_execution_authority() -> None:
+    project = Project.objects.create(
+        project_id="handoff-project",
+        display_name="Handoff Project",
+        repository_full_name="example/handoff-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Prepare a bound Codex handoff.", kind="SPRINT")
+
+    result = invoke_public_tool(
+        "governance.prepare_codex_handoff",
+        {"project_id": project.project_id, "scope_identifier": scope.identifier},
+    )
+
+    assert "governance.prepare_codex_handoff" in TOOLS
+    assert result == {
+        "status": "HANDOFF_INCOMPLETE",
+        "scope_identifier": scope.identifier,
+        "missing_fields": ["execution_contract"],
+    }
+
+
+@pytest.mark.django_db
 def test_unknown_properties_and_unknown_tools_are_rejected() -> None:
     with pytest.raises(ValueError, match="UNKNOWN_TOOL"):
         invoke_public_tool("system.shell", {})

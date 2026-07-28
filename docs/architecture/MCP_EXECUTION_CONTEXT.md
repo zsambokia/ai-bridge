@@ -184,3 +184,16 @@ Technical repair stays inside the same stream: `ROOT_CAUSE_IDENTIFIED`,
 is completed only after verification; while it is unresolved the derived state
 is `FAILED_REPAIRING`. In DEV mode the console renders this exact persisted
 projection as a short emoji-decorated line, never raw provider output.
+
+### Sprint 015 V3 continuity and handoff repair
+
+The activity projection additionally derives heartbeat and possible-stall state
+from the newest persisted event timestamp (or the run start). It adds no
+mutable heartbeat record. `governance.prepare_codex_handoff` is read-only and
+returns a copyable package only from an approved scope, immutable contract, and
+durable run; otherwise it reports exactly which authority is absent. The
+package contains actual proposal, approval, contract, execution, baseline,
+gate, evidence, and status fields, so a provider cannot create authority.
+
+Windows cancellation uses the native process-tree command, completed providers
+are not killed, and execution-event writes retry transient SQLite contention.

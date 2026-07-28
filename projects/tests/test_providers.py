@@ -182,6 +182,21 @@ def test_codex_start_refuses_an_unauthenticated_runtime(
         CodexCliAdapter().start(repository=Path("C:/tmp"), prompt="safe prompt")
 
 
+def test_codex_cancel_uses_taskkill_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[list[str]] = []
+
+    def taskkill(args: list[str], **kwargs: object) -> CompletedProcess[str]:
+        captured.append(args)
+        return CompletedProcess(args, 0)
+
+    monkeypatch.setattr("projects.providers.os.name", "nt")
+    monkeypatch.setattr("projects.providers.subprocess.run", taskkill)
+
+    CodexCliAdapter().cancel("42")
+
+    assert captured == [["taskkill", "/PID", "42", "/T", "/F"]]
+
+
 @pytest.mark.django_db
 def test_codex_launch_context_excludes_api_credentials(
     monkeypatch: pytest.MonkeyPatch,

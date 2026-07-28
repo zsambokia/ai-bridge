@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from time import sleep
 from typing import Protocol
 
 from django.conf import settings
-from django.db import transaction
+from django.db import OperationalError, transaction
 from django.utils import timezone
 
 from .execution_activity import console_line
@@ -80,19 +81,26 @@ def _safe_details(details: dict[str, object]) -> dict[str, object]:
 def add_event(
     run: ExecutionRun, event_type: str, **details: object
 ) -> ExecutionProgressEvent:
-    with transaction.atomic():
-        last = (
-            ExecutionProgressEvent.objects.select_for_update()
-            .filter(run=run)
-            .order_by("-sequence")
-            .first()
-        )
-        event = ExecutionProgressEvent.objects.create(
-            run=run,
-            sequence=1 if last is None else last.sequence + 1,
-            event_type=event_type,
-            details=_safe_details(details),
-        )
+    for attempt in range(3):
+        try:
+            with transaction.atomic():
+                last = (
+                    ExecutionProgressEvent.objects.select_for_update()
+                    .filter(run=run)
+                    .order_by("-sequence")
+                    .first()
+                )
+                event = ExecutionProgressEvent.objects.create(
+                    run=run,
+                    sequence=1 if last is None else last.sequence + 1,
+                    event_type=event_type,
+                    details=_safe_details(details),
+                )
+            break
+        except OperationalError:
+            if attempt == 2:
+                raise
+            sleep(0.05 * (attempt + 1))
     if settings.AI_BRIDGE_DEV_EXECUTION_ACTIVITY:
         print(console_line(event), flush=True)
     return event

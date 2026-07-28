@@ -23,7 +23,7 @@ from .contracts import (
     validate_execution_contract,
 )
 from .execution import add_event, complete_run, provider, start_run
-from .execution_activity import activity_summary, event_view
+from .execution_activity import activity_summary, event_view, heartbeat_projection
 from .mcp import invoke_operation
 from .models import (
     ConversationOrchestration,
@@ -49,7 +49,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-28.1"
+TOOL_SURFACE_VERSION = "2026-07-28.2"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -292,6 +292,19 @@ _TOOLS = [
         READ_ONLY,
         {"execution_token": {"type": "string"}},
         ["execution_token"],
+    ),
+    _tool(
+        "governance.prepare_codex_handoff",
+        (
+            "Return a copyable, fully bound Codex handoff only when durable "
+            "execution authority exists."
+        ),
+        READ_ONLY,
+        {
+            **_PROJECT,
+            "scope_identifier": {"type": "string", "minLength": 1},
+        },
+        ["project_id", "scope_identifier"],
     ),
     _tool(
         "execution.cancel",
@@ -1323,6 +1336,93 @@ def _complete_orchestration(
     return result
 
 
+def _prepared_codex_handoff(scope: ExecutableScope) -> dict[str, Any]:
+    """Render a handoff from durable authority only, never client-supplied hints."""
+    contract = next(
+        (
+            candidate
+            for candidate in ExecutionContract.objects.filter(project=scope.project)
+            if candidate.payload.get("approved_scope", {}).get("identifier")
+            == scope.identifier
+        ),
+        None,
+    )
+    if contract is None:
+        return {
+            "status": "HANDOFF_INCOMPLETE",
+            "scope_identifier": scope.identifier,
+            "missing_fields": ["execution_contract"],
+        }
+    run = ExecutionRun.objects.filter(contract=contract).order_by("-created_at").first()
+    if run is None:
+        return {
+            "status": "HANDOFF_INCOMPLETE",
+            "scope_identifier": scope.identifier,
+            "contract_identifier": contract.handoff_identifier,
+            "missing_fields": ["execution_run"],
+        }
+    payload = contract.payload
+    execution = payload.get("execution", {})
+    evidence = payload.get("evidence", {})
+    required = {
+        "project_id": payload.get("project", {}).get("id"),
+        "repository": payload.get("project", {}).get("repository"),
+        "sprint_document_path": payload.get("approved_scope", {}).get("path"),
+        "proposal_version": scope.record.get("proposal_version"),
+        "proposal_hash": scope.record.get("proposal_hash"),
+        "product_owner_approval_reference": payload.get("approval_reference"),
+        "contract_identifier": contract.handoff_identifier,
+        "contract_hash": contract.contract_hash,
+        "execution_token": str(run.token),
+        "baseline_commit_sha": execution.get("baseline_commit"),
+        "target_branch": execution.get("target_branch"),
+        "evidence_root": evidence.get("root"),
+    }
+    missing = sorted(key for key, value in required.items() if not value)
+    if missing:
+        return {
+            "status": "HANDOFF_INCOMPLETE",
+            "scope_identifier": scope.identifier,
+            "missing_fields": missing,
+        }
+    release_gates = payload.get("policy", {}).get("required_release_gates", [])
+    evidence_artifacts = payload.get("policy", {}).get(
+        "required_evidence_artifacts", []
+    )
+    handoff = {
+        "status": "HANDOFF_READY",
+        "scope_identifier": scope.identifier,
+        **required,
+        "release_gates": release_gates,
+        "required_evidence_artifacts": evidence_artifacts,
+        "execution_status": run.lifecycle,
+    }
+    handoff["codex_prompt"] = "\n".join(
+        (
+            "Execute only the following already-consumed AI Bridge contract.",
+            f"Scope identifier: {scope.identifier}",
+            "Proposal version/hash: "
+            f"{scope.record.get('proposal_version')} / "
+            f"{scope.record.get('proposal_hash')}",
+            f"Product Owner approval: {payload['approval_reference']}",
+            "Contract identifier/hash: "
+            f"{contract.handoff_identifier} / {contract.contract_hash}",
+            f"Execution token: {run.token}",
+            "Repository/branch/baseline: "
+            f"{required['repository']} / {execution['target_branch']} / "
+            f"{execution['baseline_commit']}",
+            f"Release gates: {', '.join(release_gates)}",
+            f"Evidence root: {evidence['root']}",
+            f"Required evidence: {', '.join(evidence_artifacts)}",
+            (
+                "Preserve unrelated worktree changes. Record final evidence "
+                "before requesting closure."
+            ),
+        )
+    )
+    return handoff
+
+
 def invoke_public_tool(
     name: str, arguments: Any, caller: str = "bearer-token"
 ) -> dict[str, Any]:
@@ -1491,6 +1591,12 @@ def invoke_public_tool(
                     ["confirmation_text"] if review["confirmation_eligible"] else []
                 ),
             }
+        elif name == "governance.prepare_codex_handoff":
+            assert project is not None
+            scope = ExecutableScope.objects.get(
+                identifier=arguments["scope_identifier"], project=project
+            )
+            result = _prepared_codex_handoff(scope)
         elif name == "scope.answer_clarifications":
             assert project is not None
             scope = ExecutableScope.objects.get(
@@ -1656,7 +1762,9 @@ def invoke_public_tool(
                     ExecutionRun.Lifecycle.STARTING,
                 }:
                     raise ValueError("EXECUTION_NOT_CANCELLABLE")
-                provider(run.provider_name).cancel(run.provider_execution_id)
+                adapter = provider(run.provider_name)
+                if adapter.status(run.provider_execution_id) != "FINISHED":
+                    adapter.cancel(run.provider_execution_id)
                 run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
                 run.current_phase = "CANCELLED"
                 run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
@@ -1691,6 +1799,7 @@ def invoke_public_tool(
                     "provider_execution_id": run.provider_execution_id,
                     "attempt_count": run.attempt_count,
                     "current_blocker": run.current_blocker,
+                    "heartbeat": heartbeat_projection(run),
                 }
         elif name.startswith("scope.") or name in {
             "sprint.propose",
