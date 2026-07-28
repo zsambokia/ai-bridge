@@ -65,6 +65,38 @@ _STAGES = (
     ("closure", "Closure"),
 )
 
+_ICONS = {"INFO": "info", "WARNING": "warning", "ERROR": "error"}
+
+
+def terminal_outcome(run: ExecutionRun) -> str | None:
+    """Return the one Product Owner terminal category for a durable run."""
+    if run.lifecycle == ExecutionRun.Lifecycle.COMPLETED:
+        return "PASS"
+    if run.lifecycle in {
+        ExecutionRun.Lifecycle.BLOCKED_BUSINESS_DECISION,
+        ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+    }:
+        return "BLOCKED"
+    if run.lifecycle == ExecutionRun.Lifecycle.FAILED_GOVERNANCE:
+        return "FAIL"
+    if run.lifecycle == ExecutionRun.Lifecycle.CANCELLED:
+        return "CANCELLED"
+    return None
+
+
+def _next_expected_step(run: ExecutionRun) -> str:
+    if terminal_outcome(run):
+        return "No further execution action is expected."
+    return {
+        "PREFLIGHT": "Complete preflight and start the approved provider.",
+        "STARTING": "Record provider startup or an actionable blocker.",
+        "EXECUTING": "Wait for provider completion, then reconcile validation.",
+        "VALIDATING": "Run validation, evidence, and closure checks.",
+        "REPAIRING": "Repair the diagnosed failure and rerun the failed gate.",
+        "DOCUMENTING": "Synchronize documentation and execution evidence.",
+        "CLOSING": "Record the deterministic terminal result.",
+    }.get(run.current_phase, "Reconcile the canonical execution lifecycle.")
+
 
 def heartbeat_projection(
     run: ExecutionRun, *, observed_at: datetime | None = None
@@ -116,10 +148,12 @@ def event_view(event: ExecutionProgressEvent) -> dict[str, Any]:
         "phase": phase,
         "actor": actor,
         "severity": severity,
+        "icon": _ICONS.get(severity, "info"),
         "title": title,
         "message": message,
         "details": details,
         "created_at": event.created_at.isoformat(),
+        "source_event": {"type": event.event_type, "sequence": event.sequence},
     }
 
 
@@ -142,6 +176,7 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
         ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
     }
     completed = lifecycle == ExecutionRun.Lifecycle.COMPLETED
+    outcome = terminal_outcome(run)
     done = {
         "contract": bool(run.contract_id)
         or run.execution_profile == ExecutionRun.Profile.FACTORY_DEVELOPMENT,
@@ -175,6 +210,7 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
         "execution_token": str(run.token),
         "status": lifecycle,
         "phase": run.current_phase,
+        "terminal_outcome": outcome,
         "current_blocker": run.current_blocker,
         "checklist": checklist,
         "current_activity": event_view(events[-1]) if events else None,
@@ -188,6 +224,13 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
                 f"{run.current_phase.replace('_', ' ').title()} — "
                 f"{lifecycle.replace('_', ' ').title()}"
             ),
+            "provider_status": (
+                "FINISHED" if "PROVIDER_FINISHED" in types else lifecycle
+            ),
+            "blocker": run.current_blocker or None,
+            "next_expected_step": _next_expected_step(run),
+            "confidence": ("HIGH" if events else "LOW"),
+            "activity_stream": [event_view(event) for event in events[-100:]],
             "derived_from": "canonical execution run and persisted progress events",
         },
     }

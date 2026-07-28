@@ -17,6 +17,10 @@ canonical `ExecutionRun` remained `RUNNING` unless a later caller explicitly
 submitted completion. A disconnected or completed local Codex execution could
 therefore remain presented as running.
 
+The audit reproduced this against durable local evidence: `ExecutionRun #20`
+had provider execution `2776`, last event `turn.completed`, and provider status
+`FINISHED`, while its persisted lifecycle was still `RUNNING / EXECUTING`.
+
 The repair retains the existing execution model. It adds the narrowly scoped
 `FACTORY_DEVELOPMENT` execution profile, durable Product Owner authority facts,
 idempotent factory start, provider-terminal reconciliation, ordered terminal
@@ -24,6 +28,11 @@ and validation-continuation events, a watchdog management command, and
 evidence-derived Product Owner progress. Factory start is restricted to the
 canonical `ai-bridge` repository; ordinary customer governance remains
 contract-first.
+
+The Product Owner read model was completed as a derived extension of the same
+canonical event stream: source-event mapping, icon, confidence, provider
+status, blocker, next expected action, and deterministic terminal category are
+now available without a parallel activity service or mutable heartbeat state.
 
 ## Verification
 
@@ -35,8 +44,8 @@ python -m ruff check .                            PASS
 python -m ruff format --check .                   PASS (91 files)
 python manage.py check                            PASS
 python manage.py makemigrations --check --dry-run PASS (No changes detected)
-python -m pytest -q                               PASS (81 passed)
-python -m mypy .                                  PASS (91 source files)
+python -m pytest -q                               PASS (82 passed)
+python -m mypy projects                            PASS (49 source files)
 ```
 
 Focused lifecycle and MCP regression coverage also passed before the complete

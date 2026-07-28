@@ -31,6 +31,7 @@ from projects.execution_activity import (
     activity_summary,
     event_view,
     heartbeat_projection,
+    terminal_outcome,
 )
 from projects.models import (
     ExecutionContract,
@@ -383,6 +384,36 @@ def test_activity_summary_is_derived_from_canonical_run_and_events(
         "activity_type": "task_started",
         "message": "Codex reported task_started",
     }
+    assert provider_event["icon"] == "info"
+    assert provider_event["source_event"]["type"] == "PROVIDER_OUTPUT"
+    progress = summary["product_owner_progress"]
+    assert progress["confidence"] == "HIGH"
+    assert progress["provider_status"] == "RUNNING"
+    assert progress["next_expected_step"].startswith("Wait for provider")
+
+
+@pytest.mark.django_db
+def test_terminal_outcome_is_deterministic_for_each_terminal_lifecycle(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+
+    assert terminal_outcome(run) is None
+    expected = {
+        ExecutionRun.Lifecycle.COMPLETED: "PASS",
+        ExecutionRun.Lifecycle.FAILED_GOVERNANCE: "FAIL",
+        ExecutionRun.Lifecycle.BLOCKED_BUSINESS_DECISION: "BLOCKED",
+        ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT: "BLOCKED",
+        ExecutionRun.Lifecycle.CANCELLED: "CANCELLED",
+    }
+    for lifecycle, outcome in expected.items():
+        run.lifecycle = lifecycle
+        assert terminal_outcome(run) == outcome
 
 
 @pytest.mark.django_db

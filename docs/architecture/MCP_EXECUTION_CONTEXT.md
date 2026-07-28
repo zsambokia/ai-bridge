@@ -222,3 +222,10 @@ continuation. Read-side execution status reconciles before reporting it, and
 `reconcile_provider_runs` provides the same bounded recovery path for
 operations. Validation, release gates, evidence, documentation, final commit,
 and draft Pull Request review remain required before closure.
+
+The Product Owner projection is a second read model over those same durable
+facts, not a second activity store. Each stream item includes its title,
+message, icon, confidence, timestamp, and source event sequence. The summary
+also derives provider state, current blocker, next expected action, and one
+terminal category (`PASS`, `FAIL`, `BLOCKED`, or `CANCELLED`). This is the
+payload used by both MCP/ChatGPT and the read-only Django administration view.

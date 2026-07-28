@@ -240,6 +240,11 @@ provider terminal signal is therefore not closure: evidence, validation,
 release gates, documentation, a commit, and draft Pull Request review still
 determine the final result.
 
+Product Owner progress is derived from the same canonical run and ordered
+progress events. It now exposes source-event mapping, icon, confidence,
+provider state, blocker, next expected action, and deterministic terminal
+category without storing a parallel progress or heartbeat record.
+
 ### Sprint 015 V3 execution continuity
 
 Heartbeat and possible-stall signals are read-time projections of canonical
