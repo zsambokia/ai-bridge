@@ -256,3 +256,16 @@ has bounded retry. The read-only `governance.prepare_codex_handoff` returns
 actual durable identifiers and a copyable Codex prompt only after it finds the
 approved scope, contract, and run; otherwise it returns an explicit incomplete
 state. Provider execution cannot mint governance authority.
+
+## Governed cancellation capability
+
+Issue #7 adds confirmed, durable cancellation to the existing execution
+lifecycle. `CANCELLING` and `CANCELLED` are canonical run states; requester,
+reason, confirmation reference, provider acknowledgement, and ordered
+cancellation evidence are durable facts on the run/cancellation record. The
+MCP and Django paths share the same confirmation and cancellation services.
+Repeated delivery is idempotent, a finished provider is safe to reconcile, and
+the normal provider request is graceful rather than a raw process-tree kill.
+The read model reports only evidence-derived cancellation progress while raw
+provider events stay separate. Factory Development Mode remains limited to
+`ai-bridge`; customer-project contract-first governance is unchanged.

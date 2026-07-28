@@ -233,3 +233,29 @@ message, icon, confidence, timestamp, and source event sequence. The summary
 also derives provider state, current blocker, next expected action, and one
 terminal category (`PASS`, `FAIL`, `BLOCKED`, or `CANCELLED`). This is the
 payload used by both MCP/ChatGPT and the read-only Django administration view.
+
+## Governed execution cancellation (Issue #7)
+
+Cancellation extends the canonical `ExecutionRun` lifecycle with `CANCELLING`
+and `CANCELLED`; it does not introduce a second execution state machine. The
+one-to-one `ExecutionCancellation` record persists the requester, reason,
+durable confirmation reference, provider acknowledgement, completion time, and
+status. `prepare_execution_cancellation`,
+`confirm_execution_cancellation`, `request_execution_cancellation`, and
+`reconcile_execution_cancellation` row-lock that same run and cancellation
+record, so retries, duplicate MCP delivery, restart recovery, and watchdog
+invocation are idempotent.
+
+The normal transition is `RUNNING -> CANCELLING -> CANCELLED`. Bridge first
+asks the selected provider to stop gracefully; it then persists provider
+acknowledgement, cancellation, and evidence-completed events in order. A
+provider that has already finished is reconciled safely, not treated as an
+error. A provider that does not acknowledge remains visible as `CANCELLING`
+with a durable unresponsive event until the shared recovery/watchdog policy
+acts. This preserves partial evidence and prevents an invisible active run.
+
+MCP/ChatGPT and Django admin both invoke these canonical services. Both display
+the existing derived Product Owner activity projection, whose cancellation
+items map only durable lifecycle/event facts and keep raw provider events
+separate. The Factory Development Mode repository restriction and the ordinary
+customer-project contract-first authority path are unchanged.

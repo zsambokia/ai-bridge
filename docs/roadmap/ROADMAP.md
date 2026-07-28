@@ -375,3 +375,12 @@ The next operational step is to schedule or invoke
 `reconcile_provider_runs` wherever provider supervision is unavailable. This
 does not loosen release gates or authorise Factory Development Mode for a
 customer Project.
+
+## Governed execution cancellation delivery
+
+Issue #7 extends the canonical lifecycle with an explicitly confirmed,
+evidence-backed cancellation path. The next delivery validates this path under
+real provider supervision and retains the separate future decision of whether a
+rare, fully audited emergency force-cancel capability is needed. It does not
+alter Factory Development Mode's `ai-bridge`-only boundary or customer-project
+contract-first governance.

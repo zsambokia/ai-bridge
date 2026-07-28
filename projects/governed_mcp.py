@@ -25,8 +25,11 @@ from .contracts import (
 from .execution import (
     add_event,
     complete_run,
+    confirm_execution_cancellation,
+    prepare_execution_cancellation,
     provider,
     recover_execution_run,
+    request_execution_cancellation,
     start_factory_development,
     start_run,
     watchdog_recover_runs,
@@ -57,7 +60,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-28.2"
+TOOL_SURFACE_VERSION = "2026-07-28.3"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -340,11 +343,49 @@ _TOOLS = [
         ["project_id", "scope_identifier"],
     ),
     _tool(
+        "execution.prepare_cancel",
+        "Resolve an execution and return its Product Owner cancellation confirmation.",
+        PREPARATORY_STATE,
+        {
+            "execution_token": {"type": "string"},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+            **_IDEMPOTENCY,
+        },
+        ["execution_token", "reason", "idempotency_key"],
+    ),
+    _tool(
+        "execution.confirm_cancel",
+        "Confirm a prepared cancellation as the authenticated Product Owner.",
+        LIFECYCLE_MUTATION,
+        {
+            "execution_token": {"type": "string"},
+            "confirmation_text": {"type": "string", "minLength": 1, "maxLength": 100},
+            **_IDEMPOTENCY,
+        },
+        ["execution_token", "confirmation_text", "idempotency_key"],
+    ),
+    _tool(
         "execution.cancel",
-        "Cancel one active execution with durable Product Owner authority.",
+        "Execute a previously confirmed, durable cancellation request.",
         EXECUTION_BOUNDARY,
-        {"execution_token": {"type": "string"}, **_APPROVAL, **_IDEMPOTENCY},
-        ["execution_token", "approval_reference", "idempotency_key"],
+        {
+            "execution_token": {"type": "string"},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+            "requested_by": {"type": "string", "minLength": 1, "maxLength": 255},
+            "confirmation_reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+            },
+            **_IDEMPOTENCY,
+        },
+        [
+            "execution_token",
+            "reason",
+            "requested_by",
+            "confirmation_reference",
+            "idempotency_key",
+        ],
     ),
     _tool(
         "execution.evidence_summary",
@@ -849,6 +890,25 @@ def _derived_conversation_confirmation(
         "confirmation_reference": f"conversation-confirmation:v1:{digest}",
         "idempotency_key": f"conversation-confirm:v1:{digest}",
     }
+
+
+def _cancellation_requester(caller: str) -> str:
+    """Keep cancellation attribution bound to the authenticated MCP caller."""
+    return (
+        "authenticated-mcp-caller:" + hashlib.sha256(caller.encode("utf-8")).hexdigest()
+    )
+
+
+def _cancellation_confirmation_reference(run: ExecutionRun, caller: str) -> str:
+    binding = {
+        "execution_token": str(run.token),
+        "requester": _cancellation_requester(caller),
+        "reason": run.cancellation.reason,
+    }
+    digest = hashlib.sha256(
+        json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return f"execution-cancellation-confirmation:v1:{digest}"
 
 
 def _approval(
@@ -1815,36 +1875,84 @@ def invoke_public_tool(
             "execution.list_events",
             "execution.get_activity_summary",
             "execution.evidence_summary",
+            "execution.prepare_cancel",
+            "execution.confirm_cancel",
             "execution.cancel",
         }:
             run = ExecutionRun.objects.get(token=arguments["execution_token"])
-            if name != "execution.cancel":
+            if name not in {
+                "execution.prepare_cancel",
+                "execution.confirm_cancel",
+                "execution.cancel",
+            }:
                 recover_execution_run(run)
                 run.refresh_from_db()
-            if name == "execution.cancel":
-                if run.contract_id is None:
-                    raise ValueError(
-                        "FACTORY_DEVELOPMENT_CANCELLATION_REQUIRES_SERVICE_AUTHORITY"
-                    )
-                run_contract = run.contract
-                if run_contract is None:
-                    raise ValueError("EXECUTION_CONTRACT_UNAVAILABLE")
-                approval = _approval_for_contract(
-                    arguments, run_contract, "execution.cancel"
+            if name == "execution.prepare_cancel":
+                cancellation = prepare_execution_cancellation(
+                    run,
+                    requested_by=_cancellation_requester(caller),
+                    reason=arguments["reason"],
                 )
-                if run.lifecycle not in {
-                    ExecutionRun.Lifecycle.RUNNING,
-                    ExecutionRun.Lifecycle.STARTING,
-                }:
-                    raise ValueError("EXECUTION_NOT_CANCELLABLE")
-                adapter = provider(run.provider_name)
-                if adapter.status(run.provider_execution_id) != "FINISHED":
-                    adapter.cancel(run.provider_execution_id)
-                run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
-                run.current_phase = "CANCELLED"
-                run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
-                add_event(run, "EXECUTION_CANCELLED", approval=approval.reference)
-                result = {"status": "CANCELLED", "execution_token": str(run.token)}
+                result = {
+                    "status": cancellation.status,
+                    "execution_token": str(run.token),
+                    "cancellation_token": str(cancellation.token),
+                    "confirmation_required": True,
+                    "confirmation_summary": {
+                        "project": run.repository,
+                        "phase": run.current_phase,
+                        "provider": run.provider_name,
+                        "reason": cancellation.reason,
+                        "message": (
+                            "Cancellation will request a graceful provider stop and "
+                            "preserve evidence."
+                        ),
+                    },
+                    "next_tool": "execution.confirm_cancel",
+                }
+            elif name == "execution.confirm_cancel":
+                if (
+                    _normalise_confirmation(arguments["confirmation_text"])
+                    not in _PRODUCT_OWNER_CONFIRMATIONS
+                ):
+                    raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
+                requester = _cancellation_requester(caller)
+                confirmation_reference = _cancellation_confirmation_reference(
+                    run, caller
+                )
+                cancellation = confirm_execution_cancellation(
+                    run,
+                    requested_by=requester,
+                    confirmation_reference=confirmation_reference,
+                )
+                result = {
+                    "status": cancellation.status,
+                    "execution_token": str(run.token),
+                    "reason": cancellation.reason,
+                    "requested_by": requester,
+                    "confirmation_reference": confirmation_reference,
+                    "next_tool": "execution.cancel",
+                }
+            elif name == "execution.cancel":
+                if arguments["requested_by"] != _cancellation_requester(caller):
+                    raise ValueError("CANCELLATION_REQUESTER_MISMATCH")
+                cancelled, status = request_execution_cancellation(
+                    run,
+                    requested_by=arguments["requested_by"],
+                    reason=arguments["reason"],
+                    confirmation_reference=arguments["confirmation_reference"],
+                )
+                result = {
+                    "status": status,
+                    "execution_token": str(cancelled.token),
+                    "lifecycle": cancelled.lifecycle,
+                    "next_action": (
+                        "Monitor the canonical Product Owner progress until "
+                        "cancellation evidence is complete."
+                        if cancelled.lifecycle == ExecutionRun.Lifecycle.CANCELLING
+                        else "Cancellation is terminal and evidence is preserved."
+                    ),
+                }
             elif name == "execution.list_events":
                 result = {
                     "execution_token": str(run.token),

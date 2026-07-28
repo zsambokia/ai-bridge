@@ -318,6 +318,7 @@ class ExecutionRun(models.Model):
         BLOCKED_BUSINESS_DECISION = "BLOCKED_BUSINESS_DECISION", "Blocked business"
         BLOCKED_EXTERNAL_INPUT = "BLOCKED_EXTERNAL_INPUT", "Blocked external"
         FAILED_GOVERNANCE = "FAILED_GOVERNANCE", "Failed governance"
+        CANCELLING = "CANCELLING", "Cancelling"
         CANCELLED = "CANCELLED", "Cancelled"
 
     class Profile(models.TextChoices):
@@ -391,6 +392,37 @@ class ExecutionProgressEvent(models.Model):
             )
         ]
         ordering = ["sequence"]
+
+
+class ExecutionCancellation(models.Model):
+    """Durable, confirmed cancellation authority for one execution run.
+
+    This is deliberately separate from the ordered event stream: it preserves
+    the requester, reason and confirmation binding that authorizes a lifecycle
+    mutation, while events remain the append-only operational evidence.
+    """
+
+    class Status(models.TextChoices):
+        CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED", "Confirmation required"
+        CONFIRMED = "CONFIRMED", "Confirmed"
+        PROVIDER_CANCELLING = "PROVIDER_CANCELLING", "Provider cancelling"
+        CANCELLED = "CANCELLED", "Cancelled"
+        ALREADY_TERMINAL = "ALREADY_TERMINAL", "Already terminal"
+
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    run = models.OneToOneField(
+        ExecutionRun, on_delete=models.PROTECT, related_name="cancellation"
+    )
+    requested_by = models.CharField(max_length=255)
+    reason = models.CharField(max_length=1000)
+    confirmation_reference = models.CharField(max_length=255, blank=True, unique=True)
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.CONFIRMATION_REQUIRED
+    )
+    provider_acknowledged_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class ConversationOrchestration(models.Model):

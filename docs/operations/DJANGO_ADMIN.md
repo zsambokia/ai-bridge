@@ -72,3 +72,24 @@ and bind the final commit before the draft Pull Request can be closed.
 Factory Development Mode is only for the canonical `ai-bridge` repository and
 requires an explicit Product Owner approval reference. It is not available
 for customer Projects and does not permit a manual terminal-state override.
+
+## Governed cancellation
+
+The `ExecutionRun` detail view has a **Request cancellation** action for an
+active run. Enter a non-empty reason, inspect the resulting confirmation page,
+and select the explicit confirmation button. The first submit records only a
+durable cancellation request; the confirmation submit invokes the same
+canonical cancellation service as MCP. Do not edit lifecycle fields, terminate
+a process tree from the shell, or use admin to bypass confirmation.
+
+The normal action requests graceful provider termination and leaves the run in
+`CANCELLING` until provider acknowledgement/reconciliation writes
+`CANCELLED`, cancellation evidence, and closure facts. A completed or terminal
+provider response is safe and is reported deterministically rather than raising
+an error. `python manage.py reconcile_provider_runs` also reconciles a
+persisted `CANCELLING` run after a restart; a non-responsive provider remains
+observable through its durable cancellation events and the existing watchdog.
+
+There is intentionally no routine force-cancel control. A forceful emergency
+action, if separately authorized in a future scope, must preserve the same
+requester, reason, confirmation, event, evidence, and audit trail.

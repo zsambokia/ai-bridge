@@ -17,6 +17,7 @@ from django.utils import timezone
 from .execution_activity import console_line, heartbeat_projection
 from .models import (
     ContractConsumption,
+    ExecutionCancellation,
     ExecutionContract,
     ExecutionProgressEvent,
     ExecutionRun,
@@ -42,6 +43,7 @@ ACTIVE_STATES = {
     ExecutionRun.Lifecycle.REPAIRING,
     ExecutionRun.Lifecycle.DOCUMENTING,
     ExecutionRun.Lifecycle.CLOSING,
+    ExecutionRun.Lifecycle.CANCELLING,
 }
 SECRET_MARKERS = ("token", "secret", "password", "authorization", "bearer")
 MAX_PROVIDER_START_ATTEMPTS = 2
@@ -52,7 +54,7 @@ class ExecutionProvider(Protocol):
 
     def start(self, *, repository: Path, prompt: str) -> ProviderStart: ...
     def status(self, execution_id: str) -> str: ...
-    def cancel(self, execution_id: str) -> None: ...
+    def cancel(self, execution_id: str) -> str: ...
 
 
 CodexCliProvider = CodexCliAdapter
@@ -309,6 +311,188 @@ def reconcile_provider_completion(run: ExecutionRun) -> ExecutionRun:
     return locked
 
 
+def prepare_execution_cancellation(
+    run: ExecutionRun, *, requested_by: str, reason: str
+) -> ExecutionCancellation:
+    """Create the one durable confirmation prompt for a cancellation request."""
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        try:
+            existing = locked.cancellation
+        except ExecutionCancellation.DoesNotExist:
+            existing = None
+        if existing is not None:
+            if existing.requested_by != requested_by or existing.reason != reason:
+                raise ValueError("CANCELLATION_REQUEST_ALREADY_EXISTS")
+            return existing
+        cancellation = ExecutionCancellation.objects.create(
+            run=locked, requested_by=requested_by, reason=reason
+        )
+        add_event(
+            locked,
+            "CANCELLATION_CONFIRMATION_REQUIRED",
+            requested_by=requested_by,
+            reason=reason,
+        )
+        return cancellation
+
+
+def confirm_execution_cancellation(
+    run: ExecutionRun, *, requested_by: str, confirmation_reference: str
+) -> ExecutionCancellation:
+    """Persist Product Owner confirmation before any lifecycle mutation."""
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        try:
+            cancellation = locked.cancellation
+        except ExecutionCancellation.DoesNotExist as error:
+            raise ValueError("CANCELLATION_CONFIRMATION_REQUIRED") from error
+        if cancellation.requested_by != requested_by:
+            raise ValueError("CANCELLATION_REQUESTER_MISMATCH")
+        if cancellation.status == ExecutionCancellation.Status.CONFIRMATION_REQUIRED:
+            cancellation.confirmation_reference = confirmation_reference
+            cancellation.status = ExecutionCancellation.Status.CONFIRMED
+            cancellation.save(
+                update_fields=["confirmation_reference", "status", "updated_at"]
+            )
+            add_event(
+                locked,
+                "CANCELLATION_CONFIRMED",
+                confirmation_reference=confirmation_reference,
+            )
+        elif cancellation.confirmation_reference != confirmation_reference:
+            raise ValueError("CANCELLATION_CONFIRMATION_MISMATCH")
+        return cancellation
+
+
+def _complete_cancellation(
+    locked: ExecutionRun, cancellation: ExecutionCancellation, *, acknowledged: bool
+) -> ExecutionRun:
+    now = timezone.now()
+    locked.lifecycle = ExecutionRun.Lifecycle.CANCELLED
+    locked.current_phase = "CANCELLED"
+    locked.current_blocker = {}
+    locked.terminal_state = "CANCELLED — PRODUCT OWNER REQUESTED"
+    locked.ended_at = now
+    locked.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "terminal_state",
+            "ended_at",
+            "updated_at",
+        ]
+    )
+    cancellation.status = ExecutionCancellation.Status.CANCELLED
+    cancellation.completed_at = now
+    if acknowledged and cancellation.provider_acknowledged_at is None:
+        cancellation.provider_acknowledged_at = now
+    cancellation.save(
+        update_fields=[
+            "status",
+            "completed_at",
+            "provider_acknowledged_at",
+            "updated_at",
+        ]
+    )
+    if acknowledged:
+        add_event(locked, "CANCELLATION_PROVIDER_ACKNOWLEDGED")
+    add_event(
+        locked,
+        "EXECUTION_CANCELLED",
+        requested_by=cancellation.requested_by,
+        reason=cancellation.reason,
+        confirmation_reference=cancellation.confirmation_reference,
+    )
+    add_event(locked, "CANCELLATION_EVIDENCE_COMPLETED")
+    return locked
+
+
+def request_execution_cancellation(
+    run: ExecutionRun,
+    *,
+    requested_by: str,
+    reason: str,
+    confirmation_reference: str,
+) -> tuple[ExecutionRun, str]:
+    """Start or replay a confirmed cancellation without duplicate transitions."""
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        try:
+            cancellation = locked.cancellation
+        except ExecutionCancellation.DoesNotExist as error:
+            raise ValueError("CANCELLATION_CONFIRMATION_REQUIRED") from error
+        if (
+            cancellation.requested_by != requested_by
+            or cancellation.reason != reason
+            or cancellation.confirmation_reference != confirmation_reference
+        ):
+            raise ValueError("CANCELLATION_CONFIRMATION_MISMATCH")
+        if locked.lifecycle == ExecutionRun.Lifecycle.CANCELLED:
+            return locked, "ALREADY_CANCELLED"
+        if locked.lifecycle not in ACTIVE_STATES:
+            cancellation.status = ExecutionCancellation.Status.ALREADY_TERMINAL
+            cancellation.save(update_fields=["status", "updated_at"])
+            return locked, "ALREADY_TERMINAL"
+        if locked.lifecycle != ExecutionRun.Lifecycle.CANCELLING:
+            locked.lifecycle = ExecutionRun.Lifecycle.CANCELLING
+            locked.current_phase = "CANCELLING"
+            locked.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+            cancellation.status = ExecutionCancellation.Status.PROVIDER_CANCELLING
+            cancellation.save(update_fields=["status", "updated_at"])
+            add_event(
+                locked,
+                "CANCELLATION_REQUESTED",
+                requested_by=requested_by,
+                reason=reason,
+                confirmation_reference=confirmation_reference,
+            )
+        else:
+            return locked, "ALREADY_CANCELLING"
+    # The provider call is intentionally outside the database transaction.  A
+    # restart or duplicate request will reconcile the persisted CANCELLING state.
+    if (
+        not locked.provider_execution_id
+        or provider(locked.provider_name).status(locked.provider_execution_id)
+        == "FINISHED"
+    ):
+        return reconcile_execution_cancellation(locked), "ALREADY_FINISHED"
+    try:
+        provider(locked.provider_name).cancel(locked.provider_execution_id)
+    except Exception as error:  # provider remains recoverable through watchdog
+        add_event(
+            locked,
+            "CANCELLATION_PROVIDER_UNRESPONSIVE",
+            reason="Graceful provider cancellation request could not be delivered.",
+            provider=locked.provider_name,
+            error_type=type(error).__name__,
+        )
+        return locked, "CANCELLING"
+    add_event(locked, "CANCELLATION_PROVIDER_REQUESTED", provider=locked.provider_name)
+    return locked, "CANCELLING"
+
+
+def reconcile_execution_cancellation(run: ExecutionRun) -> ExecutionRun:
+    """Finish a persisted cancellation when its provider has stopped.
+
+    This routine is transactional and safe to call after a process restart,
+    watchdog tick, duplicate MCP delivery, or provider completion race.
+    """
+    if run.lifecycle != ExecutionRun.Lifecycle.CANCELLING:
+        return run
+    if (
+        run.provider_execution_id
+        and provider(run.provider_name).status(run.provider_execution_id) != "FINISHED"
+    ):
+        return run
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        if locked.lifecycle != ExecutionRun.Lifecycle.CANCELLING:
+            return locked
+        return _complete_cancellation(locked, locked.cancellation, acknowledged=True)
+
+
 def _block_stale_run(
     run: ExecutionRun, *, observed_at: datetime | None = None
 ) -> ExecutionRun:
@@ -358,7 +542,8 @@ def recover_execution_run(
     run: ExecutionRun, *, observed_at: datetime | None = None
 ) -> ExecutionRun:
     """Use one idempotent path for provider completion and stale-run recovery."""
-    reconciled = reconcile_provider_completion(run)
+    reconciled = reconcile_execution_cancellation(run)
+    reconciled = reconcile_provider_completion(reconciled)
     return _block_stale_run(reconciled, observed_at=observed_at)
 
 
