@@ -114,3 +114,27 @@ The read-only public tools `provider.list`, `provider.get`,
 `provider.capabilities`, and `provider.health` expose provider identity, role,
 capabilities, status, and safe health state. They never return configuration,
 credential bindings, secret values, or raw external responses.
+
+## Governed execution cancellation (Issue #7)
+
+Cancellation is a lifecycle operation, not a client-side process kill. For an
+eligible active run, ChatGPT first calls `execution.prepare_cancel` with the
+execution token, a reason, and an idempotency key. It returns an evidence-based
+summary of the project, run phase, provider, and requested reason for the
+Product Owner to review. It does not mutate the run lifecycle.
+
+Only an explicit affirmative answer is sent to `execution.confirm_cancel`.
+That operation derives the authenticated requester and durable confirmation
+reference server-side and stores the confirmation against the run. The bounded
+`execution.cancel` operation then accepts `execution_token`, `reason`,
+`requested_by`, `confirmation_reference`, and `idempotency_key`. Its requester
+must match the authenticated caller and its confirmation must match the durable
+record; callers cannot supply authority for another identity.
+
+The response is deterministic: `CANCELLING`, `ALREADY_CANCELLING`,
+`ALREADY_CANCELLED`, `ALREADY_TERMINAL`, or `ALREADY_FINISHED`. Replaying the
+same request never writes a second cancellation transition or evidence event.
+The normal path asks the provider for graceful termination, then reconciles
+the provider acknowledgement and persists cancellation evidence. Raw provider
+events remain separately available through the normal event tools; the
+Product Owner activity stream is only the derived safe projection.
