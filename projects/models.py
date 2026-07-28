@@ -184,6 +184,90 @@ class OwnershipAssessment(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class RemediationWorkflow(models.Model):
+    """Durable incident-to-remediation state, bound to existing authority."""
+
+    class Status(models.TextChoices):
+        AWAITING_CONTRACT = "AWAITING_CONTRACT", "Awaiting contract"
+        CONTRACT_LINKED = "CONTRACT_LINKED", "Contract linked"
+        DISPATCHED = "DISPATCHED", "Dispatched"
+        TIMED_OUT = "TIMED_OUT", "Timed out"
+        CANCELLED = "CANCELLED", "Cancelled"
+        VALIDATION_PENDING = "VALIDATION_PENDING", "Validation pending"
+        RETRY_REQUIRED = "RETRY_REQUIRED", "Retry requires new contract"
+        ESCALATED = "ESCALATED", "Escalated"
+        RESUMED = "RESUMED", "Workflow resumed"
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    incident = models.OneToOneField(
+        FailureIncident, on_delete=models.PROTECT, related_name="remediation"
+    )
+    project = models.ForeignKey(Project, on_delete=models.PROTECT)
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    correlation_id = models.CharField(max_length=128)
+    summary = models.CharField(max_length=1000)
+    status = models.CharField(max_length=32, choices=Status.choices)
+    scope = models.ForeignKey(
+        "ExecutableScope", null=True, blank=True, on_delete=models.PROTECT
+    )
+    contract = models.OneToOneField(
+        "ExecutionContract", null=True, blank=True, on_delete=models.PROTECT
+    )
+    start_request = models.OneToOneField(
+        "ExecutionStartRequest", null=True, blank=True, on_delete=models.PROTECT
+    )
+    run = models.OneToOneField(
+        "ExecutionRun", null=True, blank=True, on_delete=models.PROTECT
+    )
+    deadline_at = models.DateTimeField(null=True, blank=True)
+    timeline = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class RemediationValidation(models.Model):
+    """Independent, evidence-backed validation of a remediation outcome."""
+
+    class Outcome(models.TextChoices):
+        PASSED = "PASSED", "Passed"
+        FAILED = "FAILED", "Failed"
+
+    remediation = models.OneToOneField(
+        RemediationWorkflow, on_delete=models.CASCADE, related_name="validation"
+    )
+    validator_identity = models.CharField(max_length=255)
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    evidence_references = models.JSONField(default=list)
+    rationale = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class DeploymentRecord(models.Model):
+    """An explicitly authorized deployment or rollback, never implicit release."""
+
+    class Action(models.TextChoices):
+        DEPLOY = "DEPLOY", "Deploy"
+        ROLLBACK = "ROLLBACK", "Rollback"
+
+    class Status(models.TextChoices):
+        REQUESTED = "REQUESTED", "Requested"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    remediation = models.ForeignKey(
+        RemediationWorkflow, on_delete=models.PROTECT, related_name="deployments"
+    )
+    approval = models.ForeignKey("GovernanceApproval", on_delete=models.PROTECT)
+    action = models.CharField(max_length=16, choices=Action.choices)
+    environment = models.CharField(max_length=64)
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    status = models.CharField(max_length=16, choices=Status.choices)
+    provider_receipt = models.CharField(max_length=255, blank=True)
+    detail = models.CharField(max_length=1000, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class ProjectContext(models.Model):
     """A deterministic runtime snapshot of a ready registered Project."""
 

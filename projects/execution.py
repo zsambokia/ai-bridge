@@ -321,6 +321,34 @@ def start_run(
     return run
 
 
+def cancel_run(
+    run: ExecutionRun, *, approval_reference: str, phase: str = "CANCELLED"
+) -> ExecutionRun:
+    """Cancel a provider run through the one canonical executor boundary."""
+    if run.lifecycle == ExecutionRun.Lifecycle.CANCELLED:
+        return run
+    if run.lifecycle not in {
+        ExecutionRun.Lifecycle.RUNNING,
+        ExecutionRun.Lifecycle.STARTING,
+    }:
+        raise ValueError("EXECUTION_NOT_CANCELLABLE")
+    try:
+        adapter = provider(run.provider_name)
+        if adapter.status(run.provider_execution_id) != "FINISHED":
+            adapter.cancel(run.provider_execution_id)
+    except OSError as exc:
+        raise ValueError("EXECUTION_PROVIDER_UNAVAILABLE") from exc
+    run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
+    run.current_phase = phase
+    run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+    add_event(
+        run,
+        "EXECUTION_TIMED_OUT" if phase == "TIMED_OUT" else "EXECUTION_CANCELLED",
+        approval=approval_reference,
+    )
+    return run
+
+
 def complete_run(
     run: ExecutionRun, final_commit_sha: str, completion_data: dict[str, object]
 ) -> ExecutionRun:

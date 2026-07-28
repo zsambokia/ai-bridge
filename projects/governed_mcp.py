@@ -23,7 +23,14 @@ from .contracts import (
     supersede_execution_contract,
     validate_execution_contract,
 )
-from .execution import ACTIVE_STATES, add_event, complete_run, provider, start_run
+from .execution import (
+    ACTIVE_STATES,
+    add_event,
+    cancel_run,
+    complete_run,
+    provider,
+    start_run,
+)
 from .execution_activity import activity_summary, event_view, heartbeat_projection
 from .mcp import invoke_operation
 from .models import (
@@ -2069,16 +2076,7 @@ def invoke_public_tool(
                 }:
                     raise ValueError("EXECUTION_NOT_CANCELLABLE")
                 else:
-                    try:
-                        adapter = provider(run.provider_name)
-                        if adapter.status(run.provider_execution_id) != "FINISHED":
-                            adapter.cancel(run.provider_execution_id)
-                    except OSError as exc:
-                        raise ValueError("EXECUTION_PROVIDER_UNAVAILABLE") from exc
-                    run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
-                    run.current_phase = "CANCELLED"
-                    run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
-                    add_event(run, "EXECUTION_CANCELLED", approval=approval.reference)
+                    cancel_run(run, approval_reference=approval.reference)
                     result = {"status": "CANCELLED", "execution_token": str(run.token)}
             elif name == "execution.list_events":
                 result = {
