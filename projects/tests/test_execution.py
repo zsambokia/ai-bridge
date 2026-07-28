@@ -8,6 +8,9 @@ from types import SimpleNamespace
 from typing import Callable, Iterator
 
 import pytest
+from django.contrib.auth import get_user_model
+from django.test import Client
+from django.urls import reverse
 
 from projects.contracts import (
     _normalized_hash,
@@ -21,9 +24,13 @@ from projects.execution import (
     _safe_details,
     add_event,
     complete_run,
+    confirm_execution_cancellation,
+    prepare_execution_cancellation,
+    reconcile_execution_cancellation,
     reconcile_provider_completion,
     record_gate_rerun,
     repair_failure,
+    request_execution_cancellation,
     start_factory_development,
     start_run,
     watchdog_recover_runs,
@@ -56,8 +63,8 @@ class StubProvider:
     def status(self, execution_id: str) -> str:
         return "RUNNING"
 
-    def cancel(self, execution_id: str) -> None:
-        return None
+    def cancel(self, execution_id: str) -> str:
+        return "CANCELLATION_REQUESTED"
 
 
 class ActivityStubProvider(StubProvider):
@@ -298,6 +305,118 @@ def test_execution_run_20_finished_provider_is_reconciled_into_validation(
 
 
 @pytest.mark.django_db
+def test_confirmed_cancellation_is_durable_idempotent_and_watchdog_recoverable(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    provider_stub = StubProvider()
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: provider_stub
+    )
+    run = start_run(contract, request, root)
+
+    prepared = prepare_execution_cancellation(
+        run, requested_by="mcp:product-owner", reason="Stop this sprint."
+    )
+    confirmed = confirm_execution_cancellation(
+        run,
+        requested_by="mcp:product-owner",
+        confirmation_reference="cancel-confirmation-1",
+    )
+    assert prepared.pk == confirmed.pk
+    cancelling, status = request_execution_cancellation(
+        run,
+        requested_by="mcp:product-owner",
+        reason="Stop this sprint.",
+        confirmation_reference="cancel-confirmation-1",
+    )
+    assert status == "CANCELLING"
+    assert cancelling.lifecycle == ExecutionRun.Lifecycle.CANCELLING
+
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: FinishedStubProvider()
+    )
+    recovered = reconcile_execution_cancellation(cancelling)
+    replay, replay_status = request_execution_cancellation(
+        recovered,
+        requested_by="mcp:product-owner",
+        reason="Stop this sprint.",
+        confirmation_reference="cancel-confirmation-1",
+    )
+    assert recovered.lifecycle == ExecutionRun.Lifecycle.CANCELLED
+    assert replay.pk == recovered.pk
+    assert replay_status == "ALREADY_CANCELLED"
+    assert list(
+        recovered.events.filter(
+            event_type__in={"EXECUTION_CANCELLED", "CANCELLATION_EVIDENCE_COMPLETED"}
+        ).values_list("event_type", flat=True)
+    ) == ["EXECUTION_CANCELLED", "CANCELLATION_EVIDENCE_COMPLETED"]
+    summary = activity_summary(recovered)
+    assert summary["terminal_outcome"] == "CANCELLED"
+    assert summary["product_owner_progress"]["derived_from"].startswith("canonical")
+
+
+@pytest.mark.django_db
+def test_watchdog_reconciles_a_cancelling_finished_provider_once(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    prepare_execution_cancellation(run, requested_by="po", reason="Stuck")
+    confirm_execution_cancellation(run, requested_by="po", confirmation_reference="c-2")
+    request_execution_cancellation(
+        run, requested_by="po", reason="Stuck", confirmation_reference="c-2"
+    )
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: FinishedStubProvider()
+    )
+
+    assert watchdog_recover_runs() == 1
+    assert watchdog_recover_runs() == 0
+    run.refresh_from_db()
+    assert run.lifecycle == ExecutionRun.Lifecycle.CANCELLED
+
+
+@pytest.mark.django_db
+def test_django_admin_cancellation_requires_confirmation_and_uses_shared_service(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    user = get_user_model().objects.create_superuser(
+        username="product-owner", email="po@example.test", password="test-password"
+    )
+    client = Client()
+    client.force_login(user)
+    url = reverse("admin:projects_executionrun_cancel", args=[run.pk])
+
+    confirmation = client.post(url, {"reason": "Stop this sprint."})
+
+    assert confirmation.status_code == 200
+    assert b"Confirm execution cancellation" in confirmation.content
+    run.refresh_from_db()
+    assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+
+    completed = client.post(
+        url, {"reason": "Stop this sprint.", "confirm": "yes"}, follow=True
+    )
+
+    assert completed.status_code == 200
+    run.refresh_from_db()
+    assert run.lifecycle == ExecutionRun.Lifecycle.CANCELLING
+    assert run.cancellation.confirmation_reference.startswith("django-cancel-")
+
+
+@pytest.mark.django_db
 def test_factory_profile_uses_durable_po_authority_without_a_contract(
     consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,
@@ -437,7 +556,7 @@ def test_activity_summary_is_derived_from_canonical_run_and_events(
     summary = activity_summary(run)
 
     assert summary["phase"] == "EXECUTING"
-    assert len(summary["checklist"]) == 8
+    assert len(summary["checklist"]) == 9
     assert (
         next(item for item in summary["checklist"] if item["id"] == "execution")[
             "status"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import signal
 from io import BytesIO
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -182,19 +183,19 @@ def test_codex_start_refuses_an_unauthenticated_runtime(
         CodexCliAdapter().start(repository=Path("C:/tmp"), prompt="safe prompt")
 
 
-def test_codex_cancel_uses_taskkill_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: list[list[str]] = []
+def test_codex_cancel_requests_a_graceful_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[int, object]] = []
 
-    def taskkill(args: list[str], **kwargs: object) -> CompletedProcess[str]:
-        captured.append(args)
-        return CompletedProcess(args, 0)
+    def request_stop(process_id: int, signal: object) -> None:
+        captured.append((process_id, signal))
 
-    monkeypatch.setattr("projects.providers.os.name", "nt")
-    monkeypatch.setattr("projects.providers.subprocess.run", taskkill)
+    monkeypatch.setattr("projects.providers.os.kill", request_stop)
 
-    CodexCliAdapter().cancel("42")
+    assert CodexCliAdapter().cancel("42") == "CANCELLATION_REQUESTED"
 
-    assert captured == [["taskkill", "/PID", "42", "/T", "/F"]]
+    assert captured == [(42, signal.SIGTERM)]
 
 
 @pytest.mark.django_db

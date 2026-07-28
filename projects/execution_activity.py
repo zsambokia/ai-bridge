@@ -57,6 +57,49 @@ _EVENTS = {
         "ERROR",
         "Watchdog blocked a stale execution",
     ),
+    "CANCELLATION_CONFIRMATION_REQUIRED": (
+        "CANCELLING",
+        "Product Owner",
+        "WARNING",
+        "Cancellation confirmation required",
+    ),
+    "CANCELLATION_CONFIRMED": (
+        "CANCELLING",
+        "Product Owner",
+        "INFO",
+        "Cancellation confirmed",
+    ),
+    "CANCELLATION_REQUESTED": (
+        "CANCELLING",
+        "Product Owner",
+        "WARNING",
+        "Cancellation requested",
+    ),
+    "CANCELLATION_PROVIDER_REQUESTED": (
+        "CANCELLING",
+        "AI Bridge",
+        "INFO",
+        "Graceful provider stop requested",
+    ),
+    "CANCELLATION_PROVIDER_UNRESPONSIVE": (
+        "CANCELLING",
+        "AI Bridge",
+        "WARNING",
+        "Provider cancellation awaiting recovery",
+    ),
+    "CANCELLATION_PROVIDER_ACKNOWLEDGED": (
+        "CANCELLING",
+        "Codex",
+        "INFO",
+        "Provider cancellation acknowledged",
+    ),
+    "EXECUTION_CANCELLED": ("CANCELLED", "AI Bridge", "WARNING", "Execution cancelled"),
+    "CANCELLATION_EVIDENCE_COMPLETED": (
+        "CANCELLED",
+        "AI Bridge",
+        "INFO",
+        "Cancellation evidence completed",
+    ),
     "EXECUTION_COMPLETED": ("CLOSING", "AI Bridge", "INFO", "Execution completed"),
 }
 
@@ -65,6 +108,7 @@ _STAGES = (
     ("preflight", "Preflight"),
     ("provider", "Provider started"),
     ("execution", "Implementation"),
+    ("cancellation", "Cancellation and evidence"),
     ("validation", "Validation"),
     ("repair", "Repair"),
     ("documentation", "Documentation and evidence"),
@@ -101,6 +145,9 @@ def _next_expected_step(run: ExecutionRun) -> str:
         "REPAIRING": "Repair the diagnosed failure and rerun the failed gate.",
         "DOCUMENTING": "Synchronize documentation and execution evidence.",
         "CLOSING": "Record the deterministic terminal result.",
+        "CANCELLING": (
+            "Wait for provider acknowledgement, cancellation evidence, and closure."
+        ),
     }.get(run.current_phase, "Reconcile the canonical execution lifecycle.")
 
 
@@ -183,6 +230,7 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
         ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
     }
     completed = lifecycle == ExecutionRun.Lifecycle.COMPLETED
+    cancelled = lifecycle == ExecutionRun.Lifecycle.CANCELLED
     outcome = terminal_outcome(run)
     done = {
         "contract": bool(run.contract_id)
@@ -190,6 +238,7 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
         "preflight": "PREFLIGHT_COMPLETED" in types,
         "provider": "EXECUTOR_STARTED" in types,
         "execution": completed,
+        "cancellation": cancelled,
         "validation": completed,
         "repair": "REPAIR_VERIFIED" in types,
         "documentation": completed,
@@ -202,6 +251,7 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
         "REPAIRING": "repair",
         "DOCUMENTING": "documentation",
         "CLOSING": "closure",
+        "CANCELLING": "cancellation",
     }.get(run.current_phase)
     checklist = []
     for key, label in _STAGES:

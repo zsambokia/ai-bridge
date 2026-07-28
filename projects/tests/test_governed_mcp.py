@@ -17,6 +17,7 @@ from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
+    ExecutionRun,
     GovernanceApproval,
     McpAuditEvent,
     McpIdempotencyRecord,
@@ -47,6 +48,70 @@ def test_public_registry_is_versioned_unique_and_schema_bounded() -> None:
         invoke_public_tool("factory.list_capabilities", {})["tool_surface_version"]
         == TOOL_SURFACE_VERSION
     )
+
+
+@pytest.mark.django_db
+def test_cancel_mcp_requires_confirmation_and_replays_without_duplicate_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = ExecutionRun.objects.create(
+        repository="zsambokia/ai-bridge",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash="",
+        workspace_identifier="test-workspace",
+        provider_name="codex-cli",
+        provider_execution_id="77",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        current_phase="EXECUTING",
+        evidence_root="docs/evidence/test-cancel",
+    )
+
+    class ProviderStub:
+        def status(self, execution_id: str) -> str:
+            return "RUNNING"
+
+        def cancel(self, execution_id: str) -> str:
+            return "CANCELLATION_REQUESTED"
+
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: ProviderStub()
+    )
+    caller = "product-owner"
+    prepared = invoke_public_tool(
+        "execution.prepare_cancel",
+        {
+            "execution_token": str(run.token),
+            "reason": "Stop the stuck execution.",
+            "idempotency_key": "prepare-cancel-1",
+        },
+        caller=caller,
+    )
+    assert prepared["confirmation_required"] is True
+    confirmed = invoke_public_tool(
+        "execution.confirm_cancel",
+        {
+            "execution_token": str(run.token),
+            "confirmation_text": "igen",
+            "idempotency_key": "confirm-cancel-1",
+        },
+        caller=caller,
+    )
+    arguments = {
+        "execution_token": str(run.token),
+        "reason": confirmed["reason"],
+        "requested_by": confirmed["requested_by"],
+        "confirmation_reference": confirmed["confirmation_reference"],
+        "idempotency_key": "execute-cancel-1",
+    }
+    first = invoke_public_tool("execution.cancel", arguments, caller=caller)
+    replay = invoke_public_tool("execution.cancel", arguments, caller=caller)
+
+    assert first["status"] == "CANCELLING"
+    assert replay["idempotent_replay"] is True
+    run.refresh_from_db()
+    assert run.lifecycle == ExecutionRun.Lifecycle.CANCELLING
+    assert run.events.filter(event_type="CANCELLATION_REQUESTED").count() == 1
 
 
 @pytest.mark.django_db
