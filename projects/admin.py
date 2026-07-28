@@ -9,7 +9,9 @@ from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
+    ExecutionProgressEvent,
     ExecutionProvider,
+    ExecutionRun,
     Project,
     ProjectContext,
     ProviderAuditEvent,
@@ -233,6 +235,45 @@ class ExecutionContractAdmin(admin.ModelAdmin):
 
     def has_delete_permission(
         self, request: object, obj: ExecutionContract | None = None
+    ) -> bool:
+        return False
+
+
+class ExecutionProgressEventInline(admin.TabularInline):
+    model = ExecutionProgressEvent
+    extra = 0
+    can_delete = False
+    readonly_fields = ("sequence", "event_type", "details", "created_at")
+
+    def has_add_permission(self, request: object, obj: object | None = None) -> bool:
+        return False
+
+
+@admin.register(ExecutionRun)
+class ExecutionRunAdmin(admin.ModelAdmin):
+    list_display = (
+        "token",
+        "contract",
+        "lifecycle",
+        "current_phase",
+        "provider_name",
+        "updated_at",
+    )
+    list_filter = ("lifecycle", "current_phase", "provider_name")
+    search_fields = ("token", "contract__handoff_identifier", "provider_execution_id")
+    readonly_fields = tuple(field.name for field in ExecutionRun._meta.fields)
+    inlines = (ExecutionProgressEventInline,)
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: ExecutionRun | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: ExecutionRun | None = None
     ) -> bool:
         return False
 

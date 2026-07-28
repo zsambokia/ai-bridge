@@ -11,6 +11,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from .execution_activity import console_line
 from .models import (
     ContractConsumption,
     ExecutionContract,
@@ -68,6 +69,10 @@ def _safe_details(details: dict[str, object]) -> dict[str, object]:
         if any(marker in key.lower() for marker in SECRET_MARKERS):
             continue
         rendered = str(value)
+        # Provider output is observational only and must never preserve a
+        # credential-shaped value even when it appears in free text.
+        if any(marker in rendered.lower() for marker in SECRET_MARKERS):
+            rendered = "[redacted]"
         safe[key] = rendered[:500] if isinstance(value, str) else value
     return safe
 
@@ -82,12 +87,15 @@ def add_event(
             .order_by("-sequence")
             .first()
         )
-        return ExecutionProgressEvent.objects.create(
+        event = ExecutionProgressEvent.objects.create(
             run=run,
             sequence=1 if last is None else last.sequence + 1,
             event_type=event_type,
             details=_safe_details(details),
         )
+    if settings.AI_BRIDGE_DEV_EXECUTION_ACTIVITY:
+        print(console_line(event), flush=True)
+    return event
 
 
 def _prompt(contract: ExecutionContract) -> str:
@@ -205,9 +213,21 @@ def start_run(
             readiness = check_health(provider_record)
             if readiness["status"] != "HEALTHY":
                 raise ValueError("CODEX_RUNTIME_NOT_READY")
-            started = selected_provider.start(
-                repository=workspace_root, prompt=_prompt(contract)
+            start_with_activity = getattr(
+                selected_provider, "start_with_activity", None
             )
+            if callable(start_with_activity):
+                started = start_with_activity(
+                    repository=workspace_root,
+                    prompt=_prompt(contract),
+                    activity_callback=lambda details: add_event(
+                        run, "PROVIDER_OUTPUT", **details
+                    ),
+                )
+            else:
+                started = selected_provider.start(
+                    repository=workspace_root, prompt=_prompt(contract)
+                )
             break
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             failure = exc
@@ -265,6 +285,7 @@ def start_run(
         provider=run.provider_name,
         execution_id=started.execution_id,
     )
+    add_event(run, "EXECUTION_ACTIVITY_STARTED", message="provider process is running")
     contract.lifecycle = ExecutionContract.Lifecycle.RUNNING
     contract.save(update_fields=["lifecycle"])
     return run
@@ -367,3 +388,24 @@ def repair_failure(run: ExecutionRun, signature: str) -> str:
     add_event(run, "ROOT_CAUSE_IDENTIFIED", classification=classification)
     add_event(run, "REPAIR_APPLIED", classification=classification)
     return classification
+
+
+def record_gate_rerun(run: ExecutionRun, gate: str, passed: bool) -> ExecutionRun:
+    """Persist a repair verification rerun on the canonical execution stream."""
+    if run.lifecycle != ExecutionRun.Lifecycle.REPAIRING:
+        raise ValueError("GATE_RERUN_REQUIRES_REPAIRING_RUN")
+    run.gate_rerun_count += 1
+    run.current_phase = "VALIDATING"
+    run.save(update_fields=["gate_rerun_count", "current_phase", "updated_at"])
+    add_event(run, "GATE_RERUN_STARTED", gate=gate)
+    if not passed:
+        run.current_phase = "REPAIRING"
+        run.save(update_fields=["current_phase", "updated_at"])
+        add_event(run, "GATE_RERUN_FAILED", gate=gate)
+        return run
+    add_event(run, "GATE_RERUN_PASSED", gate=gate)
+    add_event(run, "REPAIR_VERIFIED", gate=gate)
+    run.lifecycle = ExecutionRun.Lifecycle.RUNNING
+    run.current_phase = "EXECUTING"
+    run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+    return run

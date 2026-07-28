@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -15,6 +16,20 @@ from projects.providers import (
     public_provider,
     select_provider,
 )
+
+
+def test_codex_activity_projection_never_retains_provider_text() -> None:
+    received: list[dict[str, object]] = []
+
+    CodexCliAdapter._project_activity(
+        BytesIO(b'{"type":"item.completed","message":"token=secret"}\nplain output\n'),
+        received.append,
+    )
+
+    assert received == [
+        {"activity_type": "item.completed", "message": "Codex reported item.completed"},
+        {"activity_type": "output", "message": "Codex reported output"},
+    ]
 
 
 def configure_codex_runtime(

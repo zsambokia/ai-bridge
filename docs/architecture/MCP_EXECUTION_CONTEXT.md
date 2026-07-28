@@ -158,3 +158,29 @@ configuration and credential-binding references remain private; the public MCP
 surface exposes only `provider.list`, `provider.get`, `provider.capabilities`,
 and `provider.health` safe projections. Credentials are supplied by a configured
 environment/backend reference and are never persisted in the Django database.
+
+## Sprint 015 real-time execution activity
+
+Sprint 015 adds a read-only activity projection over the existing
+`ExecutionRun` and append-only `ExecutionProgressEvent` stream. It introduces
+no lifecycle, actor model, or manually maintained progress state. The derived
+checklist maps persisted lifecycle and event facts to pending, in-progress,
+completed, repairing, and blocked states; its entries change only when those
+canonical facts change.
+
+In DEV mode, the Codex CLI adapter consumes its real JSON output while the
+process is running and writes only a safe occurrence/type projection to the
+same event stream. Raw provider text and credentials are not retained. Django
+admin exposes the run and events read-only, while
+`execution.get_activity_summary` packages the otherwise separate run status
+and ordered events into the same derived projection for MCP/ChatGPT clients.
+It is retained because `execution.get_run_status` and `execution.list_events`
+cannot provide one bounded, continuously recomputed checklist without making
+every client reproduce Bridge lifecycle semantics.
+
+Technical repair stays inside the same stream: `ROOT_CAUSE_IDENTIFIED`,
+`REPAIR_APPLIED`, `GATE_RERUN_STARTED`, and either `GATE_RERUN_PASSED` plus
+`REPAIR_VERIFIED` or `GATE_RERUN_FAILED` are persisted in order. A repair item
+is completed only after verification; while it is unresolved the derived state
+is `FAILED_REPAIRING`. In DEV mode the console renders this exact persisted
+projection as a short emoji-decorated line, never raw provider output.

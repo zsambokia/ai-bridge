@@ -78,6 +78,14 @@ credential references, provider audit events, and exact contract-bound Codex
 execution selection. Remote providers require separately configured external
 credentials and are not treated as available merely because a record exists.
 
+### Sprint 015 â€” Real-time DEV execution activity and checklist
+
+Implemented under its approved governed Sprint: a secret-safe live activity
+projection over the existing execution event stream, a derived checklist, a
+read-only operational admin view, and a compact MCP activity summary for
+ChatGPT. This strengthens the proving loop without adding a parallel lifecycle
+or simulated organizational actors.
+
 ## Milestone 1 — Project Bootstrap and Onboarding
 
 **Implemented foundation awaiting Product Owner review:** `docs/sprints/SPRINT_003_PROJECT_REGISTRY_AND_CONTEXT_FOUNDATION.md`
@@ -307,15 +315,19 @@ These may remain part of the long-term product vision, but they must not distrac
    `scope.approve`;
 5. review the completed Sprint 009 autonomous execution and repair-loop evidence;
 
-6. Sprint 013: retain `SPRINT` and `WORK_ITEM` as the executable hierarchy,
-   introduce `AUDIT` as a governed work type, and make the existing `codex-cli`
-   provider binding explicit from contract generation through consumption and
-   dispatch. Dynamic provider management remains out of scope unless a later
-   assessment proves a genuine gap.
-6. select a bounded proving application Sprint for the first complete frontend-and-backend execution loop;
-7. keep `.bridge/project.yaml` as the static Project definition;
-8. use the smallest sufficient tiered Execution Contract for every implementation, repair, migration, and recovery task.
-9. use Bridge-managed canonical Sprint or Work Item scope records for all new executable work; legacy Markdown is read-only history.
+6. retain `SPRINT` and `WORK_ITEM` as the executable hierarchy, `AUDIT` as a
+   governed work type, and the exact `codex-cli` provider binding from contract
+   generation through consumption and dispatch; dynamic provider management is
+   deferred unless assessment proves a genuine gap;
+7. use Sprint 015's canonical live activity stream and derived checklist when
+   observing DEV execution, including repair diagnosis and gate-rerun outcome;
+8. select a bounded proving application Sprint for the first complete
+   frontend-and-backend execution loop;
+9. keep `.bridge/project.yaml` as the static Project definition and use the
+   smallest sufficient tiered Execution Contract for every implementation,
+   repair, migration, and recovery task;
+10. use Bridge-managed canonical Sprint or Work Item scope records for all new
+    executable work; legacy Markdown is read-only history.
 
 ## 7. Roadmap success criterion
 

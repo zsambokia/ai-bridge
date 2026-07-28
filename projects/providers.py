@@ -9,10 +9,12 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast
+from threading import Thread
+from typing import BinaryIO, Callable, Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from django.conf import settings
 from django.utils import timezone
 
 from .models import ExecutionProvider, ProviderAuditEvent
@@ -284,11 +286,37 @@ class CodexCliAdapter:
         return {"ready": True, "executable": executable, "environment": environment}
 
     def start(self, *, repository: Path, prompt: str) -> ProviderStart:
+        return self._start(repository=repository, prompt=prompt)
+
+    def start_with_activity(
+        self,
+        *,
+        repository: Path,
+        prompt: str,
+        activity_callback: Callable[[dict[str, object]], None],
+    ) -> ProviderStart:
+        """Launch Codex and project its actual JSON stream as safe activity events."""
+        return self._start(
+            repository=repository,
+            prompt=prompt,
+            activity_callback=activity_callback,
+        )
+
+    def _start(
+        self,
+        *,
+        repository: Path,
+        prompt: str,
+        activity_callback: Callable[[dict[str, object]], None] | None = None,
+    ) -> ProviderStart:
         readiness = self.readiness(repository)
         if not readiness["ready"]:
             raise ValueError(str(readiness["reason"]))
         resolved_executable = str(readiness["executable"])
         environment = cast(dict[str, str], readiness["environment"])
+        capture_activity = bool(
+            activity_callback and settings.AI_BRIDGE_DEV_EXECUTION_ACTIVITY
+        )
         process = subprocess.Popen(
             [
                 resolved_executable,
@@ -302,15 +330,40 @@ class CodexCliAdapter:
             ],
             cwd=repository,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE if capture_activity else subprocess.DEVNULL,
+            stderr=subprocess.STDOUT if capture_activity else subprocess.DEVNULL,
             shell=False,
             env=environment,
         )  # noqa: S603
         time.sleep(0.15)
         if process.poll() is not None:
             raise ValueError("CODEX_SUBPROCESS_EXITED_EARLY")
+        if capture_activity and activity_callback and process.stdout is not None:
+            Thread(
+                target=self._project_activity,
+                args=(process.stdout, activity_callback),
+                daemon=True,
+            ).start()
         return ProviderStart(str(process.pid), str(repository))
+
+    @staticmethod
+    def _project_activity(
+        stream: BinaryIO, activity_callback: Callable[[dict[str, object]], None]
+    ) -> None:
+        """Expose output occurrence and type, never provider text or credentials."""
+        for line in stream:
+            try:
+                decoded = json.loads(line)
+            except json.JSONDecodeError:
+                activity_type = "output"
+            else:
+                activity_type = str(decoded.get("type", "output"))[:80]
+            activity_callback(
+                {
+                    "activity_type": activity_type,
+                    "message": f"Codex reported {activity_type}",
+                }
+            )
 
     def status(self, execution_id: str) -> str:
         try:

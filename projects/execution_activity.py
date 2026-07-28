@@ -1,0 +1,129 @@
+"""Safe, derived execution activity views shared by MCP and operations."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from .models import ExecutionProgressEvent, ExecutionRun
+
+_EVENTS = {
+    "PREFLIGHT_COMPLETED": ("PREFLIGHT", "AI Bridge", "INFO", "Preflight completed"),
+    "EXECUTOR_STARTED": ("EXECUTING", "Codex", "INFO", "Codex execution started"),
+    "EXECUTION_ACTIVITY_STARTED": (
+        "EXECUTING",
+        "AI Bridge",
+        "INFO",
+        "Live activity monitoring started",
+    ),
+    "PROVIDER_OUTPUT": ("EXECUTING", "Codex", "INFO", "Codex activity received"),
+    "PROVIDER_START_RETRYING": (
+        "REPAIRING",
+        "AI Bridge",
+        "WARNING",
+        "Provider start retrying",
+    ),
+    "ROOT_CAUSE_IDENTIFIED": (
+        "REPAIRING",
+        "AI Bridge",
+        "WARNING",
+        "Root cause identified",
+    ),
+    "REPAIR_APPLIED": ("REPAIRING", "Codex", "INFO", "Repair applied"),
+    "GATE_RERUN_STARTED": ("VALIDATING", "AI Bridge", "INFO", "Gate rerun started"),
+    "GATE_RERUN_FAILED": ("REPAIRING", "AI Bridge", "WARNING", "Gate rerun failed"),
+    "GATE_RERUN_PASSED": ("VALIDATING", "AI Bridge", "INFO", "Gate rerun passed"),
+    "REPAIR_VERIFIED": ("REPAIRING", "AI Bridge", "INFO", "Repair verified"),
+    "PROVIDER_FAILURE": ("BLOCKED", "AI Bridge", "ERROR", "Provider unavailable"),
+    "EXECUTION_COMPLETED": ("CLOSING", "AI Bridge", "INFO", "Execution completed"),
+}
+
+_STAGES = (
+    ("contract", "Contract verified"),
+    ("preflight", "Preflight"),
+    ("provider", "Provider started"),
+    ("execution", "Implementation"),
+    ("validation", "Validation"),
+    ("repair", "Repair"),
+    ("documentation", "Documentation and evidence"),
+    ("closure", "Closure"),
+)
+
+
+def event_view(event: ExecutionProgressEvent) -> dict[str, Any]:
+    """Render one persisted event without inventing activity or actors."""
+    phase, actor, severity, title = _EVENTS.get(
+        event.event_type,
+        ("EXECUTING", "AI Bridge", "INFO", event.event_type.replace("_", " ").title()),
+    )
+    details = event.details if isinstance(event.details, dict) else {}
+    message = str(details.get("message", details.get("reason", title)))[:500]
+    return {
+        "sequence": event.sequence,
+        "type": event.event_type,
+        "phase": phase,
+        "actor": actor,
+        "severity": severity,
+        "title": title,
+        "message": message,
+        "details": details,
+        "created_at": event.created_at.isoformat(),
+    }
+
+
+def console_line(event: ExecutionProgressEvent) -> str:
+    """Produce a brief, human-readable DEV activity line from persisted state."""
+    view = event_view(event)
+    icon = {
+        "INFO": "\U0001f539",
+        "WARNING": "\U0001f6e0\ufe0f",
+        "ERROR": "\U0001f6a7",
+    }.get(view["severity"], "\U0001f4cc")
+    return f"{icon} [{view['sequence']}] {view['title']}: {view['message']}"
+
+
+def activity_summary(run: ExecutionRun) -> dict[str, Any]:
+    """Compute a checklist solely from canonical run state and persisted events."""
+    events = list(run.events.all())
+    types = {event.event_type for event in events}
+    lifecycle = run.lifecycle
+    blocked = lifecycle in {
+        ExecutionRun.Lifecycle.BLOCKED_BUSINESS_DECISION,
+        ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+    }
+    completed = lifecycle == ExecutionRun.Lifecycle.COMPLETED
+    done = {
+        "contract": bool(run.contract_id),
+        "preflight": "PREFLIGHT_COMPLETED" in types,
+        "provider": "EXECUTOR_STARTED" in types,
+        "execution": completed,
+        "validation": completed,
+        "repair": "REPAIR_VERIFIED" in types,
+        "documentation": completed,
+        "closure": completed,
+    }
+    active = {
+        "STARTING": "provider",
+        "EXECUTING": "execution",
+        "VALIDATING": "validation",
+        "REPAIRING": "repair",
+        "DOCUMENTING": "documentation",
+        "CLOSING": "closure",
+    }.get(run.current_phase)
+    checklist = []
+    for key, label in _STAGES:
+        status = "COMPLETED" if done[key] else "PENDING"
+        if blocked and key == active:
+            status = "BLOCKED"
+        elif lifecycle == ExecutionRun.Lifecycle.REPAIRING and key == "repair":
+            status = "FAILED_REPAIRING"
+        elif key == active:
+            status = "IN_PROGRESS"
+        checklist.append({"id": key, "label": label, "status": status})
+    return {
+        "execution_token": str(run.token),
+        "status": lifecycle,
+        "phase": run.current_phase,
+        "current_blocker": run.current_blocker,
+        "checklist": checklist,
+        "events": [event_view(event) for event in events[:100]],
+    }

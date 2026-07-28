@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Iterator
+from typing import Callable, Iterator
 
 import pytest
 
@@ -15,7 +15,15 @@ from projects.contracts import (
     issue_execution_contract,
     validate_execution_contract,
 )
-from projects.execution import ProviderStart, _safe_details, complete_run, start_run
+from projects.execution import (
+    ProviderStart,
+    _safe_details,
+    complete_run,
+    record_gate_rerun,
+    repair_failure,
+    start_run,
+)
+from projects.execution_activity import activity_summary, event_view
 from projects.models import (
     ExecutionContract,
     ExecutionRun,
@@ -40,6 +48,23 @@ class StubProvider:
 
     def cancel(self, execution_id: str) -> None:
         return None
+
+
+class ActivityStubProvider(StubProvider):
+    def start_with_activity(
+        self,
+        *,
+        repository: Path,
+        prompt: str,
+        activity_callback: Callable[[dict[str, object]], None],
+    ) -> ProviderStart:
+        activity_callback(
+            {
+                "activity_type": "task_started",
+                "message": "Codex reported task_started",
+            }
+        )
+        return self.start(repository=repository, prompt=prompt)
 
 
 @pytest.fixture
@@ -104,6 +129,7 @@ def test_provider_starts_only_after_consumption(
     assert list(run.events.values_list("sequence", "event_type")) == [
         (1, "PREFLIGHT_COMPLETED"),
         (2, "EXECUTOR_STARTED"),
+        (3, "EXECUTION_ACTIVITY_STARTED"),
     ]
 
 
@@ -139,6 +165,7 @@ def test_start_recovers_an_unbound_starting_run(
     assert list(run.events.values_list("sequence", "event_type")) == [
         (1, "START_RECOVERED"),
         (2, "EXECUTOR_STARTED"),
+        (3, "EXECUTION_ACTIVITY_STARTED"),
     ]
 
 
@@ -169,6 +196,7 @@ def test_start_retries_a_transient_provider_launch_once(
         (1, "PREFLIGHT_COMPLETED"),
         (2, "PROVIDER_START_RETRYING"),
         (3, "EXECUTOR_STARTED"),
+        (4, "EXECUTION_ACTIVITY_STARTED"),
     ]
 
 
@@ -179,7 +207,7 @@ def test_completion_requires_a_real_completed_run(
 ) -> None:
     root, contract, request = consumed_contract
     monkeypatch.setattr(
-        "projects.execution.provider", lambda identity=None: StubProvider()
+        "projects.execution.provider", lambda identity=None: ActivityStubProvider()
     )
     run = start_run(contract, request, root)
     completion: dict[str, object] = {
@@ -224,3 +252,83 @@ def test_read_only_audit_cannot_report_a_repository_mutation(
 
 def test_secret_filter_removes_credential_named_fields() -> None:
     assert _safe_details({"token": "x", "message": "okay"}) == {"message": "okay"}
+    assert _safe_details({"message": "Bearer xyz"}) == {"message": "[redacted]"}
+
+
+@pytest.mark.django_db
+def test_activity_summary_is_derived_from_canonical_run_and_events(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: ActivityStubProvider()
+    )
+    run = start_run(contract, request, root)
+
+    summary = activity_summary(run)
+
+    assert summary["phase"] == "EXECUTING"
+    assert len(summary["checklist"]) == 8
+    assert (
+        next(item for item in summary["checklist"] if item["id"] == "execution")[
+            "status"
+        ]
+        == "IN_PROGRESS"
+    )
+    event = event_view(run.events.get(event_type="EXECUTOR_STARTED"))
+    assert event["actor"] == "Codex"
+    assert event["title"] == "Codex execution started"
+    provider_event = event_view(run.events.get(event_type="PROVIDER_OUTPUT"))
+    assert provider_event["details"] == {
+        "activity_type": "task_started",
+        "message": "Codex reported task_started",
+    }
+
+
+@pytest.mark.django_db
+def test_repair_gate_rerun_updates_the_derived_activity_checklist(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: ActivityStubProvider()
+    )
+    run = start_run(contract, request, root)
+
+    assert repair_failure(run, "ruff check failed") == "build/lint/type defect"
+    repairing = activity_summary(run)
+    assert (
+        next(item for item in repairing["checklist"] if item["id"] == "repair")[
+            "status"
+        ]
+        == "FAILED_REPAIRING"
+    )
+
+    record_gate_rerun(run, "ruff check .", passed=True)
+    run.refresh_from_db()
+    summary = activity_summary(run)
+    assert run.gate_rerun_count == 1
+    assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert (
+        next(item for item in summary["checklist"] if item["id"] == "repair")["status"]
+        == "COMPLETED"
+    )
+    assert list(
+        run.events.filter(
+            event_type__in={
+                "ROOT_CAUSE_IDENTIFIED",
+                "REPAIR_APPLIED",
+                "GATE_RERUN_STARTED",
+                "GATE_RERUN_PASSED",
+                "REPAIR_VERIFIED",
+            }
+        ).values_list("event_type", flat=True)
+    ) == [
+        "ROOT_CAUSE_IDENTIFIED",
+        "REPAIR_APPLIED",
+        "GATE_RERUN_STARTED",
+        "GATE_RERUN_PASSED",
+        "REPAIR_VERIFIED",
+    ]

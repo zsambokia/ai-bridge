@@ -23,6 +23,7 @@ from .contracts import (
     validate_execution_contract,
 )
 from .execution import add_event, complete_run, provider, start_run
+from .execution_activity import activity_summary, event_view
 from .mcp import invoke_operation
 from .models import (
     ConversationOrchestration,
@@ -48,7 +49,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-27.1"
+TOOL_SURFACE_VERSION = "2026-07-28.1"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -281,6 +282,13 @@ _TOOLS = [
     _tool(
         "execution.list_events",
         "List ordered bounded events for one execution run.",
+        READ_ONLY,
+        {"execution_token": {"type": "string"}},
+        ["execution_token"],
+    ),
+    _tool(
+        "execution.get_activity_summary",
+        "Read the canonical live execution activity and derived checklist.",
         READ_ONLY,
         {"execution_token": {"type": "string"}},
         ["execution_token"],
@@ -1634,6 +1642,7 @@ def invoke_public_tool(
         elif name in {
             "execution.get_run_status",
             "execution.list_events",
+            "execution.get_activity_summary",
             "execution.evidence_summary",
             "execution.cancel",
         }:
@@ -1657,17 +1666,14 @@ def invoke_public_tool(
                 result = {
                     "execution_token": str(run.token),
                     "events": [
-                        {
-                            "sequence": event.sequence,
-                            "type": event.event_type,
-                            "details": event.details,
-                            "created_at": event.created_at.isoformat(),
-                        }
+                        event_view(event)
                         for event in ExecutionProgressEvent.objects.filter(run=run)[
                             :100
                         ]
                     ],
                 }
+            elif name == "execution.get_activity_summary":
+                result = activity_summary(run)
             elif name == "execution.evidence_summary":
                 result = {
                     "execution_token": str(run.token),

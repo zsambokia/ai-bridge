@@ -204,3 +204,19 @@ provider is rejected rather than falling back. The current single-provider
 implementation is intentionally classified as
 `EXECUTION_PROVIDER_IS_HARD_CODED`, not represented as a multi-provider
 capability.
+
+## Sprint 015 real-time DEV execution activity
+
+Sprint 015 adds a safe, live operational view for governed development runs.
+`ExecutionRun` and its append-only progress events remain the only canonical
+state: the checklist, current phase, blocker, diagnosis, repair, and closure
+view are derived from them. During DEV execution Codex JSON output creates
+safe event-type projections as it arrives; raw output and secrets are not
+stored. The same event sequence serves admin diagnostics and the read-only MCP
+activity summary, so ChatGPT cannot receive a separate or invented progress
+story. The Django admin view is read-only and no ASF employee, meeting, or
+channel layer was introduced.
+The repair checklist is verified, not optimistic: a technical failure records
+diagnosis and applied repair, then a persisted gate rerun changes the repair
+item to completed only after that gate passes. DEV console lines and MCP use
+the identical secret-safe event projection.

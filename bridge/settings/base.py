@@ -78,3 +78,6 @@ MCP_PUBLIC_BASE_URL = os.environ.get(
 ).rstrip("/")
 MCP_AUTH_MODE = os.environ.get("MCP_AUTH_MODE", "bearer").strip().lower()
 MCP_API_TOKEN = os.environ.get("MCP_API_TOKEN", "")
+AI_BRIDGE_DEV_EXECUTION_ACTIVITY = os.environ.get(
+    "AI_BRIDGE_DEV_EXECUTION_ACTIVITY", "true"
+).strip().lower() in {"1", "true", "yes", "on"}
