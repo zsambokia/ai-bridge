@@ -87,7 +87,7 @@ credential references, provider audit events, and exact contract-bound Codex
 execution selection. Remote providers require separately configured external
 credentials and are not treated as available merely because a record exists.
 
-### Sprint 015 â€” Real-time DEV execution activity and checklist
+### Sprint 015 — Real-time DEV execution activity and checklist
 
 Implemented under its approved governed Sprint: a secret-safe live activity
 projection over the existing execution event stream, a derived checklist, a
@@ -238,6 +238,51 @@ Required outcomes:
 - proof that technical failure does not become a Product Owner support request;
 - immutable final execution evidence and exact final commit binding.
 
+## Milestone 6A — Epic Decomposition and Ordered Sprint Orchestration
+
+**Goal:** allow Orki to turn one approved Epic into a governed sequence of canonical child Sprints and continue through them without manual recreation of each scope.
+
+Required flow:
+
+```text
+Epic proposal
+→ Product Owner approval
+→ canonical child Sprint proposals
+→ explicit dependency graph
+→ Sprint A confirmation / contract / execution
+→ Engineering Audit and Release Gates PASS
+→ automatic activation of Sprint B
+→ repeat until all child Sprints are COMPLETED
+→ Epic-level audit and completion
+```
+
+Required outcomes:
+
+- canonical Epic record linked to GitHub issue and Project;
+- deterministic decomposition into ordered child Sprint proposals;
+- explicit parent-child and dependency relationships;
+- stable child scope identifiers and proposal hashes;
+- policy inheritance with Sprint-specific acceptance criteria and risk modifiers;
+- automatic readiness transition for the next Sprint only after the previous Sprint passes all required gates;
+- durable continuation across ChatGPT sessions, Bridge restarts, worker restarts, and provider interruptions;
+- Epic progress projection showing current Sprint, completed Sprints, blocked dependencies, and next safe action;
+- no implicit implementation authority from the Epic alone: every executable child still requires a canonical Sprint proposal, confirmation, contract, and execution record;
+- Product Owner escalation only for a genuinely new business decision, scope expansion, governance conflict, or non-recoverable external dependency;
+- technical blockers handled through governed remediation and parent-Sprint resume rather than manual Epic reconstruction.
+
+Acceptance proof:
+
+```text
+Issue #11 Epic approved
+→ Sprint A–D canonical scopes created and dependency-bound
+→ each Sprint executes in order
+→ later Sprints cannot start early
+→ technical interruption is recovered
+→ all child scopes and the Epic reach COMPLETED with evidence
+```
+
+This capability is complementary to Durable Autonomous Execution. Durable workers and recovery keep one execution alive; Epic orchestration keeps a multi-Sprint product intent alive and advancing.
+
 ## Milestone 7 — Complete Governed Execution Loop Proof
 
 **Goal:** prove an end-to-end implementation cycle through the platform on a bounded real application change.
@@ -336,7 +381,6 @@ These may remain part of the long-term product vision, but they must not distrac
    then prove a fresh Work Item through `conversation.confirm` rather than
    `scope.approve`;
 5. review the completed Sprint 009 autonomous execution and repair-loop evidence;
-
 6. retain `SPRINT` and `WORK_ITEM` as the executable hierarchy, `AUDIT` as a
    governed work type, and the exact `codex-cli` provider binding from contract
    generation through consumption and dispatch; dynamic provider management is
@@ -349,7 +393,10 @@ These may remain part of the long-term product vision, but they must not distrac
    smallest sufficient tiered Execution Contract for every implementation,
    repair, migration, and recovery task;
 10. use Bridge-managed canonical Sprint or Work Item scope records for all new
-    executable work; legacy Markdown is read-only history.
+    executable work; legacy Markdown is read-only history;
+11. implement Epic decomposition and ordered Sprint orchestration so one approved
+    Epic can create dependency-bound canonical child Sprints, advance only after
+    PASS gates, survive interruptions, and complete without manual scope recreation.
 
 ## 7. Roadmap success criterion
 
