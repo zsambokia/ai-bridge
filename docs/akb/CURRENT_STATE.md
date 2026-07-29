@@ -315,6 +315,18 @@ interruption cannot leave a stale run indefinitely `RUNNING`. Sprint C
 classification/remediation and Sprint D local-wrapper work remain subsequent
 Epic #11 work.
 
+### Epic #11 corrective recovery-review lifecycle
+
+An unsafe or missing checkpoint remains explicitly inspectable as
+`RECOVERY_REVIEW_REQUIRED`, including the blocker evidence and append-only
+recovery history. The canonical recovery reconciler simultaneously terminalizes
+the associated run as `BLOCKED_EXTERNAL_INPUT`, with terminal state
+`BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE`. This preserves the incident
+record without retaining an `ACTIVE_STATES` slot that would block the next
+same-branch governed execution. The reconciler also performs that transition
+idempotently for legacy review-required jobs that were persisted while their
+run was still active; it does not retry the provider or fabricate completion.
+
 ## External governed-execution lifecycle reconciliation
 
 Evidence-backed external or Factory Development Mode work can be admitted into

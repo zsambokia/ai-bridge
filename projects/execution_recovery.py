@@ -13,7 +13,7 @@ from typing import Callable
 from django.db import transaction
 from django.utils import timezone
 
-from .execution import add_event
+from .execution import ACTIVE_STATES, add_event
 from .models import ExecutionJob, ExecutionRecoveryAttempt, ExecutionRun
 
 MAX_RECOVERY_ATTEMPTS = 3
@@ -61,6 +61,43 @@ def record_checkpoint(
     return locked_job
 
 
+def _terminalize_recovery_review_required(
+    *, run: ExecutionRun, evidence: dict[str, object], observed_at: datetime
+) -> None:
+    """Make an unsafe-recovery decision non-active without losing its evidence.
+
+    A review-required job cannot safely resume, but it must also not retain an
+    active execution slot indefinitely.  The phase and blocker keep the review
+    record discoverable while the lifecycle records a truthful terminal state.
+    """
+    run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    run.current_phase = "RECOVERY_REVIEW_REQUIRED"
+    if not run.current_blocker:
+        run.current_blocker = {
+            "category": "RECOVERY_REVIEW_REQUIRED",
+            "reason": "checkpoint missing, unsafe, or retry limit reached",
+            "evidence": evidence,
+        }
+    run.terminal_state = "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+    run.ended_at = observed_at
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "terminal_state",
+            "ended_at",
+            "updated_at",
+        ]
+    )
+    add_event(
+        run,
+        "RECOVERY_REVIEW_LIFECYCLE_TERMINALIZED",
+        **evidence,
+        terminal_state=run.terminal_state,
+    )
+
+
 def reconcile_execution_jobs(
     *,
     provider_status: Callable[[str, str], str],
@@ -69,6 +106,43 @@ def reconcile_execution_jobs(
     """Inspect stale work and make one durable, bounded recovery decision."""
     observed_at = now if now is not None else timezone.now()
     decisions: list[ExecutionRecoveryAttempt] = []
+
+    # Repair pre-existing review-required jobs created before lifecycle
+    # terminalization was introduced.  This is deliberately idempotent: once
+    # non-active, the job no longer appears in this governed remediation pass.
+    review_candidates = ExecutionJob.objects.select_related("run").filter(
+        status=ExecutionJob.Status.RECOVERY_REVIEW_REQUIRED,
+        run__lifecycle__in=ACTIVE_STATES,
+    )
+    for candidate in review_candidates:
+        with transaction.atomic():
+            job = (
+                ExecutionJob.objects.select_for_update()
+                .select_related("run")
+                .get(pk=candidate.pk)
+            )
+            run = job.run
+            if (
+                job.status != ExecutionJob.Status.RECOVERY_REVIEW_REQUIRED
+                or run.lifecycle not in ACTIVE_STATES
+            ):
+                continue
+            evidence = {
+                "observed_at": observed_at.isoformat(),
+                "recovery_review_required": True,
+                "governed_transition": "TERMINALIZE_REVIEW_REQUIRED",
+            }
+            _terminalize_recovery_review_required(
+                run=run, evidence=evidence, observed_at=observed_at
+            )
+            attempt = ExecutionRecoveryAttempt.objects.create(
+                job=job,
+                outcome=ExecutionRecoveryAttempt.Outcome.NO_ACTION,
+                reason="review-required lifecycle terminalized without retry",
+                evidence=evidence,
+            )
+            decisions.append(attempt)
+
     candidates = ExecutionJob.objects.select_related("run").filter(
         status__in=[ExecutionJob.Status.STARTED, ExecutionJob.Status.LEASED],
         run__lifecycle=ExecutionRun.Lifecycle.RUNNING,
@@ -146,14 +220,13 @@ def reconcile_execution_jobs(
                 add_event(run, "RECOVERY_CHECKPOINT_QUEUED", **evidence)
             else:
                 job.status = ExecutionJob.Status.RECOVERY_REVIEW_REQUIRED
-                run.current_phase = "RECOVERY_REVIEW_REQUIRED"
                 run.current_blocker = {
                     "category": "RECOVERY_REVIEW_REQUIRED",
                     "reason": "checkpoint missing, unsafe, or retry limit reached",
                     "evidence": evidence,
                 }
-                run.save(
-                    update_fields=["current_phase", "current_blocker", "updated_at"]
+                _terminalize_recovery_review_required(
+                    run=run, evidence=evidence, observed_at=observed_at
                 )
                 outcome = ExecutionRecoveryAttempt.Outcome.REVIEW_REQUIRED
                 reason = "provider unavailable and recovery cannot be verified safe"

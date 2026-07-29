@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from django.utils import timezone
 
-from projects.execution import claim_next_job, execute_claimed_job
+from projects.execution import claim_next_job, execute_claimed_job, start_run
 from projects.execution_recovery import reconcile_execution_jobs, record_checkpoint
 from projects.models import (
     ExecutionContract,
@@ -127,6 +127,7 @@ def test_stale_alive_provider_is_queued_for_worker_reattach(
 @pytest.mark.django_db
 def test_missing_checkpoint_requires_recovery_review(
     recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root, contract, request = recovery_consumed_contract
     run = ExecutionRun.objects.create(
@@ -152,7 +153,67 @@ def test_missing_checkpoint_requires_recovery_review(
     run.refresh_from_db()
     assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.REVIEW_REQUIRED
     assert job.status == ExecutionJob.Status.RECOVERY_REVIEW_REQUIRED
+    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
     assert run.current_phase == "RECOVERY_REVIEW_REQUIRED"
+    assert run.current_blocker["category"] == "RECOVERY_REVIEW_REQUIRED"
+    assert run.terminal_state == "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+    assert run.ended_at is not None
+
+    # The historic review decision remains inspectable, but no longer occupies
+    # the per-branch active-execution guard for the next governed request.
+    next_request = ExecutionStartRequest.objects.create(
+        contract=contract, approval=request.approval
+    )
+    monkeypatch.setattr(
+        "projects.execution.provider",
+        lambda identity=None: test_execution.StubProvider(),
+    )
+    next_run = start_run(contract, next_request, root)
+    assert next_run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert next_run.pk != run.pk
+
+
+@pytest.mark.django_db
+def test_legacy_review_required_run_is_terminalized_governedly(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = recovery_consumed_contract
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        provider_execution_id="gone",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        current_phase="RECOVERY_REVIEW_REQUIRED",
+        current_blocker={"category": "RECOVERY_REVIEW_REQUIRED"},
+        evidence_root="docs/evidence/test",
+    )
+    ExecutionJob.objects.create(
+        run=run, status=ExecutionJob.Status.RECOVERY_REVIEW_REQUIRED
+    )
+
+    decisions = reconcile_execution_jobs(
+        provider_status=lambda _name, _id: "MISSING", now=timezone.now()
+    )
+
+    run.refresh_from_db()
+    assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.NO_ACTION
+    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    assert run.current_phase == "RECOVERY_REVIEW_REQUIRED"
+    assert run.events.filter(
+        event_type="RECOVERY_REVIEW_LIFECYCLE_TERMINALIZED"
+    ).exists()
+    assert (
+        reconcile_execution_jobs(
+            provider_status=lambda _name, _id: "MISSING", now=timezone.now()
+        )
+        == []
+    )
 
 
 @pytest.mark.django_db
