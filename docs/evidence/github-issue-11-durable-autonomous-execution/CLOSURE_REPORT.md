@@ -2,12 +2,13 @@
 
 ## Closure state
 
-**EPIC — READY FOR PRODUCT OWNER REVIEW**
+**EPIC #11 — PASS — ACCEPTED**
 
-Sprint A is already `PASS — ACCEPTED` through the canonical external-execution
-lifecycle reconciliation. Sprints B, C, and D were executed in approved
-Factory Development Mode, each reached `PASS — READY FOR PRODUCT OWNER REVIEW`
-after its engineering audit and release gates, and were advanced in order.
+Sprint A is `PASS — ACCEPTED` through canonical external-execution lifecycle
+reconciliation. Sprints B, C, and D were executed in approved Factory
+Development Mode, each passed its engineering audit and release gates, and was
+advanced in order. The Product Owner then accepted Epic #11 and its complete
+evidence chain.
 
 ## Delivered outcome
 
@@ -29,5 +30,6 @@ Issue #11's durable autonomous execution path now has:
 - Sprint D: `docs/evidence/bridge-ai-bridge-sprint-83f73f80-72b7-4df6-a488-1ddeaf113094/`
 
 The final gate transcript is recorded in the respective audit reports and the
-Issue #11 status comments. This report intentionally does not mark the Epic
-as accepted: Product Owner acceptance remains the final governance action.
+Issue #11 status comments. The Product Owner acceptance is recorded in
+`PRODUCT_OWNER_ACCEPTANCE.md`; no follow-on Epic or Sprint is authorized by
+this closure.
