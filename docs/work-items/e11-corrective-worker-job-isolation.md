@@ -32,6 +32,7 @@ approval_reference: product-owner-decision-2026-07-29-epic-11-worker-job-isolati
 created_by: AI_BRIDGE
 created_at: '2026-07-29T00:00:00+00:00'
 updated_at: '2026-07-29T00:00:00+00:00'
+content_hash: 9a9fef164ea048c40e9993918d88dee7b73eae00dad9ac64ddec69a977117b3b
 ---
 
 # Epic #11 Corrective Work Item — Fail the Job, Not the Worker

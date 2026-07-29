@@ -475,6 +475,15 @@ completion evidence. The implementation rejects scope drift and unverified
 pre-existing sessions. The remaining Epic activity is the cross-Sprint
 integration audit and Product Owner review.
 
+## Sprint 1 factory E2E remediation continuation
+
+The bounded recovery continuation preserves the existing canonical provider,
+workspace, checkpoint, and activity-evidence path. It does not add a persistent
+model or Sprint 2 capability. Its completed UI correction makes the durable
+`Run ID` the first `ExecutionRun` admin changelist column; the clean governed
+provider E2E remains subject to the normal consumed-contract and Release Gate
+requirements.
+
 ## Issue #11 Sprint C — automated technical remediation
 
 Sprint C is complete and ready for Product Owner review. It adds the governed

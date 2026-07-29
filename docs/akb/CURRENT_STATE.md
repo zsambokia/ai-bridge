@@ -74,6 +74,12 @@ executable, database mode, maximum disk budget, and provisioning timeout are
 explicit settings. `reconcile_execution_workspaces` performs safe, idempotent
 expiry cleanup without touching the control plane.
 
+The bounded Sprint 1 factory-E2E remediation retains this canonical lifecycle
+and its existing recovery/checkpoint evidence rather than creating a new model
+or alternate persistence path. `ExecutionRun` administration now presents the
+durable `Run ID` as its first changelist data column; the provider token remains
+available as a separate correlation value.
+
 Sprint 014 adds a provider-neutral `ExecutionProvider` registry and append-only
 provider audit history. Codex CLI is seeded as the active execution agent;
 OpenAI, Claude, GitHub, and BigQuery are explicit provider kinds/roles that

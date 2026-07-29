@@ -211,6 +211,13 @@ start/completion events and deletes only a token-owned child of the configured
 workspace root. Provider recovery can reuse a verified retained workspace; an
 invalid workspace never causes a provider launch.
 
+The Sprint 1 factory-E2E remediation keeps this as the only execution and
+recovery path: it adds no persistent model, alternate workspace, or parallel
+event stream. Its operational admin repair exposes the durable primary key as
+the first `ExecutionRun` changelist column, labeled `Run ID`, so a recovery,
+checkpoint, workspace, and activity record can be correlated without treating
+the provider token as the run identifier.
+
 ### Provider event fidelity repair
 
 The Codex adapter reads stdout and stderr independently and treats every line

@@ -193,15 +193,23 @@ def reconcile_execution_jobs(
                 outcome = ExecutionRecoveryAttempt.Outcome.REATTACH
                 reason = "provider remains alive; a new worker may reattach"
                 add_event(run, "RECOVERY_REATTACH_QUEUED", **evidence)
-            elif (
-                checkpoint_is_resumable(job.checkpoint)
-                and job.recovery_attempts < MAX_RECOVERY_ATTEMPTS
-            ):
+            elif job.recovery_attempts < MAX_RECOVERY_ATTEMPTS:
                 job.status = ExecutionJob.Status.RECOVERING
                 job.recovery_attempts += 1
                 job.next_recovery_at = observed_at + timedelta(
                     seconds=RECOVERY_BACKOFF_SECONDS * job.recovery_attempts
                 )
+                recovery_action = (
+                    "RESUME_FROM_CHECKPOINT"
+                    if checkpoint_is_resumable(job.checkpoint)
+                    else "RESTART_FROM_AUTHORITY"
+                )
+                job.provider_attempt_metadata = {
+                    **job.provider_attempt_metadata,
+                    "recovery_action": recovery_action,
+                    "recovery_reason": "provider unavailable",
+                    "recovery_observed_at": observed_at.isoformat(),
+                }
                 run.lifecycle = ExecutionRun.Lifecycle.STARTING
                 run.current_phase = "RECOVERING"
                 run.provider_execution_id = ""
@@ -216,8 +224,19 @@ def reconcile_execution_jobs(
                     ]
                 )
                 outcome = ExecutionRecoveryAttempt.Outcome.RECOVERING
-                reason = "provider unavailable; resumable checkpoint verified"
-                add_event(run, "RECOVERY_CHECKPOINT_QUEUED", **evidence)
+                reason = (
+                    "provider unavailable; resumable checkpoint verified"
+                    if checkpoint_is_resumable(job.checkpoint)
+                    else "provider unavailable; restarting same authoritative run"
+                )
+                add_event(
+                    run,
+                    "RECOVERY_CHECKPOINT_QUEUED"
+                    if checkpoint_is_resumable(job.checkpoint)
+                    else "RECOVERY_RETRY_QUEUED",
+                    recovery_action=recovery_action,
+                    **evidence,
+                )
             else:
                 job.status = ExecutionJob.Status.RECOVERY_REVIEW_REQUIRED
                 run.current_blocker = {

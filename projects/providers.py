@@ -465,7 +465,41 @@ class CodexCliAdapter:
                         args=(stream, activity_callback, stream_name),
                         daemon=True,
                     ).start()
+            Thread(
+                target=self._monitor_activity,
+                args=(process, activity_callback),
+                daemon=True,
+            ).start()
         return ProviderStart(str(process.pid), str(repository))
+
+    @staticmethod
+    def _monitor_activity(
+        process: subprocess.Popen[bytes],
+        activity_callback: Callable[[dict[str, object]], None],
+    ) -> None:
+        """Keep the durable worker lease alive and record the actual exit."""
+        while True:
+            exit_code = process.poll()
+            if exit_code is not None:
+                activity_callback(
+                    {
+                        "event_type": "PROVIDER_COMPLETED",
+                        "provider": "codex-cli",
+                        "provider_event_type": "process.exit",
+                        "message": "Codex provider process exited",
+                        "exit_code": exit_code,
+                    }
+                )
+                return
+            activity_callback(
+                {
+                    "event_type": "PROVIDER_ACTIVITY_RECEIVED",
+                    "provider": "codex-cli",
+                    "provider_event_type": "process.heartbeat",
+                    "message": "Codex provider process remains active",
+                }
+            )
+            time.sleep(20)
 
     @staticmethod
     def _project_activity(

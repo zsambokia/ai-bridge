@@ -362,6 +362,7 @@ class ExecutionProgressEventInline(admin.TabularInline):
 @admin.register(ExecutionRun)
 class ExecutionRunAdmin(admin.ModelAdmin):
     list_display = (
+        "run_id",
         "token",
         "contract",
         "lifecycle",
@@ -382,6 +383,12 @@ class ExecutionRunAdmin(admin.ModelAdmin):
         ("Provider Output (redacted, read-only)", {"fields": ("provider_output",)}),
         ("Raw Events (redacted, read-only)", {"fields": ("raw_events",)}),
     )
+
+    @admin.display(description="Run ID", ordering="id")
+    def run_id(self, obj: ExecutionRun) -> int:
+        """Expose the durable run primary key as the first changelist column."""
+        return obj.pk
+
     inlines = (ExecutionProgressEventInline,)
 
     def has_add_permission(self, request: object) -> bool:

@@ -125,7 +125,7 @@ def test_stale_alive_provider_is_queued_for_worker_reattach(
 
 
 @pytest.mark.django_db
-def test_missing_checkpoint_requires_recovery_review(
+def test_missing_checkpoint_restarts_same_authoritative_run(
     recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -151,11 +151,15 @@ def test_missing_checkpoint_requires_recovery_review(
     decisions = reconcile_execution_jobs(provider_status=lambda _name, _id: "MISSING")
     job.refresh_from_db()
     run.refresh_from_db()
-    assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.REVIEW_REQUIRED
-    assert job.status == ExecutionJob.Status.RECOVERY_REVIEW_REQUIRED
-    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
-    assert run.current_phase == "RECOVERY_REVIEW_REQUIRED"
-    assert run.current_blocker["category"] == "RECOVERY_REVIEW_REQUIRED"
+    assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.RECOVERING
+    assert job.status == ExecutionJob.Status.RECOVERING
+    assert job.provider_attempt_metadata["recovery_action"] == "RESTART_FROM_AUTHORITY"
+    assert run.lifecycle == ExecutionRun.Lifecycle.STARTING
+    assert run.current_phase == "RECOVERING"
+    assert run.current_blocker == {}
+    assert run.ended_at is None
+    assert run.events.filter(event_type="RECOVERY_RETRY_QUEUED").exists()
+    return
     assert run.terminal_state == "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
     assert run.ended_at is not None
 

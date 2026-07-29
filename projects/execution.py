@@ -165,7 +165,10 @@ def heartbeat_job(
     now = timezone.now()
     with transaction.atomic():
         job = ExecutionJob.objects.select_for_update().get(pk=job.pk)
-        if job.status != ExecutionJob.Status.LEASED or job.lease_owner != worker_id:
+        if job.status not in {
+            ExecutionJob.Status.LEASED,
+            ExecutionJob.Status.STARTED,
+        } or job.lease_owner != worker_id:
             raise ValueError("WORKER_LEASE_NOT_OWNED")
         job.last_heartbeat_at = now
         job.lease_expires_at = now + timedelta(seconds=lease_seconds)
@@ -388,6 +391,9 @@ def start_run(
     request: ExecutionStartRequest,
     platform_root: Path,
     audit_event_id: int | None = None,
+    *,
+    worker_id: str | None = None,
+    lease_seconds: int = 120,
 ) -> ExecutionRun:
     """Persist authorization and ownership before an external start is active."""
     if contract.lifecycle not in {
@@ -488,12 +494,18 @@ def start_run(
         run.current_phase = "STARTING"
         run.current_blocker = {}
         run.ended_at = None
+        run.started_at = timezone.now()
+        run.provider_execution_id = ""
+        run.workspace_identifier = ""
         run.save(
             update_fields=[
                 "lifecycle",
                 "current_phase",
                 "current_blocker",
                 "ended_at",
+                "started_at",
+                "provider_execution_id",
+                "workspace_identifier",
                 "updated_at",
             ]
         )
@@ -565,8 +577,28 @@ def start_run(
                 )
 
                 def callback(details: dict[str, object]) -> None:
-                    event_type = str(details.pop("event_type", "PROVIDER_MESSAGE"))
-                    add_event(run, event_type, **details)
+                    projected = dict(details)
+                    event_type = str(projected.pop("event_type", "PROVIDER_MESSAGE"))
+                    add_event(
+                        run, "PROVIDER_ACTIVITY_RECEIVED", activity_type=event_type
+                    )
+                    add_event(run, event_type, **projected)
+                    if event_type == "FILE_CHANGED":
+                        add_event(run, "SOURCE_TREE_CHANGED", **projected)
+                    elif event_type == "TEST_STARTED":
+                        add_event(run, "VALIDATION_STARTED", **projected)
+                    elif event_type == "TEST_RESULT":
+                        add_event(run, "VALIDATION_COMPLETED", **projected)
+                    if worker_id:
+                        try:
+                            heartbeat_job(
+                                ExecutionJob.objects.get(run=run),
+                                worker_id,
+                                lease_seconds,
+                            )
+                        except (ExecutionJob.DoesNotExist, ValueError):
+                            # The callback can outlive a completed or recovered job.
+                            pass
 
                 if callable(start_with_runtime_activity):
                     started = start_with_runtime_activity(
@@ -687,7 +719,12 @@ def execute_claimed_job(
             provider_execution_id=job.run.provider_execution_id,
         )
         return job.run
-    run = start_run(job.run.contract, job.run.start_request, platform_root)
+    run = start_run(
+        job.run.contract,
+        job.run.start_request,
+        platform_root,
+        worker_id=worker_id,
+    )
     job.status = ExecutionJob.Status.STARTED
     job.provider_attempt_metadata = {
         "attempt_count": run.attempt_count,

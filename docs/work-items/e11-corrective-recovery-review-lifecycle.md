@@ -30,7 +30,7 @@ approval_reference: product-owner-decision-2026-07-29-epic-11-corrective-work-it
 created_by: AI_BRIDGE
 created_at: '2026-07-29T00:00:00+00:00'
 updated_at: '2026-07-29T00:00:00+00:00'
-content_hash: 86a2ad8ba91c0e2edf5ea91872d182a62dc7b86c0fbd0fd00b729f1bf73a6d5e
+content_hash: cb3fb08b8daaf727218be1139f9dfcd5408f6ff962f8ea53ea82fe007e592d71
 ---
 
 # Epic #11 Corrective Work Item — Recovery Review Lifecycle
