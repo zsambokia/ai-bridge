@@ -417,6 +417,8 @@ class ExecutableScope(models.Model):
         APPROVED = "APPROVED", "Approved"
         ACTIVE = "ACTIVE", "Active"
         COMPLETED = "COMPLETED", "Completed"
+        RECONCILING = "RECONCILING", "Reconciling external execution"
+        ACCEPTED = "ACCEPTED", "Pass accepted"
         CANCELLED = "CANCELLED", "Cancelled"
         SUPERSEDED = "SUPERSEDED", "Superseded"
 
@@ -438,6 +440,40 @@ class ExecutableScope(models.Model):
 
     class Meta:
         ordering = ["identifier", "version"]
+
+
+class ExternalExecutionReconciliation(models.Model):
+    """Append-only acceptance record for a verified non-provider execution.
+
+    This is deliberately separate from ``ExecutionRun`` and
+    ``ExecutionContract``: it records when already completed Factory or
+    external work is admitted after evidence verification, never a synthetic
+    provider execution.
+    """
+
+    class Status(models.TextChoices):
+        RECONCILING = "RECONCILING", "Reconciling"
+        PASS = "PASS", "Pass"
+        ACCEPTED = "ACCEPTED", "Accepted"
+
+    scope = models.OneToOneField(
+        ExecutableScope,
+        on_delete=models.PROTECT,
+        related_name="external_reconciliation",
+    )
+    status = models.CharField(max_length=16, choices=Status.choices)
+    source_kind = models.CharField(max_length=32)
+    final_commit_sha = models.CharField(max_length=40)
+    evidence_manifest = models.JSONField(default=dict)
+    evidence_digest = models.CharField(max_length=64)
+    engineering_audit_path = models.CharField(max_length=255)
+    acceptance_evidence_path = models.CharField(max_length=255)
+    acceptance_reference = models.CharField(max_length=128)
+    transition_log = models.JSONField(default=list)
+    verification = models.JSONField(default=dict)
+    reconciled_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class ContractConsumption(models.Model):
@@ -794,6 +830,12 @@ class ExecutionJob(models.Model):
         QUEUED = "QUEUED", "Queued"
         LEASED = "LEASED", "Leased"
         STARTED = "STARTED", "Started"
+        RECOVERING = "RECOVERING", "Recovering"
+        RECOVERY_REVIEW_REQUIRED = (
+            "RECOVERY_REVIEW_REQUIRED",
+            "Recovery review required",
+        )
+        COMPLETED = "COMPLETED", "Completed"
         FAILED = "FAILED", "Failed"
 
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
@@ -801,12 +843,87 @@ class ExecutionJob(models.Model):
         ExecutionRun, on_delete=models.PROTECT, related_name="queue_job"
     )
     status = models.CharField(
-        max_length=16, choices=Status.choices, default=Status.QUEUED
+        max_length=32, choices=Status.choices, default=Status.QUEUED
     )
     lease_owner = models.CharField(max_length=128, blank=True)
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     last_heartbeat_at = models.DateTimeField(null=True, blank=True)
     provider_attempt_metadata = models.JSONField(default=dict, blank=True)
+    checkpoint = models.JSONField(default=dict, blank=True)
+    recovery_attempts = models.PositiveIntegerField(default=0)
+    next_recovery_at = models.DateTimeField(null=True, blank=True)
+    reconciliation_evidence = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class ExecutionRecoveryAttempt(models.Model):
+    """Append-only decision record for reconciliation of a durable job."""
+
+    class Outcome(models.TextChoices):
+        REATTACH = "REATTACH", "Reattach worker"
+        RECOVERING = "RECOVERING", "Recovering from checkpoint"
+        REVIEW_REQUIRED = "RECOVERY_REVIEW_REQUIRED", "Recovery review required"
+        NO_ACTION = "NO_ACTION", "No action"
+
+    job = models.ForeignKey(
+        ExecutionJob, on_delete=models.CASCADE, related_name="recovery_history"
+    )
+    outcome = models.CharField(max_length=32, choices=Outcome.choices)
+    reason = models.CharField(max_length=255)
+    evidence = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class TechnicalRemediationLoop(models.Model):
+    """A bounded child remediation that can resume its existing parent run.
+
+    Unlike ``RemediationWorkflow``, this record never issues or consumes an
+    execution contract.  It is limited to repairing an in-scope technical
+    blocker discovered by the already-authorized parent execution.
+    """
+
+    class Classification(models.TextChoices):
+        BUSINESS_DECISION_REQUIRED = (
+            "BUSINESS_DECISION_REQUIRED",
+            "Business decision required",
+        )
+        TECHNICAL_REMEDIATION = "TECHNICAL_REMEDIATION", "Technical remediation"
+        SECURITY_OR_GOVERNANCE_CONFLICT = (
+            "SECURITY_OR_GOVERNANCE_CONFLICT",
+            "Security or governance conflict",
+        )
+        EXTERNAL_DEPENDENCY = "EXTERNAL_DEPENDENCY", "External dependency"
+        NON_RECOVERABLE = "NON_RECOVERABLE", "Non-recoverable"
+
+    class Status(models.TextChoices):
+        REMEDIATING = "REMEDIATING", "Remediating"
+        RESUMED = "RESUMED", "Parent resumed"
+        ESCALATED = "ESCALATED", "Escalated"
+        FAILED = "FAILED", "Repair or gate failed"
+
+    parent_run = models.ForeignKey(
+        "ExecutionRun", on_delete=models.PROTECT, related_name="technical_remediations"
+    )
+    parent_scope = models.ForeignKey(
+        ExecutableScope, on_delete=models.PROTECT, related_name="technical_remediations"
+    )
+    remediation_scope = models.OneToOneField(
+        ExecutableScope, on_delete=models.PROTECT, related_name="remediation_parent"
+    )
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    classification = models.CharField(max_length=40, choices=Classification.choices)
+    gate_name = models.CharField(max_length=128)
+    policy_basis = models.CharField(max_length=1000)
+    evidence_references = models.JSONField(default=list)
+    status = models.CharField(max_length=16, choices=Status.choices)
+    timeline = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

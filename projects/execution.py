@@ -99,17 +99,29 @@ def claim_next_job(worker_id: str, lease_seconds: int) -> ExecutionJob | None:
     with transaction.atomic():
         job = (
             ExecutionJob.objects.select_for_update()
-            .filter(status__in=[ExecutionJob.Status.QUEUED, ExecutionJob.Status.LEASED])
+            .filter(
+                status__in=[
+                    ExecutionJob.Status.QUEUED,
+                    ExecutionJob.Status.LEASED,
+                    ExecutionJob.Status.RECOVERING,
+                ]
+            )
             .filter(
                 models.Q(status=ExecutionJob.Status.QUEUED)
-                | models.Q(lease_expires_at__lt=now)
+                | models.Q(status=ExecutionJob.Status.LEASED, lease_expires_at__lt=now)
+                | models.Q(
+                    status=ExecutionJob.Status.RECOVERING, next_recovery_at__lte=now
+                )
             )
             .order_by("created_at", "id")
             .first()
         )
         if job is None:
             return None
-        reclaimed = job.status == ExecutionJob.Status.LEASED
+        reclaimed = job.status in {
+            ExecutionJob.Status.LEASED,
+            ExecutionJob.Status.RECOVERING,
+        }
         job.status = ExecutionJob.Status.LEASED
         job.lease_owner = worker_id
         job.lease_expires_at = now + timedelta(seconds=lease_seconds)
@@ -435,6 +447,21 @@ def execute_claimed_job(
     """Run a claimed job from the independent worker process only."""
     if job.status != ExecutionJob.Status.LEASED or job.lease_owner != worker_id:
         raise ValueError("WORKER_LEASE_NOT_OWNED")
+    if job.provider_attempt_metadata.get("recovery_action") == "REATTACH":
+        job.status = ExecutionJob.Status.STARTED
+        job.provider_attempt_metadata = {
+            **job.provider_attempt_metadata,
+            "recovery_action": "REATTACHED",
+        }
+        job.save(update_fields=["status", "provider_attempt_metadata", "updated_at"])
+        add_event(
+            job.run,
+            "WORKER_REATTACHED_TO_PROVIDER_EXECUTION",
+            worker=worker_id,
+            provider=job.run.provider_name,
+            provider_execution_id=job.run.provider_execution_id,
+        )
+        return job.run
     run = start_run(job.run.contract, job.run.start_request, platform_root)
     job.status = ExecutionJob.Status.STARTED
     job.provider_attempt_metadata = {

@@ -104,10 +104,12 @@ contract-selected provider. The persistent lease, heartbeat, attempt metadata,
 and event records survive a web-server/Django autoreload or worker loss. Its
 engineering audit and release gates are recorded with the Sprint evidence.
 
-Sprints B, C, and D are not started by this change. They remain sequential
-work: reconciliation/recovery, classified remediation and parent continuation,
-then contract-bound local Codex wrapper integration. Their scopes will be
-created only after the preceding Sprint is accepted.
+Sprint B now supplies the sequential reconciliation/recovery layer: stale
+worker jobs are evaluated from durable lease, heartbeat, provider and checkpoint
+evidence, then reattached, checkpoint-resumed with bounded retries, or placed
+in review-required state. Sprint C remains the next ordered work for classified
+remediation and parent continuation; Sprint D remains the contract-bound local
+Codex wrapper integration.
 
 ### Interrupted approval recovery
 
@@ -445,3 +447,31 @@ remediation and governed executor dispatch; independent validation and
 workflow continuation; and governed deployment, rollback, and end-to-end
 proof. Sprint A establishes the safe decision boundary only; it does not grant
 an LLM execution authority or replace the existing scope and contract lifecycle.
+
+## Lifecycle reconciliation capability
+
+The platform can now canonically admit a previously completed Factory
+Development Mode or external governed execution when, and only when, its final
+commit, scope-bound evidence, PASS engineering audit, and Product Owner
+acceptance can be verified together. This closes a lifecycle-recording gap
+without replaying a provider run or weakening the normal proposal,
+confirmation, contract, and worker path for future Sprints. The capability is
+idempotent and preserves a durable reconciliation audit trail.
+
+## Issue #11 Sprint D: local governed Codex proof
+
+Sprint D completes the local-worker layer of the Durable Autonomous Execution
+Epic. A local Codex process leases only a consumed, hash-bound execution and
+uses the durable queue for heartbeats, checkpoints, interruption recovery, and
+completion evidence. The implementation rejects scope drift and unverified
+pre-existing sessions. The remaining Epic activity is the cross-Sprint
+integration audit and Product Owner review.
+
+## Issue #11 Sprint C — automated technical remediation
+
+Sprint C is complete and ready for Product Owner review. It adds the governed
+technical-remediation loop required for Orki to repair an in-scope technical
+blocker, rerun its invalidated gate, and resume the original parent execution.
+The loop creates an auditable linked Work Item, never a replacement provider
+run or Execution Contract. The next Epic #11 dependency is Sprint D: the local
+Codex wrapper and durable handoff proof.

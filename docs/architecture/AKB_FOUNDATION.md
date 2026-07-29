@@ -74,3 +74,14 @@ Every AKB MCP read/write receives the existing append-only `McpAuditEvent`.
 Its details include operation, context identifiers, non-content input
 reference, approval reference, modified entry ID, package hash where relevant,
 and outcome.
+
+## External execution reconciliation knowledge
+
+When Factory Development Mode or another external governed path has completed
+implementation before Bridge can record a provider lifecycle, the canonical
+knowledge is the verified evidence bundle, final commit, engineering audit,
+and Product Owner acceptance reference. `ExternalExecutionReconciliation`
+stores their digest and the durable `RECONCILING → PASS → ACCEPTED` transition
+trail. It does not infer or synthesize provider history. The corresponding MCP
+audit event gives later assessments an attributable completion fact while a
+changed, missing, or cross-scope evidence input is rejected.

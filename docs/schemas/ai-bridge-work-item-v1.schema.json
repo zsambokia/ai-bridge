@@ -6,7 +6,7 @@
   "properties": {
     "schema": {"const": "ai-bridge-work-item/v1"},
     "scope_kind": {"const": "WORK_ITEM"},
-    "status": {"enum": ["DRAFT", "PROPOSED", "APPROVED", "ACTIVE", "COMPLETED", "CANCELLED", "SUPERSEDED"]},
+    "status": {"enum": ["DRAFT", "PROPOSED", "APPROVED", "ACTIVE", "COMPLETED", "RECONCILING", "ACCEPTED", "CANCELLED", "SUPERSEDED"]},
     "execution_authorization": {"enum": ["NONE", "APPROVED_PROVIDER_EXECUTION"]},
     "created_by": {"const": "AI_BRIDGE"},
     "schema_version": {"const": "1"},

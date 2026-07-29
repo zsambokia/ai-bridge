@@ -1,0 +1,18 @@
+{
+  "scope": "bridge:ai-bridge:sprint:43e4bec0-8174-4bb5-a0f4-62f2f448ff12",
+  "proposal_version": 1,
+  "proposal_hash": "16202358e80becdc3bf9e31049018aaa598e51d93d6ace8cafeb52a402b80498",
+  "result": "PASS — READY FOR PRODUCT OWNER REVIEW",
+  "release_gates": {
+    "migration_plan": "PASS",
+    "scope_validation": "PASS",
+    "django_check": "PASS",
+    "pytest": "PASS (149)",
+    "ruff_check": "PASS",
+    "ruff_format": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "factory_development_mode": true,
+  "provider_execution_started": false
+}

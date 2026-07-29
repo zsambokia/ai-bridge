@@ -304,5 +304,50 @@ starts the job.
 
 The database, rather than Django memory or the autoreloader, owns the queue
 state. An expired worker lease is reclaimable without creating a second run or
-losing the event history. This is the completed Sprint A foundation only;
-Epic #11 Sprints B-D remain ordered, unstarted work.
+losing the event history. Sprint B completes the next ordered layer:
+`reconcile_execution_jobs` evaluates stale worker/provider state and records
+one durable `ExecutionRecoveryAttempt` per decision. An alive provider is
+reattached by a replacement worker without a second provider start. A missing
+provider can resume the same run only from a complete persisted checkpoint,
+using bounded backoff and retry history; absent or unsafe evidence becomes
+`RECOVERY_REVIEW_REQUIRED`. Thus a Django reload, worker loss, or provider
+interruption cannot leave a stale run indefinitely `RUNNING`. Sprint C
+classification/remediation and Sprint D local-wrapper work remain subsequent
+Epic #11 work.
+
+## External governed-execution lifecycle reconciliation
+
+Evidence-backed external or Factory Development Mode work can be admitted into
+the canonical lifecycle without a provider run, an execution contract, or
+synthetic historical runtime events. The reconciliation verifies the registered
+repository, final commit, scope-bound evidence, passing engineering audit and
+Product Owner acceptance; it records an additive transition trail from
+`RECONCILING` through `PASS` to `ACCEPTED`. Identical retries are idempotent,
+while changed or unverifiable input fails closed.
+
+## Sprint C remediation operational knowledge
+
+`TechnicalRemediationLoop` is the durable record for automatic remediation of
+an existing parent execution. It accepts only an explicit
+`TECHNICAL_REMEDIATION` classification, creates a child `WORK_ITEM` bound to
+the parent run and scope, records policy/evidence, and changes the parent to
+`REPAIRING`. Completion is allowed only with fresh evidence and a successful
+rerun of the failed gate; only then does the original run return to `RUNNING`.
+`BUSINESS_DECISION_REQUIRED`, `SECURITY_OR_GOVERNANCE_CONFLICT`,
+`EXTERNAL_DEPENDENCY`, and `NON_RECOVERABLE` are deliberately not automatic.
+The operation is idempotent; changed retry bindings and incomplete evidence
+fail closed. A corrupted published scope file can be re-projected from the
+unchanged canonical record, the bounded repair for a deterministic
+published-content-hash mismatch.
+
+## Sprint D local Codex operational knowledge
+
+Use `prepare_local_codex` (or the `prepare_local_codex` management command)
+only with an existing execution token, worker identifier, and the Bridge
+platform root. It does not start Codex: it verifies the consumed contract and
+scope bindings, then records a durable lease for the exact queued run. Local
+workers must heartbeat and checkpoint through the wrapper. On interruption,
+the same job enters the established recovery controller; never create another
+run or provider execution. Completion requires a verified local Git HEAD and
+non-empty evidence manifest. Arbitrary pre-existing local sessions are
+explicitly audited as `UNVERIFIED` and cannot be attached.

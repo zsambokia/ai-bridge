@@ -95,7 +95,13 @@ def _scope_for_contract(contract: ExecutionContract) -> ExecutableScope:
         # repositories share a filesystem.
         "content": render_scope(scope),
     }
-    for key in ("identifier", "path", "content_hash", "approval_reference"):
+    for key in (
+        "identifier",
+        "path",
+        "content_hash",
+        "proposal_hash",
+        "approval_reference",
+    ):
         if declared.get(key) != authorized.get(key):
             raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_BINDING_MISMATCH")
     if declared.get("content") != render_scope(scope):
