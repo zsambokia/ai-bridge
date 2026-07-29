@@ -11,7 +11,13 @@ from typing import Any
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from projects.execution import claim_next_job, execute_claimed_job, heartbeat_job
+from projects.execution import (
+    claim_next_job,
+    execute_claimed_job,
+    heartbeat_job,
+    is_non_retryable_execution_failure,
+    reject_claimed_job,
+)
 
 
 class Command(BaseCommand):
@@ -22,14 +28,25 @@ class Command(BaseCommand):
         parser.add_argument("--worker-id", default=f"worker:{socket.gethostname()}")
         parser.add_argument("--lease-seconds", type=int, default=120)
         parser.add_argument("--poll-seconds", type=float, default=2.0)
+        parser.add_argument(
+            "--max-jobs",
+            type=int,
+            default=0,
+            help="Exit after this many claimed jobs; 0 keeps the worker supervised.",
+        )
 
     def handle(self, *args: object, **options: Any) -> None:
         worker_id = str(options["worker_id"])
         lease_seconds = int(options["lease_seconds"])
         poll_seconds = float(options["poll_seconds"])
         once = bool(options["once"])
-        if lease_seconds <= 0 or poll_seconds <= 0:
-            raise CommandError("--lease-seconds and --poll-seconds must be positive.")
+        max_jobs = int(options["max_jobs"])
+        if lease_seconds <= 0 or poll_seconds <= 0 or max_jobs < 0:
+            raise CommandError(
+                "--lease-seconds and --poll-seconds must be positive; "
+                "--max-jobs cannot be negative."
+            )
+        processed_jobs = 0
 
         while True:
             try:
@@ -46,7 +63,20 @@ class Command(BaseCommand):
                 heartbeat_job(job, worker_id, lease_seconds)
                 run = execute_claimed_job(job, worker_id, Path(settings.BASE_DIR))
             except ValueError as exc:
+                if is_non_retryable_execution_failure(exc):
+                    rejected = reject_claimed_job(job, worker_id, exc)
+                    self.stdout.write(
+                        self.style.WARNING(
+                            "Rejected execution "
+                            f"{rejected.run.token}: {exc}. Continuing worker."
+                        )
+                    )
+                    processed_jobs += 1
+                    if once or (max_jobs and processed_jobs >= max_jobs):
+                        return
+                    continue
                 raise CommandError(str(exc)) from exc
             self.stdout.write(self.style.SUCCESS(f"Started execution {run.token}."))
-            if once:
+            processed_jobs += 1
+            if once or (max_jobs and processed_jobs >= max_jobs):
                 return

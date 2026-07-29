@@ -327,6 +327,18 @@ same-branch governed execution. The reconciler also performs that transition
 idempotently for legacy review-required jobs that were persisted while their
 run was still active; it does not retry the provider or fabricate completion.
 
+### Epic #11 corrective worker job isolation
+
+An immutable contract, scope, or governance validation failure at the execution
+boundary is a job-level decision, not a reason to terminate the independent
+worker. The worker preserves strict pre-provider validation, classifies only
+known non-retryable contract/governance failures, persists the affected job as
+`REJECTED`, clears its lease, and records structured evidence plus an append-
+only rejection event. Its associated run is terminalized as
+`FAILED_GOVERNANCE`, so it cannot occupy an active-execution slot. The same
+worker then continues to the next queued item. Unclassified errors remain
+fail-closed and are not silently downgraded to rejections.
+
 ## External governed-execution lifecycle reconciliation
 
 Evidence-backed external or Factory Development Mode work can be admitted into

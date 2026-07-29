@@ -26,7 +26,9 @@ from projects.execution import (
     complete_run,
     enqueue_run,
     execute_claimed_job,
+    is_non_retryable_execution_failure,
     record_gate_rerun,
+    reject_claimed_job,
     repair_failure,
     start_run,
 )
@@ -36,6 +38,7 @@ from projects.execution_activity import (
     heartbeat_projection,
 )
 from projects.models import (
+    ExecutableScope,
     ExecutionContract,
     ExecutionJob,
     ExecutionRun,
@@ -478,3 +481,128 @@ def test_worker_command_starts_a_queued_job_outside_the_web_process(
     assert job.status == ExecutionJob.Status.STARTED
     assert job.run.lifecycle == ExecutionRun.Lifecycle.RUNNING
     assert str(job.run.token) in stdout.getvalue()
+
+
+@pytest.mark.django_db
+def test_invalid_contract_is_rejected_without_provider_or_reclaim(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = consumed_contract
+    job = enqueue_run(contract, request, root)
+    payload = contract.payload.copy()
+    payload["approved_scope"] = payload["approved_scope"].copy()
+    del payload["approved_scope"]["proposal_hash"]
+    contract.payload = payload
+    contract.contract_hash = _normalized_hash(payload)
+    contract.save(update_fields=["payload", "contract_hash"])
+
+    claimed = claim_next_job("worker-a", 60)
+    assert claimed is not None
+    with pytest.raises(
+        ValueError, match="CONTRACT_INTEGRITY_FAILURE:SCOPE_BINDING_MISMATCH"
+    ) as raised:
+        execute_claimed_job(claimed, "worker-a", root)
+    assert is_non_retryable_execution_failure(raised.value)
+    reject_claimed_job(claimed, "worker-a", raised.value)
+
+    job.refresh_from_db()
+    job.run.refresh_from_db()
+    assert job.status == ExecutionJob.Status.REJECTED
+    assert job.lease_owner == ""
+    assert job.lease_expires_at is None
+    assert job.run.lifecycle == ExecutionRun.Lifecycle.FAILED_GOVERNANCE
+    assert job.run.provider_execution_id == ""
+    assert job.run.events.filter(event_type="EXECUTION_JOB_REJECTED").exists()
+    assert job.reconciliation_evidence[-1]["retryable"] is False
+    assert claim_next_job("worker-b", 60) is None
+
+
+@pytest.mark.django_db
+def test_worker_continues_from_rejected_contract_to_next_valid_job(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, invalid_contract, invalid_request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    monkeypatch.setattr(
+        "projects.management.commands.run_execution_worker.settings.BASE_DIR", root
+    )
+    invalid_job = enqueue_run(invalid_contract, invalid_request, root)
+    invalid_payload = invalid_contract.payload.copy()
+    invalid_payload["approved_scope"] = invalid_payload["approved_scope"].copy()
+    del invalid_payload["approved_scope"]["proposal_hash"]
+    invalid_contract.payload = invalid_payload
+    invalid_contract.contract_hash = _normalized_hash(invalid_payload)
+    invalid_contract.save(update_fields=["payload", "contract_hash"])
+
+    scope = ExecutableScope.objects.get(
+        identifier=invalid_payload["approved_scope"]["identifier"]
+    )
+    second_invalid_contract = generate_scope_execution_contract(scope, root)
+    second_invalid_contract = issue_execution_contract(
+        validate_execution_contract(second_invalid_contract, root), root
+    )
+    second_invalid_contract = consume_execution_contract(
+        second_invalid_contract,
+        root,
+        expected_hash=second_invalid_contract.contract_hash,
+        provider_identity="codex-cli",
+        observed_baseline="a" * 40,
+        schema_version="2.0",
+        idempotency_key="run-011",
+    )
+    second_invalid_request = ExecutionStartRequest.objects.create(
+        contract=second_invalid_contract, approval=invalid_request.approval
+    )
+    second_invalid_job = enqueue_run(
+        second_invalid_contract, second_invalid_request, root
+    )
+    second_invalid_payload = second_invalid_contract.payload.copy()
+    second_invalid_payload["approved_scope"] = second_invalid_payload[
+        "approved_scope"
+    ].copy()
+    del second_invalid_payload["approved_scope"]["proposal_hash"]
+    second_invalid_contract.payload = second_invalid_payload
+    second_invalid_contract.contract_hash = _normalized_hash(second_invalid_payload)
+    second_invalid_contract.save(update_fields=["payload", "contract_hash"])
+
+    valid_contract = generate_scope_execution_contract(scope, root)
+    valid_contract = issue_execution_contract(
+        validate_execution_contract(valid_contract, root), root
+    )
+    valid_contract = consume_execution_contract(
+        valid_contract,
+        root,
+        expected_hash=valid_contract.contract_hash,
+        provider_identity="codex-cli",
+        observed_baseline="a" * 40,
+        schema_version="2.0",
+        idempotency_key="run-012",
+    )
+    valid_request = ExecutionStartRequest.objects.create(
+        contract=valid_contract, approval=invalid_request.approval
+    )
+    valid_job = enqueue_run(valid_contract, valid_request, root)
+
+    stdout = StringIO()
+    call_command(
+        "run_execution_worker",
+        "--max-jobs",
+        "3",
+        "--worker-id",
+        "worker-command",
+        stdout=stdout,
+    )
+
+    invalid_job.refresh_from_db()
+    second_invalid_job.refresh_from_db()
+    valid_job.refresh_from_db()
+    assert invalid_job.status == ExecutionJob.Status.REJECTED
+    assert invalid_job.run.provider_execution_id == ""
+    assert second_invalid_job.status == ExecutionJob.Status.REJECTED
+    assert second_invalid_job.run.provider_execution_id == ""
+    assert valid_job.status == ExecutionJob.Status.STARTED
+    assert valid_job.run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert "Continuing worker" in stdout.getvalue()

@@ -45,6 +45,19 @@ ACTIVE_STATES = {
 SECRET_MARKERS = ("token", "secret", "password", "authorization", "bearer")
 MAX_PROVIDER_START_ATTEMPTS = 2
 
+# These are immutable-authority failures.  Re-running the same claimed job
+# cannot make them true, so retrying would only reclaim it forever.  Keep this
+# intentionally closed: unknown failures still surface to the worker process
+# instead of being mistaken for safe job-level rejections.
+NON_RETRYABLE_EXECUTION_FAILURE_PREFIXES = (
+    "CONTRACT_INTEGRITY_FAILURE:",
+    "CONTRACT_AUTHORITY_REQUIRED",
+    "CONTRACT_NOT_CONSUMED",
+    "CONSUMPTION_RECEIPT_REQUIRED",
+    "EXECUTION_REQUEST_CONTRACT_MISMATCH",
+    "LEGACY_CONTRACT_NOT_EXECUTABLE",
+)
+
 
 def enqueue_run(
     contract: ExecutionContract,
@@ -157,6 +170,92 @@ def heartbeat_job(
         job.save(update_fields=["last_heartbeat_at", "lease_expires_at", "updated_at"])
     add_event(job.run, "WORKER_HEARTBEAT", worker=worker_id)
     return job
+
+
+def is_non_retryable_execution_failure(error: ValueError) -> bool:
+    """Return whether a claimed job has permanently invalid authority.
+
+    This deliberately does not classify lease ownership, provider readiness,
+    or unknown runtime errors.  Those conditions require their existing
+    recovery or operator paths and must never be silently converted to a
+    rejection.
+    """
+    return str(error).startswith(NON_RETRYABLE_EXECUTION_FAILURE_PREFIXES)
+
+
+def reject_claimed_job(
+    job: ExecutionJob, worker_id: str, error: ValueError
+) -> ExecutionJob:
+    """Durably reject one invalid claimed job without starting a provider."""
+    if not is_non_retryable_execution_failure(error):
+        raise ValueError("REJECTION_REQUIRES_NON_RETRYABLE_EXECUTION_FAILURE")
+    reason = str(error)
+    now = timezone.now()
+    with transaction.atomic():
+        locked_job = (
+            ExecutionJob.objects.select_for_update()
+            .select_related("run", "run__contract")
+            .get(pk=job.pk)
+        )
+        if (
+            locked_job.status != ExecutionJob.Status.LEASED
+            or locked_job.lease_owner != worker_id
+        ):
+            raise ValueError("WORKER_LEASE_NOT_OWNED")
+        run = locked_job.run
+        evidence = {
+            "recorded_at": now.isoformat(),
+            "classification": "NON_RETRYABLE_CONTRACT_OR_GOVERNANCE_FAILURE",
+            "reason": reason,
+            "retryable": False,
+            "worker": worker_id,
+            "contract_id": run.contract_id,
+            "contract_hash": run.contract_hash,
+            "provider_started": False,
+        }
+        locked_job.status = ExecutionJob.Status.REJECTED
+        locked_job.lease_owner = ""
+        locked_job.lease_expires_at = None
+        locked_job.next_recovery_at = None
+        locked_job.reconciliation_evidence = [
+            *locked_job.reconciliation_evidence,
+            evidence,
+        ]
+        locked_job.save(
+            update_fields=[
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "next_recovery_at",
+                "reconciliation_evidence",
+                "updated_at",
+            ]
+        )
+        run.lifecycle = ExecutionRun.Lifecycle.FAILED_GOVERNANCE
+        run.current_phase = "CONTRACT_REJECTED"
+        run.current_blocker = {
+            "category": "non-retryable contract or governance failure",
+            "reason": reason,
+            "evidence": evidence,
+        }
+        run.terminal_state = "REJECTED — NON-RETRYABLE CONTRACT INTEGRITY FAILURE"
+        run.ended_at = now
+        run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "terminal_state",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+    add_event(
+        run,
+        "EXECUTION_JOB_REJECTED",
+        **evidence,
+    )
+    return locked_job
 
 
 class ExecutionProvider(Protocol):

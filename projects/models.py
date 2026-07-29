@@ -835,6 +835,7 @@ class ExecutionJob(models.Model):
             "RECOVERY_REVIEW_REQUIRED",
             "Recovery review required",
         )
+        REJECTED = "REJECTED", "Rejected"
         COMPLETED = "COMPLETED", "Completed"
         FAILED = "FAILED", "Failed"
 
