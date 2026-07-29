@@ -65,6 +65,8 @@ def test_local_worker_is_contract_bound_and_visible_after_reload(
 
     assert reloaded.pk == job.pk
     assert reloaded.status == ExecutionJob.Status.LEASED
+    assert reloaded.last_heartbeat_at is not None
+    assert renewed.last_heartbeat_at is not None
     assert renewed.last_heartbeat_at >= reloaded.last_heartbeat_at
     contract.refresh_from_db()
     assert contract.lifecycle == ExecutionContract.Lifecycle.RUNNING
