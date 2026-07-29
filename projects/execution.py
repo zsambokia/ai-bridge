@@ -21,6 +21,7 @@ from .models import (
     ExecutionProgressEvent,
     ExecutionRun,
     ExecutionStartRequest,
+    ExecutionWorkspace,
 )
 from .models import ExecutionProvider as ExecutionProviderRecord
 from .provider_events import redact_value
@@ -33,6 +34,7 @@ from .providers import (
     select_provider,
 )
 from .services import project_repository_root
+from .workspace import WorkspaceError, WorkspaceManager
 
 ACTIVE_STATES = {
     ExecutionRun.Lifecycle.REQUESTED,
@@ -258,6 +260,45 @@ def reject_claimed_job(
     return locked_job
 
 
+def fail_claimed_job(job: ExecutionJob, worker_id: str, reason: str) -> ExecutionJob:
+    """Terminalize one execution failure while keeping the worker available."""
+    with transaction.atomic():
+        locked = (
+            ExecutionJob.objects.select_for_update()
+            .select_related("run")
+            .get(pk=job.pk)
+        )
+        if (
+            locked.status != ExecutionJob.Status.LEASED
+            or locked.lease_owner != worker_id
+        ):
+            raise ValueError("WORKER_LEASE_NOT_OWNED")
+        locked.status = ExecutionJob.Status.FAILED
+        locked.lease_owner = ""
+        locked.lease_expires_at = None
+        locked.save(
+            update_fields=["status", "lease_owner", "lease_expires_at", "updated_at"]
+        )
+        locked.run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+        locked.run.current_phase = "WORKSPACE_FAILED"
+        locked.run.current_blocker = {
+            "category": "WORKSPACE_PROVISIONING_FAILED",
+            "reason": reason,
+        }
+        locked.run.ended_at = timezone.now()
+        locked.run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+    add_event(locked.run, "WORKSPACE_PROVISIONING_FAILED", reason=reason)
+    return locked
+
+
 class ExecutionProvider(Protocol):
     name: str
 
@@ -460,6 +501,46 @@ def start_run(
             run, "START_RECOVERED", reason="resuming persisted queued or blocked run"
         )
 
+    manager = WorkspaceManager()
+    try:
+        add_event(run, "WORKSPACE_REQUESTED")
+        add_event(run, "WORKSPACE_PROVISIONING_STARTED")
+        workspace = manager.provision(run)
+        if getattr(workspace, "_was_reused", False):
+            add_event(run, "WORKSPACE_REUSED", workspace_id=str(workspace.token))
+        add_event(run, "WORKSPACE_REPOSITORY_READY", workspace_id=str(workspace.token))
+        add_event(run, "WORKSPACE_VENV_READY", workspace_id=str(workspace.token))
+        add_event(
+            run, "WORKSPACE_DEPENDENCIES_READY", workspace_id=str(workspace.token)
+        )
+        add_event(run, "WORKSPACE_DATABASE_READY", workspace_id=str(workspace.token))
+        add_event(
+            run,
+            "APPLICATION_DATABASE_CREATED",
+            workspace_id=str(workspace.token),
+        )
+        add_event(run, "APPLICATION_MIGRATED", workspace_id=str(workspace.token))
+        seed_state = getattr(workspace, "seed_state", {})
+        add_event(
+            run,
+            "APPLICATION_SEEDED"
+            if seed_state.get("status") == "APPLIED"
+            else "APPLICATION_SEED_SKIPPED",
+            workspace_id=str(workspace.token),
+        )
+        services = getattr(workspace, "runtime_services", [])
+        add_event(
+            run,
+            "RUNTIME_SERVICES_STARTED" if services else "RUNTIME_SERVICES_SKIPPED",
+            workspace_id=str(workspace.token),
+        )
+        descriptor = manager.descriptor(workspace, run)
+        add_event(run, "WORKSPACE_PREFLIGHT_PASSED", workspace_id=str(workspace.token))
+        add_event(run, "WORKSPACE_READY", workspace_id=str(workspace.token))
+    except WorkspaceError as exc:
+        add_event(run, "WORKSPACE_PROVISIONING_FAILED", reason=str(exc))
+        raise ValueError("WORKSPACE_PROVISIONING_FAILED") from exc
+
     started: ProviderStart | None = None
     failure: Exception | None = None
     for attempt in range(1, MAX_PROVIDER_START_ATTEMPTS + 1):
@@ -469,29 +550,53 @@ def start_run(
             readiness = check_health(provider_record)
             if readiness["status"] != "HEALTHY":
                 raise ValueError("CODEX_RUNTIME_NOT_READY")
+            start_with_runtime_activity = getattr(
+                selected_provider, "start_with_runtime_activity", None
+            )
             start_with_activity = getattr(
                 selected_provider, "start_with_activity", None
             )
-            if callable(start_with_activity):
+            if callable(start_with_runtime_activity) or callable(start_with_activity):
                 add_event(
                     run,
                     "PROVIDER_STARTED",
                     provider=run.provider_name,
                     message="Codex provider launch started",
                 )
-                started = start_with_activity(
-                    repository=workspace_root,
-                    prompt=_prompt(contract),
-                    activity_callback=lambda details: add_event(
-                        run,
-                        str(details.pop("event_type", "PROVIDER_MESSAGE")),
-                        **details,
-                    ),
-                )
+
+                def callback(details: dict[str, object]) -> None:
+                    event_type = str(details.pop("event_type", "PROVIDER_MESSAGE"))
+                    add_event(run, event_type, **details)
+
+                if callable(start_with_runtime_activity):
+                    started = start_with_runtime_activity(
+                        runtime=descriptor,
+                        prompt=_prompt(contract),
+                        activity_callback=callback,
+                    )
+                elif callable(start_with_activity):
+                    started = start_with_activity(
+                        repository=Path(str(descriptor["repository_root"])),
+                        prompt=_prompt(contract),
+                        activity_callback=callback,
+                    )
+                else:
+                    raise ValueError("PROVIDER_ACTIVITY_START_UNAVAILABLE")
             else:
-                started = selected_provider.start(
-                    repository=workspace_root, prompt=_prompt(contract)
+                start_with_runtime = getattr(
+                    selected_provider, "start_with_runtime", None
                 )
+                if callable(start_with_runtime):
+                    started = start_with_runtime(
+                        runtime=descriptor, prompt=_prompt(contract)
+                    )
+                else:
+                    # Test and third-party legacy adapters remain supported while
+                    # the canonical Codex adapter consumes the full descriptor.
+                    started = selected_provider.start(
+                        repository=Path(str(descriptor["repository_root"])),
+                        prompt=_prompt(contract),
+                    )
             break
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             failure = exc
@@ -529,6 +634,8 @@ def start_run(
             reason=failure_text[:100],
             readiness_invalidated=True,
         )
+        manager.retain(workspace, run)
+        add_event(run, "WORKSPACE_RETAINED", workspace_id=str(workspace.token))
         raise ValueError("EXECUTOR_START_FAILED") from failure
     run.provider_execution_id = started.execution_id
     run.workspace_identifier = started.workspace_identifier
@@ -542,6 +649,10 @@ def start_run(
             "current_phase",
             "updated_at",
         ]
+    )
+    manager.mark_in_use(
+        workspace,
+        int(started.execution_id) if started.execution_id.isdigit() else None,
     )
     add_event(
         run,
@@ -680,6 +791,23 @@ def complete_run(
             "updated_at",
         ]
     )
+    try:
+        workspace = run.workspace
+    except ExecutionWorkspace.DoesNotExist:
+        workspace = None
+    if workspace is not None:
+        manager = WorkspaceManager()
+        mark_validating = getattr(manager, "mark_validating", None)
+        if callable(mark_validating):
+            mark_validating(workspace)
+        shutdown_services = getattr(manager, "shutdown_services", None)
+        if callable(shutdown_services):
+            shutdown_services(workspace)
+            add_event(
+                run, "RUNTIME_SERVICES_STOPPED", workspace_id=str(workspace.token)
+            )
+        manager.retain(workspace, run)
+        add_event(run, "WORKSPACE_RETAINED", workspace_id=str(workspace.token))
     add_event(run, "EXECUTION_COMPLETED", final_commit_sha=final_commit_sha)
     return run
 

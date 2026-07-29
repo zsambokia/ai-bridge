@@ -46,6 +46,20 @@ class Project(models.Model):
         return self.project_id
 
 
+class RuntimeBootstrapProfile(models.Model):
+    """Project-owned recipe for a reproducible managed development runtime."""
+
+    project = models.OneToOneField(
+        Project, on_delete=models.PROTECT, related_name="runtime_bootstrap_profile"
+    )
+    database = models.JSONField(default=dict, blank=True)
+    seed_command = models.JSONField(default=list, blank=True)
+    services = models.JSONField(default=list, blank=True)
+    environment = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class OrchestrationSession(models.Model):
     """Durable, bounded model-assessment state; never execution authority."""
 
@@ -812,6 +826,58 @@ class ExecutionRun(models.Model):
     )
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class ExecutionWorkspace(models.Model):
+    """Durable, one-to-one isolated filesystem ownership for an execution run."""
+
+    class Status(models.TextChoices):
+        REQUESTED = "REQUESTED", "Requested"
+        PROVISIONING = "PROVISIONING", "Provisioning"
+        READY = "READY", "Ready"
+        IN_USE = "IN_USE", "In use"
+        VALIDATING = "VALIDATING", "Validating"
+        RETAINED = "RETAINED", "Retained"
+        CLEANUP_PENDING = "CLEANUP_PENDING", "Cleanup pending"
+        CLEANED = "CLEANED", "Cleaned"
+        FAILED = "FAILED", "Failed"
+
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    run = models.OneToOneField(
+        ExecutionRun, on_delete=models.PROTECT, related_name="workspace"
+    )
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.REQUESTED
+    )
+    root_path = models.CharField(max_length=1024, blank=True)
+    repository_path = models.CharField(max_length=1024, blank=True)
+    repository_url = models.CharField(max_length=512, blank=True)
+    base_branch = models.CharField(max_length=255, blank=True)
+    base_commit_sha = models.CharField(max_length=64, blank=True)
+    base_ref = models.CharField(max_length=255, blank=True)
+    venv_path = models.CharField(max_length=1024, blank=True)
+    python_executable = models.CharField(max_length=1024, blank=True)
+    environment = models.JSONField(default=dict, blank=True)
+    database_profile = models.JSONField(default=dict, blank=True)
+    runtime_profile = models.JSONField(default=dict, blank=True)
+    migration_state = models.JSONField(default=dict, blank=True)
+    seed_state = models.JSONField(default=dict, blank=True)
+    runtime_services = models.JSONField(default=list, blank=True)
+    dependency_fingerprint = models.CharField(max_length=64, blank=True)
+    provider_pid = models.PositiveIntegerField(null=True, blank=True)
+    provisioned_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    retention_until = models.DateTimeField(null=True, blank=True)
+    cleanup_started_at = models.DateTimeField(null=True, blank=True)
+    cleaned_at = models.DateTimeField(null=True, blank=True)
+    failure_code = models.CharField(max_length=128, blank=True)
+    failure_details = models.JSONField(default=dict, blank=True)
+    cleanup_manifest = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -178,6 +178,39 @@ It is retained because `execution.get_run_status` and `execution.list_events`
 cannot provide one bounded, continuously recomputed checklist without making
 every client reproduce Bridge lifecycle semantics.
 
+## Issue #14 isolated execution workspace
+
+Issue #14 adds one durable `ExecutionWorkspace` for each `ExecutionRun`.  It
+is the sole owner of provider filesystem state and moves through
+`REQUESTED → PROVISIONING → READY → IN_USE → VALIDATING → RETAINED →
+CLEANUP_PENDING → CLEANED`; a provisioning or verification failure is recorded
+as `FAILED` and retained for inspection.  The worker provisions and verifies
+this record before it starts a provider, so a provider never receives the
+control-plane checkout as its working directory.
+
+`WorkspaceManager` resolves a `RuntimeBootstrapProfile` owned by the canonical
+Project; it is not a worker-specific hard-coded recipe. It resolves only
+configured workspace/cache roots outside the Bridge checkout, mirrors the
+repository, checks out the contract baseline, creates a virtual environment,
+installs declared dependencies, creates and migrates a workspace-local
+application database, applies a declared seed command or records `SKIPPED`, and
+starts declared services in profile order with optional health checks. The
+current safe built-in profile uses SQLite; the persisted database profile keeps
+the extension boundary explicit. It emits a complete runtime descriptor (cwd,
+repository root and URL, baseline, Python/venv, environment, application
+database, migration and seed state, runtime services, health state, workspace
+ID, and execution token). The Codex adapter accepts that descriptor only after
+validation and launches inside its repository root.
+
+All paths are checked before cleanup. Normal completion stops profile-owned
+services before retention. Normal completed workspaces are retained for three
+hours, failed workspaces for the configured 24-hour default, and blocked or
+recovery-review workspaces indefinitely. The reconciliation command `manage.py
+reconcile_execution_workspaces` is idempotent: it records cleanup
+start/completion events and deletes only a token-owned child of the configured
+workspace root. Provider recovery can reuse a verified retained workspace; an
+invalid workspace never causes a provider launch.
+
 ### Provider event fidelity repair
 
 The Codex adapter reads stdout and stderr independently and treats every line

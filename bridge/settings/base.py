@@ -66,7 +66,10 @@ TEMPLATES = [
 WSGI_APPLICATION = "bridge.wsgi.application"
 ASGI_APPLICATION = "bridge.asgi.application"
 DATABASES = {
-    "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": os.environ.get("AI_BRIDGE_RUNTIME_DB", BASE_DIR / "db.sqlite3"),
+    }
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STATIC_URL = "static/"
@@ -89,4 +92,31 @@ AI_BRIDGE_HEARTBEAT_WAITING_SECONDS = int(
 )
 AI_BRIDGE_HEARTBEAT_STALLED_SECONDS = int(
     os.environ.get("AI_BRIDGE_HEARTBEAT_STALLED_SECONDS", "900")
+)
+
+# Execution workspaces are deliberately outside the control-plane checkout and
+# database.  All roots are explicit so a misconfigured deployment fails closed.
+BRIDGE_WORKSPACE_ROOT = Path(
+    os.environ.get("BRIDGE_WORKSPACE_ROOT", BASE_DIR.parent / ".ai-bridge-workspaces")
+).resolve()
+BRIDGE_REPOSITORY_CACHE_ROOT = Path(
+    os.environ.get(
+        "BRIDGE_REPOSITORY_CACHE_ROOT", BASE_DIR.parent / ".ai-bridge-repository-cache"
+    )
+).resolve()
+BRIDGE_WORKSPACE_RETENTION_POLICY = os.environ.get(
+    "BRIDGE_WORKSPACE_RETENTION_POLICY", "passed=3,failed=24,blocked=indefinite"
+)
+BRIDGE_WORKSPACE_RETENTION_HOURS = int(
+    os.environ.get("BRIDGE_WORKSPACE_RETENTION_HOURS", "24")
+)
+BRIDGE_EXECUTION_PYTHON = os.environ.get("BRIDGE_EXECUTION_PYTHON", "")
+BRIDGE_WORKSPACE_DATABASE_MODE = (
+    os.environ.get("BRIDGE_WORKSPACE_DATABASE_MODE", "sqlite").strip().lower()
+)
+BRIDGE_WORKSPACE_MAX_DISK_USAGE = int(
+    os.environ.get("BRIDGE_WORKSPACE_MAX_DISK_USAGE", str(10 * 1024 * 1024 * 1024))
+)
+BRIDGE_WORKSPACE_PROVISION_TIMEOUT = int(
+    os.environ.get("BRIDGE_WORKSPACE_PROVISION_TIMEOUT", "300")
 )

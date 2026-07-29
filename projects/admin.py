@@ -14,6 +14,7 @@ from projects.models import (
     ExecutionProgressEvent,
     ExecutionProvider,
     ExecutionRun,
+    ExecutionWorkspace,
     FailureIncident,
     IncidentEvidence,
     OrchestrationDecision,
@@ -22,6 +23,7 @@ from projects.models import (
     Project,
     ProjectContext,
     ProviderAuditEvent,
+    RuntimeBootstrapProfile,
 )
 from projects.providers import check_health
 
@@ -417,6 +419,60 @@ class ExecutionRunAdmin(admin.ModelAdmin):
         return format_html(
             "<pre>{}</pre>", json.dumps(events_for_view(obj, "RAW_EVENTS"), indent=2)
         )
+
+
+@admin.register(ExecutionWorkspace)
+class ExecutionWorkspaceAdmin(admin.ModelAdmin):
+    """Sanitized, read-only operational visibility for workspace ownership."""
+
+    list_display = (
+        "token",
+        "run",
+        "status",
+        "base_commit_sha",
+        "retention_until",
+        "updated_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("token", "run__token", "base_commit_sha")
+    readonly_fields = tuple(field.name for field in ExecutionWorkspace._meta.fields)
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: ExecutionWorkspace | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: ExecutionWorkspace | None = None
+    ) -> bool:
+        return False
+
+
+@admin.register(RuntimeBootstrapProfile)
+class RuntimeBootstrapProfileAdmin(admin.ModelAdmin):
+    """Read-only visibility of the canonical project runtime recipe."""
+
+    list_display = ("project", "updated_at")
+    search_fields = ("project__project_id",)
+    readonly_fields = tuple(
+        field.name for field in RuntimeBootstrapProfile._meta.fields
+    )
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: RuntimeBootstrapProfile | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: RuntimeBootstrapProfile | None = None
+    ) -> bool:
+        return False
 
 
 @admin.register(ExecutableScope)

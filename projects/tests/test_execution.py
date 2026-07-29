@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Callable, Iterator
 
 import pytest
+from django.conf import settings
 from django.core.management import call_command
 from django.utils import timezone
 
@@ -43,12 +44,14 @@ from projects.models import (
     ExecutionJob,
     ExecutionRun,
     ExecutionStartRequest,
+    ExecutionWorkspace,
     GovernanceApproval,
     Project,
 )
 from projects.scopes import bind_approval, propose_scope, publish_scope
 from projects.services import bootstrap_project
 from projects.tests.test_services import write_definition
+from projects.workspace import WorkspaceManager
 
 
 class StubProvider:
@@ -82,6 +85,69 @@ class ActivityStubProvider(StubProvider):
         return self.start(repository=repository, prompt=prompt)
 
 
+class TestWorkspaceManager:
+    """Controlled workspace boundary for legacy contract tests.
+
+    These tests intentionally use a synthetic baseline hash; production
+    provisioning is exercised separately against a real Git repository.
+    """
+
+    def provision(self, run: ExecutionRun) -> ExecutionWorkspace:
+        workspace, _ = ExecutionWorkspace.objects.get_or_create(
+            run=run,
+            defaults={
+                "status": ExecutionWorkspace.Status.READY,
+                "root_path": run.workspace_identifier,
+                "repository_path": run.workspace_identifier,
+                "base_commit_sha": run.baseline_commit,
+                "base_ref": run.baseline_commit,
+                "python_executable": "test-python",
+                "environment": {},
+                "database_profile": {"mode": "sqlite"},
+            },
+        )
+        workspace.status = ExecutionWorkspace.Status.READY
+        workspace.save(update_fields=["status", "updated_at"])
+        return workspace
+
+    def descriptor(
+        self, workspace: ExecutionWorkspace, run: ExecutionRun
+    ) -> dict[str, object]:
+        return {
+            "cwd": workspace.repository_path,
+            "repository_root": workspace.repository_path,
+            "repository_url": "https://example.test/repository.git",
+            "base_commit_sha": run.baseline_commit,
+            "python_executable": "test-python",
+            "virtual_environment": "test-venv",
+            "environment": {},
+            "database_profile": {"mode": "sqlite"},
+            "application_database": {"mode": "sqlite"},
+            "migration_state": {"status": "APPLIED", "verified": True},
+            "seed_state": {"status": "SKIPPED"},
+            "runtime_services": [],
+            "provider_environment": {},
+            "health_state": "HEALTHY",
+            "workspace_id": str(workspace.token),
+            "execution_token": str(run.token),
+        }
+
+    def mark_in_use(
+        self, workspace: ExecutionWorkspace, provider_pid: int | None = None
+    ) -> None:
+        workspace.status = ExecutionWorkspace.Status.IN_USE
+        workspace.provider_pid = provider_pid
+        workspace.save(update_fields=["status", "provider_pid", "updated_at"])
+
+    def retain(self, workspace: ExecutionWorkspace, run: ExecutionRun) -> None:
+        workspace.status = ExecutionWorkspace.Status.RETAINED
+        workspace.save(update_fields=["status", "updated_at"])
+
+    def mark_validating(self, workspace: ExecutionWorkspace) -> None:
+        workspace.status = ExecutionWorkspace.Status.VALIDATING
+        workspace.save(update_fields=["status", "updated_at"])
+
+
 @pytest.fixture
 def consumed_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -100,6 +166,7 @@ def consumed_contract(
     monkeypatch.setattr(
         "projects.execution.check_health", lambda entry: {"status": "HEALTHY"}
     )
+    monkeypatch.setattr("projects.execution.WorkspaceManager", TestWorkspaceManager)
     assert bootstrap_project(definition, "docs/sprints/SPRINT_003.md", tmp_path).success
     project = Project.objects.get(project_id="generic-project")
     scope = propose_scope(
@@ -143,9 +210,56 @@ def test_provider_starts_only_after_consumption(
     assert contract.lifecycle == "RUNNING"
     assert list(run.events.values_list("sequence", "event_type")) == [
         (1, "PREFLIGHT_COMPLETED"),
-        (2, "EXECUTOR_STARTED"),
-        (3, "EXECUTION_ACTIVITY_STARTED"),
+        (2, "WORKSPACE_REQUESTED"),
+        (3, "WORKSPACE_PROVISIONING_STARTED"),
+        (4, "WORKSPACE_REPOSITORY_READY"),
+        (5, "WORKSPACE_VENV_READY"),
+        (6, "WORKSPACE_DEPENDENCIES_READY"),
+        (7, "WORKSPACE_DATABASE_READY"),
+        (8, "APPLICATION_DATABASE_CREATED"),
+        (9, "APPLICATION_MIGRATED"),
+        (10, "APPLICATION_SEED_SKIPPED"),
+        (11, "RUNTIME_SERVICES_SKIPPED"),
+        (12, "WORKSPACE_PREFLIGHT_PASSED"),
+        (13, "WORKSPACE_READY"),
+        (14, "EXECUTOR_STARTED"),
+        (15, "EXECUTION_ACTIVITY_STARTED"),
     ]
+
+
+@pytest.mark.django_db
+def test_workspace_cleanup_is_token_scoped_and_idempotent(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    workspace_root = tmp_path / "managed-workspaces"
+    monkeypatch.setattr(settings, "BRIDGE_WORKSPACE_ROOT", workspace_root)
+    monkeypatch.setattr(settings, "BRIDGE_REPOSITORY_CACHE_ROOT", tmp_path / "cache")
+    run = start_run(contract, request, root)
+    workspace = run.workspace
+    path = workspace_root / str(workspace.token)
+    path.mkdir(parents=True)
+    (path / "marker.txt").write_text("workspace only", encoding="utf-8")
+    workspace.root_path = str(path)
+    workspace.status = ExecutionWorkspace.Status.RETAINED
+    workspace.retention_until = timezone.now() - timedelta(seconds=1)
+    workspace.save(
+        update_fields=["root_path", "status", "retention_until", "updated_at"]
+    )
+
+    manager = WorkspaceManager()
+    assert [item.pk for item in manager.reconcile_cleanup()] == [workspace.pk]
+    workspace.refresh_from_db()
+    assert workspace.status == ExecutionWorkspace.Status.CLEANED
+    assert not path.exists()
+    assert run.events.filter(event_type="WORKSPACE_CLEANUP_STARTED").exists()
+    assert run.events.filter(event_type="WORKSPACE_CLEANED").exists()
+    assert manager.reconcile_cleanup() == []
 
 
 @pytest.mark.django_db
@@ -179,8 +293,20 @@ def test_start_recovers_an_unbound_starting_run(
     assert ExecutionRun.objects.filter(contract=contract).count() == 1
     assert list(run.events.values_list("sequence", "event_type")) == [
         (1, "START_RECOVERED"),
-        (2, "EXECUTOR_STARTED"),
-        (3, "EXECUTION_ACTIVITY_STARTED"),
+        (2, "WORKSPACE_REQUESTED"),
+        (3, "WORKSPACE_PROVISIONING_STARTED"),
+        (4, "WORKSPACE_REPOSITORY_READY"),
+        (5, "WORKSPACE_VENV_READY"),
+        (6, "WORKSPACE_DEPENDENCIES_READY"),
+        (7, "WORKSPACE_DATABASE_READY"),
+        (8, "APPLICATION_DATABASE_CREATED"),
+        (9, "APPLICATION_MIGRATED"),
+        (10, "APPLICATION_SEED_SKIPPED"),
+        (11, "RUNTIME_SERVICES_SKIPPED"),
+        (12, "WORKSPACE_PREFLIGHT_PASSED"),
+        (13, "WORKSPACE_READY"),
+        (14, "EXECUTOR_STARTED"),
+        (15, "EXECUTION_ACTIVITY_STARTED"),
     ]
 
 
@@ -244,9 +370,21 @@ def test_start_retries_a_transient_provider_launch_once(
     assert run.attempt_count == 2
     assert list(run.events.values_list("sequence", "event_type")) == [
         (1, "PREFLIGHT_COMPLETED"),
-        (2, "PROVIDER_START_RETRYING"),
-        (3, "EXECUTOR_STARTED"),
-        (4, "EXECUTION_ACTIVITY_STARTED"),
+        (2, "WORKSPACE_REQUESTED"),
+        (3, "WORKSPACE_PROVISIONING_STARTED"),
+        (4, "WORKSPACE_REPOSITORY_READY"),
+        (5, "WORKSPACE_VENV_READY"),
+        (6, "WORKSPACE_DEPENDENCIES_READY"),
+        (7, "WORKSPACE_DATABASE_READY"),
+        (8, "APPLICATION_DATABASE_CREATED"),
+        (9, "APPLICATION_MIGRATED"),
+        (10, "APPLICATION_SEED_SKIPPED"),
+        (11, "RUNTIME_SERVICES_SKIPPED"),
+        (12, "WORKSPACE_PREFLIGHT_PASSED"),
+        (13, "WORKSPACE_READY"),
+        (14, "PROVIDER_START_RETRYING"),
+        (15, "EXECUTOR_STARTED"),
+        (16, "EXECUTION_ACTIVITY_STARTED"),
     ]
 
 

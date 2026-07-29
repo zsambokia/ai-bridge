@@ -90,6 +90,9 @@ class ExecutionAdapter(Protocol):
     name: str
 
     def start(self, *, repository: Path, prompt: str) -> ProviderStart: ...
+    def start_with_runtime(
+        self, *, runtime: dict[str, object], prompt: str
+    ) -> ProviderStart: ...
     def status(self, execution_id: str) -> str: ...
     def cancel(self, execution_id: str) -> None: ...
 
@@ -314,6 +317,90 @@ class CodexCliAdapter:
     def start(self, *, repository: Path, prompt: str) -> ProviderStart:
         return self._start(repository=repository, prompt=prompt)
 
+    def start_with_runtime(
+        self, *, runtime: dict[str, object], prompt: str
+    ) -> ProviderStart:
+        """Start only from the manager-issued, already-verified descriptor."""
+        required = {
+            "cwd",
+            "repository_root",
+            "repository_url",
+            "base_commit_sha",
+            "python_executable",
+            "virtual_environment",
+            "environment",
+            "database_profile",
+            "application_database",
+            "migration_state",
+            "seed_state",
+            "runtime_services",
+            "provider_environment",
+            "health_state",
+            "workspace_id",
+            "execution_token",
+        }
+        if required - set(runtime):
+            raise ValueError("WORKSPACE_RUNTIME_DESCRIPTOR_INVALID")
+        repository = Path(str(runtime["repository_root"])).resolve()
+        if Path(str(runtime["cwd"])).resolve() != repository:
+            raise ValueError("WORKSPACE_RUNTIME_DESCRIPTOR_INVALID")
+        environment = runtime["environment"]
+        if not isinstance(environment, dict) or not isinstance(
+            runtime["database_profile"], dict
+        ):
+            raise ValueError("WORKSPACE_RUNTIME_DESCRIPTOR_INVALID")
+        return self._start(
+            repository=repository,
+            prompt=prompt,
+            runtime_environment={
+                str(key): str(value) for key, value in environment.items()
+            },
+        )
+
+    def start_with_runtime_activity(
+        self,
+        *,
+        runtime: dict[str, object],
+        prompt: str,
+        activity_callback: Callable[[dict[str, object]], None],
+    ) -> ProviderStart:
+        required = {
+            "cwd",
+            "repository_root",
+            "repository_url",
+            "base_commit_sha",
+            "python_executable",
+            "virtual_environment",
+            "environment",
+            "database_profile",
+            "application_database",
+            "migration_state",
+            "seed_state",
+            "runtime_services",
+            "provider_environment",
+            "health_state",
+            "workspace_id",
+            "execution_token",
+        }
+        if required - set(runtime):
+            raise ValueError("WORKSPACE_RUNTIME_DESCRIPTOR_INVALID")
+        repository = Path(str(runtime["repository_root"])).resolve()
+        environment = runtime["environment"]
+        if (
+            Path(str(runtime["cwd"])).resolve() != repository
+            or not isinstance(environment, dict)
+            or not isinstance(runtime["database_profile"], dict)
+        ):
+            raise ValueError("WORKSPACE_RUNTIME_DESCRIPTOR_INVALID")
+        return self._start(
+            repository=repository,
+            prompt=prompt,
+            activity_callback=activity_callback,
+            runtime_environment={
+                str(key): str(value) for key, value in environment.items()
+            },
+        )
+
     def start_with_activity(
         self,
         *,
@@ -334,12 +421,15 @@ class CodexCliAdapter:
         repository: Path,
         prompt: str,
         activity_callback: Callable[[dict[str, object]], None] | None = None,
+        runtime_environment: dict[str, str] | None = None,
     ) -> ProviderStart:
         readiness = self.readiness(repository)
         if not readiness["ready"]:
             raise ValueError(str(readiness["reason"]))
         resolved_executable = str(readiness["executable"])
         environment = cast(dict[str, str], readiness["environment"])
+        if runtime_environment:
+            environment = {**environment, **runtime_environment}
         capture_activity = bool(
             activity_callback and settings.AI_BRIDGE_DEV_EXECUTION_ACTIVITY
         )

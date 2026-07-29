@@ -14,6 +14,7 @@ from django.core.management.base import BaseCommand, CommandError
 from projects.execution import (
     claim_next_job,
     execute_claimed_job,
+    fail_claimed_job,
     heartbeat_job,
     is_non_retryable_execution_failure,
     reject_claimed_job,
@@ -69,6 +70,18 @@ class Command(BaseCommand):
                         self.style.WARNING(
                             "Rejected execution "
                             f"{rejected.run.token}: {exc}. Continuing worker."
+                        )
+                    )
+                    processed_jobs += 1
+                    if once or (max_jobs and processed_jobs >= max_jobs):
+                        return
+                    continue
+                if str(exc) == "WORKSPACE_PROVISIONING_FAILED":
+                    failed = fail_claimed_job(job, worker_id, str(exc))
+                    self.stdout.write(
+                        self.style.WARNING(
+                            "Execution "
+                            f"{failed.run.token} workspace failed; continuing worker."
                         )
                     )
                     processed_jobs += 1

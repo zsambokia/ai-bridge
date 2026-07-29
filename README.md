@@ -59,6 +59,20 @@ provider. Run `manage.py run_execution_worker` as a separate process (use
 record and lease in the database for recovery; it is not tied to Django's
 development-server autoreloader.
 
+Issue #14 gives every worker-started execution its own persisted workspace and
+project-owned Runtime Bootstrap Profile. The worker checks out the exact
+contract baseline under `BRIDGE_WORKSPACE_ROOT`, uses
+`BRIDGE_REPOSITORY_CACHE_ROOT` as a repository mirror cache, creates a virtual
+environment and a workspace-local SQLite application database, installs and
+migrates the application, then deterministically applies or records skipped
+seed data and starts only declared profile services. Codex receives the verified
+runtime descriptor only after that preflight. Defaults retain passed workspaces
+for three hours and failures for 24 hours; blocked/recovery-review workspaces
+are kept for inspection. Run `manage.py reconcile_execution_workspaces`
+periodically to stop retained runtime services and clean expired workspaces
+safely. Configure roots, retention, Python, database mode, disk limit, and
+provisioning timeout with the corresponding `BRIDGE_WORKSPACE_*` settings.
+
 Sprint 010 makes executable Sprints and standalone Work Items Bridge-managed
 canonical records. Markdown in `docs/sprints` and `docs/work-items` is a
 deterministic projection with YAML front matter, never the source of authority.

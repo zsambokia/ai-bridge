@@ -60,6 +60,20 @@ delete them outside the canonical bootstrap lifecycle.
 
 ## Implemented execution foundation
 
+Issue #14 adds a durable, one-to-one `ExecutionWorkspace` and a canonical,
+project-owned `RuntimeBootstrapProfile` to the execution foundation. The
+independent worker now provisions an isolated repository checkout, virtual
+environment, workspace SQLite application database, dependency fingerprint,
+migration verification, deterministic seed state, declared runtime services,
+and verified runtime descriptor before it may invoke Codex. The control-plane
+checkout and database are not reused for provider work. Workspace state,
+retention, safe cleanup, provider PID, immutable baseline metadata, runtime
+profile state, and failure/cleanup evidence are persisted; Django admin exposes
+a read-only operational view. The root/cache, retention policy, Python
+executable, database mode, maximum disk budget, and provisioning timeout are
+explicit settings. `reconcile_execution_workspaces` performs safe, idempotent
+expiry cleanup without touching the control plane.
+
 Sprint 014 adds a provider-neutral `ExecutionProvider` registry and append-only
 provider audit history. Codex CLI is seeded as the active execution agent;
 OpenAI, Claude, GitHub, and BigQuery are explicit provider kinds/roles that
