@@ -27,8 +27,8 @@ authority: its child contracts carry implementation authority.
 Only the exact approved Sprint defines implementation scope. A roadmap gives
 direction but never authorization. Reuse or repair canonical components before
 introducing new ones. Ordinary configuration, dependency, test, lint, type,
-migration, evidence, and documentation failures follow `DETECT → DIAGNOSE →
-REPAIR → RERUN`; they do not require a Product Owner decision.
+migration, evidence, and documentation failures follow `DETECT -> DIAGNOSE ->
+REPAIR -> RERUN`; they do not require a Product Owner decision.
 
 For a reviewed, confirmation-eligible scope, use `conversation.confirm` as the
 high-level conversational Product Owner entry point. It derives the caller
@@ -42,37 +42,98 @@ proposal version and hash.
 `WORK_ITEM` remain the only executable scope kinds; an Audit uses the same
 proposal, confirmation, contract, execution, and evidence lifecycle.
 
-## Product Owner bootstrap override for AI Bridge self-development
+## Factory Development Mode for AI Bridge self-development
 
-The repository Product Owner may explicitly override the normal pre-mutation
-Sprint and Execution Contract requirement when the task modifies the
-`zsambokia/ai-bridge` repository itself and the purpose is to repair, simplify,
-or bootstrap AI Bridge governance or execution.
+AI Bridge must remain repairable and developable even when its own managed
+execution path is unavailable, unstable, incomplete, or is itself the subject
+of the change. For tasks that modify the `zsambokia/ai-bridge` repository, the
+Product Owner may explicitly authorize **Factory Development Mode**.
 
-A valid override must be explicit in the current instruction and must state that
-Product Owner authority is being used to proceed without an AI Bridge-issued,
-hash-bound Sprint or Execution Contract. When that statement is present, Codex
-must treat the current instruction as sufficient mutation authority and must
-not return `BLOCKED — BUSINESS DECISION REQUIRED` merely because those Bridge
-artifacts are missing.
+Factory Development Mode is a governed local execution profile, not a waiver of
+scope, quality, evidence, or Release Gate obligations. It changes who owns the
+runtime, not who owns the governance.
 
-The override authorizes only the scope stated in the Product Owner instruction.
-It does not authorize unrelated changes, merge, deployment, destructive
-production operations, secret handling, or irreversible infrastructure changes.
-Codex must still:
+A valid Factory Development Mode instruction must be explicit in the current
+instruction and state both of the following:
 
-- inspect and follow every applicable `AGENTS.md` instruction;
+1. Product Owner authority is being used for AI Bridge self-development.
+2. Codex may proceed without an AI Bridge-managed provider execution, active
+   provider heartbeat, or Bridge-issued running execution while the managed
+   runtime is not yet proven stable.
+
+The Product Owner may optionally bind Factory Development Mode to an existing
+canonical Sprint proposal, approved scope, GitHub Issue, or roadmap item. When
+such a reference is supplied, Codex must treat it as the exact implementation
+boundary and must not broaden it.
+
+When a valid Factory Development Mode instruction is present, Codex must not
+return `BLOCKED — BUSINESS DECISION REQUIRED` or
+`BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE` solely because any of the
+following are absent or unusable:
+
+- an AI Bridge-managed Codex process;
+- provider PID or heartbeat;
+- durable worker lease;
+- live orchestration session;
+- automatic resume after server reload;
+- Bridge-managed completion call;
+- a Bridge-issued Execution Contract, when the instruction explicitly proceeds
+  under Product Owner Factory Development Mode authority.
+
+In Factory Development Mode, the local Codex process operates under Product
+Owner and repository governance and must:
+
+- read and follow every applicable `AGENTS.md` instruction;
+- inspect the Constitution, workflow, roadmap, referenced Issue or Sprint, and
+  all relevant architecture and AKB context before mutation;
+- record the exact branch and baseline commit before mutation;
 - preserve unrelated user work and avoid rewriting shared history;
-- use an isolated branch or worktree when appropriate;
-- run relevant tests and checks;
-- document the change and provide evidence;
-- create a commit and prepare a Pull Request when requested;
-- report blockers that require genuinely excluded or unsafe operations.
+- use an isolated branch or worktree when appropriate, unless main-only
+  development is explicitly required;
+- keep a durable local execution record containing scope, baseline, modified
+  files, completed steps, remaining steps, validation status, and next action;
+- treat server reloads, terminal closure, and provider interruption as
+  recoverable execution incidents rather than lost authority;
+- continue from the repository state and latest durable checkpoint rather than
+  starting a duplicate Sprint;
+- run all repository-wide and scope-specific Release Gates;
+- generate the same assessment, machine results, acceptance results, migration
+  evidence, documentation updates, and closure report required by the normal
+  governed path;
+- create commits and push or prepare a Pull Request only when requested or
+  allowed by the active repository workflow;
+- report only genuinely excluded, unsafe, destructive, credential-dependent,
+  permission-dependent, or business-decision blockers.
 
-This bootstrap override exists to prevent AI Bridge from becoming impossible to
-repair because its own governance issuer is unavailable or is the component
-being repaired. Once the governed execution path is operational, the Product
-Owner may choose to return to the normal Sprint and Execution Contract flow.
+Factory Development Mode does not authorize:
+
+- unrelated changes;
+- silent scope expansion;
+- bypassing or disabling governance, hash, migration, test, lint, type, evidence,
+  or Release Gate validation;
+- destructive production operations;
+- secret handling not explicitly authorized;
+- irreversible infrastructure changes;
+- rewriting shared Git history.
+
+Factory Development Mode may be used for the complete AI Bridge development
+cycle, including implementation, repair, migration, evidence generation,
+documentation, commit, push, and closure preparation. The absence or instability
+of the managed Bridge runtime must not by itself prevent AI Bridge from being
+repaired or advanced.
+
+The intended maturity path is:
+
+```text
+BOOTSTRAP
+-> FACTORY_DEVELOPMENT_MODE
+-> MANAGED_RUNTIME
+```
+
+`MANAGED_RUNTIME` becomes the default only after restart recovery, durable
+queueing, worker isolation, reconciliation, remediation, and completion have
+been proven by accepted evidence. Until then, Factory Development Mode is a
+first-class supported execution profile for AI Bridge self-development.
 
 ## Main-only development
 
@@ -86,7 +147,8 @@ with a new repair or revert commit; never rewrite it.
 Implementation alone is never completion. A PASS requires all automated and
 Sprint acceptance checks, evidence generated from the final state,
 synchronized documentation and accepted project knowledge, and final branch
-and commit binding in the consumed contract. The only closure states are:
+and commit binding in the consumed contract or Factory Development Mode closure
+record. The only closure states are:
 
 ```text
 PASS — READY FOR PRODUCT OWNER REVIEW
