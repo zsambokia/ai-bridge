@@ -49,6 +49,7 @@ from .execution import (
     add_event,
     cancel_run,
     complete_run,
+    enqueue_run,
     provider,
     start_run,
 )
@@ -1702,22 +1703,18 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
                 },
             )
             try:
-                flow.run = start_run(
-                    contract,
-                    request,
-                    root,
-                    audit_event_id=audit.pk,
-                )
+                job = enqueue_run(contract, request, root, audit_event_id=audit.pk)
+                flow.run = job.run
             except (OSError, ValueError):
                 flow.run = ExecutionRun.objects.filter(contract=contract).first()
                 if flow.run is not None:
                     flow.save(update_fields=["run", "updated_at"])
                 raise
-            request.status = "EXECUTION_STARTED"
-            request.next_action = "Provider result must be verified before completion."
+            request.status = "EXECUTION_QUEUED"
+            request.next_action = "Independent worker must claim the durable job."
             request.save(update_fields=["status", "next_action"])
             flow.save(update_fields=["run", "updated_at"])
-        _transition(flow, caller, "EXECUTION", "EXECUTION_STARTED")
+        _transition(flow, caller, "EXECUTION", "EXECUTION_QUEUED")
     except (OSError, ValueError) as exc:
         flow.status = "BLOCKED"
         failure_detail: dict[str, Any] = {

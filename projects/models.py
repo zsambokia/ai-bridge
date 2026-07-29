@@ -783,6 +783,37 @@ class ExecutionRun(models.Model):
         ordering = ["-created_at"]
 
 
+class ExecutionJob(models.Model):
+    """Durable, lease-owned queue entry for one authorized execution run.
+
+    The web process only creates this record.  A separately started worker
+    claims it with a bounded lease before it may invoke a provider.
+    """
+
+    class Status(models.TextChoices):
+        QUEUED = "QUEUED", "Queued"
+        LEASED = "LEASED", "Leased"
+        STARTED = "STARTED", "Started"
+        FAILED = "FAILED", "Failed"
+
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    run = models.OneToOneField(
+        ExecutionRun, on_delete=models.PROTECT, related_name="queue_job"
+    )
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.QUEUED
+    )
+    lease_owner = models.CharField(max_length=128, blank=True)
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    last_heartbeat_at = models.DateTimeField(null=True, blank=True)
+    provider_attempt_metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
 class ExecutionProgressEvent(models.Model):
     """Ordered, bounded and secret-free projection of execution progress."""
 

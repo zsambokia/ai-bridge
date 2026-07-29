@@ -95,6 +95,20 @@ read-only operational admin view, and a compact MCP activity summary for
 ChatGPT. This strengthens the proving loop without adding a parallel lifecycle
 or simulated organizational actors.
 
+### Issue #11 Sprint A â€” Durable queue and worker separation
+
+Sprint A implements the first ordered child of the Durable Autonomous
+Execution Epic. A governed request persists an `ExecutionJob` and returns the
+run to `REQUESTED`; a separately operated worker leases the job and starts the
+contract-selected provider. The persistent lease, heartbeat, attempt metadata,
+and event records survive a web-server/Django autoreload or worker loss. Its
+engineering audit and release gates are recorded with the Sprint evidence.
+
+Sprints B, C, and D are not started by this change. They remain sequential
+work: reconciliation/recovery, classified remediation and parent continuation,
+then contract-bound local Codex wrapper integration. Their scopes will be
+created only after the preceding Sprint is accepted.
+
 ### Interrupted approval recovery
 
 The governed conversation path now survives a browser refresh, MCP reconnect,

@@ -198,6 +198,28 @@ gate, evidence, and status fields, so a provider cannot create authority.
 Windows cancellation uses the native process-tree command, completed providers
 are not killed, and execution-event writes retry transient SQLite contention.
 
+## Issue #11 Sprint A: durable queue and worker separation
+
+The governed web path no longer starts a provider as part of the Django/MCP
+request. After its pre-existing approval, contract, receipt, and repository
+checks pass, it creates one durable `ExecutionRun` in `REQUESTED` and its
+one-to-one `ExecutionJob` in `QUEUED`. The job is the persisted hand-off from
+the request process to `manage.py run_execution_worker`; it is not a second
+authorization, contract, or execution lifecycle.
+
+The worker atomically claims only queued jobs or jobs whose persisted lease has
+expired. It records worker identity, lease expiry, heartbeat time, provider
+attempt metadata, and append-only execution events before provider startup.
+Only the worker holding the lease can dispatch that job. Therefore a Django
+autoreload, web-process restart, worker interruption, or provider-process loss
+does not delete the authorized queue entry; another worker can reclaim the
+expired lease. The provider is still selected only from the consumed contract.
+
+This Sprint deliberately provides the durable queue/lease foundation only.
+Stale-run reconciliation, policy classification and child remediation, and the
+local Codex wrapper integration remain ordered later Epic #11 Sprints and are
+not represented as completed here.
+
 ## MCP execution lookup failure handling
 
 The four public execution-token tools (`execution.get_run_status`,

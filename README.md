@@ -51,6 +51,14 @@ cancellation are available through the governed MCP registry. Provider output
 is not treated as evidence by itself: Release Gates, documentation, AKB, and
 the final contract binding remain required.
 
+Sprint A of Issue #11 separates that durable authorization/dispatch boundary
+from provider startup. The web and MCP processes enqueue an `ExecutionJob`; an
+independent worker claims its bounded lease before it may start the configured
+provider. Run `manage.py run_execution_worker` as a separate process (use
+`--once` for one deterministic queue pass). A worker restart leaves the queue
+record and lease in the database for recovery; it is not tied to Django's
+development-server autoreloader.
+
 Sprint 010 makes executable Sprints and standalone Work Items Bridge-managed
 canonical records. Markdown in `docs/sprints` and `docs/work-items` is a
 deterministic projection with YAML front matter, never the source of authority.
