@@ -12,3 +12,11 @@
 | `manage.py validate_scopes` | PASS -- all canonical scopes valid |
 | `python -m scripts.release_gate` | PASS |
 | `git diff --check` | PASS |
+
+## Final reconciliation validation
+
+The post-reconciliation release-gate rerun passed with 144 tests, Django
+check, Ruff, mypy, migration drift validation, current-repository canonical
+scope validation, and `git diff --check`. The canonical Sprint A reconciliation
+also passed on first execution and returned an idempotent replay on the second
+identical request.
