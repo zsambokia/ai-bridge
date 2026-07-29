@@ -16,5 +16,6 @@ Sprint B delivers durable queue recovery and worker/provider separation:
   append-only recovery-attempt history.
 
 This local Factory Development Mode closure consumed no new execution contract
-and invoked no provider. The implementation commit and push binding are added
-in the immediately following publication evidence update.
+and invoked no provider. The implementation is bound to commit
+`bceabd8b7f83424f16927543b6cc706718240a9d`; this closure binding is committed
+separately so the evidence can name the immutable implementation revision.
