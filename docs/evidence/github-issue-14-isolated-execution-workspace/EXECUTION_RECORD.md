@@ -21,6 +21,7 @@ Completed implementation steps:
    read-only workspace admin, regression coverage, and documentation.
 
 Validation is recorded in `CLOSURE_REPORT.md`. Under the Product Owner's
-explicit continuation instruction, this implementation will be committed and
-pushed directly to `main`; a separate evidence-binding commit will record the
-immutable implementation SHA before the final closure is reported.
+explicit continuation instruction, the implementation was committed directly
+to `main` as `9c66426b6a6cbcdac5807cd6a665836ca9f76f43`. The follow-on evidence
+binding commit records that immutable implementation SHA before the final
+closure is reported and pushed.
