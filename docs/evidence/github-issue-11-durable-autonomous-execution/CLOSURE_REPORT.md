@@ -2,13 +2,13 @@
 
 ## Closure state
 
-**EPIC #11 — PASS — ACCEPTED**
+**EPIC #11 — CLOSED — PASS — ACCEPTED**
 
 Sprint A is `PASS — ACCEPTED` through canonical external-execution lifecycle
 reconciliation. Sprints B, C, and D were executed in approved Factory
 Development Mode, each passed its engineering audit and release gates, and was
 advanced in order. The Product Owner then accepted Epic #11 and its complete
-evidence chain.
+evidence chain and formally closed the Epic.
 
 ## Delivered outcome
 
@@ -33,3 +33,9 @@ The final gate transcript is recorded in the respective audit reports and the
 Issue #11 status comments. The Product Owner acceptance is recorded in
 `PRODUCT_OWNER_ACCEPTANCE.md`; no follow-on Epic or Sprint is authorized by
 this closure.
+
+## Final repository state
+
+The implementation, evidence, and documentation are complete. The GitHub Issue
+is closed. This closure makes the branch ready for the separately authorized
+merge workflow; it does not authorize a merge or any new work.

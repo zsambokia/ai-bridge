@@ -2,7 +2,7 @@
 
 ## Decision
 
-**EPIC #11 — PASS — ACCEPTED**
+**EPIC #11 — CLOSED — PASS — ACCEPTED**
 
 The Product Owner reviewed and accepted:
 
