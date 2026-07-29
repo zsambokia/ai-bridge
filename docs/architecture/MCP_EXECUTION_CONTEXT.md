@@ -215,10 +215,29 @@ autoreload, web-process restart, worker interruption, or provider-process loss
 does not delete the authorized queue entry; another worker can reclaim the
 expired lease. The provider is still selected only from the consumed contract.
 
-This Sprint deliberately provides the durable queue/lease foundation only.
-Stale-run reconciliation, policy classification and child remediation, and the
-local Codex wrapper integration remain ordered later Epic #11 Sprints and are
-not represented as completed here.
+## Issue #11 Sprint B: execution recovery and reconciliation
+
+The durable queue now has a restart-safe reconciliation controller,
+`reconcile_execution_jobs`, operated by `manage.py reconcile_execution_jobs`.
+It evaluates only stale leased or started jobs against the authoritative
+`ExecutionRun`, its persisted lease/heartbeat, provider liveness, and the
+durable checkpoint. It creates an append-only `ExecutionRecoveryAttempt` and
+execution event for every recovery decision.
+
+If the provider is still running, the same `ExecutionJob` returns to the queue
+with an explicit reattach action; the replacement worker records its reattach
+event and never starts a second provider execution. If the provider is absent
+or unavailable, the controller permits the same run to enter `RECOVERING` only
+when its checkpoint contains the baseline, diff hash, completed and remaining
+steps, last passing gate, modified files, provider summary, and next action.
+Recovery attempts are bounded and backed off. Missing or unsafe evidence, or a
+spent retry budget, produces `RECOVERY_REVIEW_REQUIRED` rather than leaving a
+stale execution `RUNNING` indefinitely.
+
+This is a continuation mechanism, not an authorization path: it neither
+creates scopes or contracts nor fabricates provider history. Sprint C remains
+responsible for classification and governed child remediation; Sprint D remains
+responsible for the local Codex wrapper.
 
 ## Lifecycle reconciliation for externally governed execution
 

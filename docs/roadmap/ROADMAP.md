@@ -104,10 +104,12 @@ contract-selected provider. The persistent lease, heartbeat, attempt metadata,
 and event records survive a web-server/Django autoreload or worker loss. Its
 engineering audit and release gates are recorded with the Sprint evidence.
 
-Sprints B, C, and D are not started by this change. They remain sequential
-work: reconciliation/recovery, classified remediation and parent continuation,
-then contract-bound local Codex wrapper integration. Their scopes will be
-created only after the preceding Sprint is accepted.
+Sprint B now supplies the sequential reconciliation/recovery layer: stale
+worker jobs are evaluated from durable lease, heartbeat, provider and checkpoint
+evidence, then reattached, checkpoint-resumed with bounded retries, or placed
+in review-required state. Sprint C remains the next ordered work for classified
+remediation and parent continuation; Sprint D remains the contract-bound local
+Codex wrapper integration.
 
 ### Interrupted approval recovery
 

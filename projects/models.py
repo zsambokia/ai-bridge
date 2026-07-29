@@ -830,6 +830,11 @@ class ExecutionJob(models.Model):
         QUEUED = "QUEUED", "Queued"
         LEASED = "LEASED", "Leased"
         STARTED = "STARTED", "Started"
+        RECOVERING = "RECOVERING", "Recovering"
+        RECOVERY_REVIEW_REQUIRED = (
+            "RECOVERY_REVIEW_REQUIRED",
+            "Recovery review required",
+        )
         FAILED = "FAILED", "Failed"
 
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
@@ -837,14 +842,39 @@ class ExecutionJob(models.Model):
         ExecutionRun, on_delete=models.PROTECT, related_name="queue_job"
     )
     status = models.CharField(
-        max_length=16, choices=Status.choices, default=Status.QUEUED
+        max_length=32, choices=Status.choices, default=Status.QUEUED
     )
     lease_owner = models.CharField(max_length=128, blank=True)
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     last_heartbeat_at = models.DateTimeField(null=True, blank=True)
     provider_attempt_metadata = models.JSONField(default=dict, blank=True)
+    checkpoint = models.JSONField(default=dict, blank=True)
+    recovery_attempts = models.PositiveIntegerField(default=0)
+    next_recovery_at = models.DateTimeField(null=True, blank=True)
+    reconciliation_evidence = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class ExecutionRecoveryAttempt(models.Model):
+    """Append-only decision record for reconciliation of a durable job."""
+
+    class Outcome(models.TextChoices):
+        REATTACH = "REATTACH", "Reattach worker"
+        RECOVERING = "RECOVERING", "Recovering from checkpoint"
+        REVIEW_REQUIRED = "RECOVERY_REVIEW_REQUIRED", "Recovery review required"
+        NO_ACTION = "NO_ACTION", "No action"
+
+    job = models.ForeignKey(
+        ExecutionJob, on_delete=models.CASCADE, related_name="recovery_history"
+    )
+    outcome = models.CharField(max_length=32, choices=Outcome.choices)
+    reason = models.CharField(max_length=255)
+    evidence = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "id"]

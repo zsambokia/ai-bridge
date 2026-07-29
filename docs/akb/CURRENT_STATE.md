@@ -304,8 +304,16 @@ starts the job.
 
 The database, rather than Django memory or the autoreloader, owns the queue
 state. An expired worker lease is reclaimable without creating a second run or
-losing the event history. This is the completed Sprint A foundation only;
-Epic #11 Sprints B-D remain ordered, unstarted work.
+losing the event history. Sprint B completes the next ordered layer:
+`reconcile_execution_jobs` evaluates stale worker/provider state and records
+one durable `ExecutionRecoveryAttempt` per decision. An alive provider is
+reattached by a replacement worker without a second provider start. A missing
+provider can resume the same run only from a complete persisted checkpoint,
+using bounded backoff and retry history; absent or unsafe evidence becomes
+`RECOVERY_REVIEW_REQUIRED`. Thus a Django reload, worker loss, or provider
+interruption cannot leave a stale run indefinitely `RUNNING`. Sprint C
+classification/remediation and Sprint D local-wrapper work remain subsequent
+Epic #11 work.
 
 ## External governed-execution lifecycle reconciliation
 
