@@ -339,3 +339,15 @@ The operation is idempotent; changed retry bindings and incomplete evidence
 fail closed. A corrupted published scope file can be re-projected from the
 unchanged canonical record, the bounded repair for a deterministic
 published-content-hash mismatch.
+
+## Sprint D local Codex operational knowledge
+
+Use `prepare_local_codex` (or the `prepare_local_codex` management command)
+only with an existing execution token, worker identifier, and the Bridge
+platform root. It does not start Codex: it verifies the consumed contract and
+scope bindings, then records a durable lease for the exact queued run. Local
+workers must heartbeat and checkpoint through the wrapper. On interruption,
+the same job enters the established recovery controller; never create another
+run or provider execution. Completion requires a verified local Git HEAD and
+non-empty evidence manifest. Arbitrary pre-existing local sessions are
+explicitly audited as `UNVERIFIED` and cannot be attached.

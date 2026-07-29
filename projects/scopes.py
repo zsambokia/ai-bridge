@@ -439,6 +439,10 @@ def approved_scope(scope: ExecutableScope) -> dict[str, Any]:
         "status": scope.status,
         "approval_reference": scope.approval_reference,
         "content_hash": scope.content_hash,
+        # A local worker must be able to prove that the proposal it is about
+        # to continue is the one that was approved, not merely a projection
+        # with the same identifier.
+        "proposal_hash": scope.record["proposal_hash"],
     }
 
 

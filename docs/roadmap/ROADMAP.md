@@ -458,6 +458,15 @@ without replaying a provider run or weakening the normal proposal,
 confirmation, contract, and worker path for future Sprints. The capability is
 idempotent and preserves a durable reconciliation audit trail.
 
+## Issue #11 Sprint D: local governed Codex proof
+
+Sprint D completes the local-worker layer of the Durable Autonomous Execution
+Epic. A local Codex process leases only a consumed, hash-bound execution and
+uses the durable queue for heartbeats, checkpoints, interruption recovery, and
+completion evidence. The implementation rejects scope drift and unverified
+pre-existing sessions. The remaining Epic activity is the cross-Sprint
+integration audit and Product Owner review.
+
 ## Issue #11 Sprint C — automated technical remediation
 
 Sprint C is complete and ready for Product Owner review. It adds the governed

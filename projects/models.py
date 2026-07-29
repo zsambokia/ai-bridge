@@ -835,6 +835,7 @@ class ExecutionJob(models.Model):
             "RECOVERY_REVIEW_REQUIRED",
             "Recovery review required",
         )
+        COMPLETED = "COMPLETED", "Completed"
         FAILED = "FAILED", "Failed"
 
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)

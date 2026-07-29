@@ -19,3 +19,15 @@ faults remain escalations. A bounded repair records its policy basis, evidence,
 child scope, and audit events; it resumes the same parent only after the failed
 gate is rerun successfully. Repeated requests are idempotent and a corrupted
 published scope projection is restored from its unchanged canonical record.
+
+## Issue #11 Sprint D: governed local Codex handoff
+
+`projects.local_codex` is a deliberately provider-free wrapper for a local
+Codex process. It can only lease an existing, consumed execution after
+revalidating the issued contract, its published scope projection, content hash,
+proposal hash, and the run's contract hash. The wrapper persists registration,
+lease, heartbeat, checkpoint, interruption, and completion events on the same
+`ExecutionRun` and `ExecutionJob`; it never creates a replacement run or
+provider execution. An expired or interrupted local lease therefore enters the
+existing checkpoint recovery controller. A pre-existing terminal session is
+recorded as `UNVERIFIED` and rejected rather than retroactively trusted.
