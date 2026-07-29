@@ -940,6 +940,7 @@ class ExecutionProgressEvent(models.Model):
     )
     sequence = models.PositiveIntegerField()
     event_type = models.CharField(max_length=64)
+    provider_event_id = models.CharField(max_length=255, null=True, blank=True)
     details = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -947,7 +948,12 @@ class ExecutionProgressEvent(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["run", "sequence"], name="unique_execution_event_sequence"
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["run", "provider_event_id"],
+                condition=models.Q(provider_event_id__isnull=False),
+                name="unique_execution_provider_event_identity",
+            ),
         ]
         ordering = ["sequence"]
 

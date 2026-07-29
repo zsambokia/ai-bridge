@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import QuerySet
 from django.utils.html import format_html
 
-from projects.execution_activity import activity_summary
+from projects.execution_activity import activity_summary, events_for_view
 from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
@@ -345,7 +345,13 @@ class ExecutionProgressEventInline(admin.TabularInline):
     model = ExecutionProgressEvent
     extra = 0
     can_delete = False
-    readonly_fields = ("sequence", "event_type", "details", "created_at")
+    readonly_fields = (
+        "sequence",
+        "event_type",
+        "provider_event_id",
+        "details",
+        "created_at",
+    )
 
     def has_add_permission(self, request: object, obj: object | None = None) -> bool:
         return False
@@ -365,10 +371,14 @@ class ExecutionRunAdmin(admin.ModelAdmin):
     search_fields = ("token", "contract__handoff_identifier", "provider_execution_id")
     readonly_fields = tuple(field.name for field in ExecutionRun._meta.fields) + (
         "live_activity",
+        "provider_output",
+        "raw_events",
     )
     fieldsets = (
         (None, {"fields": tuple(field.name for field in ExecutionRun._meta.fields)}),
-        ("Live activity (derived, read-only)", {"fields": ("live_activity",)}),
+        ("Activity (derived, read-only)", {"fields": ("live_activity",)}),
+        ("Provider Output (redacted, read-only)", {"fields": ("provider_output",)}),
+        ("Raw Events (redacted, read-only)", {"fields": ("raw_events",)}),
     )
     inlines = (ExecutionProgressEventInline,)
 
@@ -390,6 +400,23 @@ class ExecutionRunAdmin(admin.ModelAdmin):
         import json
 
         return format_html("<pre>{}</pre>", json.dumps(activity_summary(obj), indent=2))
+
+    @admin.display(description="Provider Output")
+    def provider_output(self, obj: ExecutionRun) -> str:
+        import json
+
+        return format_html(
+            "<pre>{}</pre>",
+            json.dumps(events_for_view(obj, "PROVIDER_OUTPUT"), indent=2),
+        )
+
+    @admin.display(description="Raw Events")
+    def raw_events(self, obj: ExecutionRun) -> str:
+        import json
+
+        return format_html(
+            "<pre>{}</pre>", json.dumps(events_for_view(obj, "RAW_EVENTS"), indent=2)
+        )
 
 
 @admin.register(ExecutableScope)

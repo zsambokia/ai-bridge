@@ -339,6 +339,16 @@ only rejection event. Its associated run is terminalized as
 worker then continues to the next queued item. Unclassified errors remain
 fail-closed and are not silently downgraded to rejections.
 
+## Provider activity fidelity repair
+
+The Codex CLI provider reads stdout and stderr as independent untrusted event
+streams. It handles JSON objects, JSON scalar values, malformed JSON, and
+plain text without ending the activity reader. Events retain bounded, redacted
+message, command, stdout, stderr, exit-code, and file-path data and are stored
+with an idempotent provider event identity per run. The read-only execution
+surface exposes Activity, Provider Output, and Raw Events views; Raw Events
+remain redacted structured payloads, not credential-bearing raw transcripts.
+
 ## External governed-execution lifecycle reconciliation
 
 Evidence-backed external or Factory Development Mode work can be admitted into

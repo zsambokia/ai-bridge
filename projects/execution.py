@@ -10,7 +10,7 @@ from time import sleep
 from typing import Protocol
 
 from django.conf import settings
-from django.db import OperationalError, models, transaction
+from django.db import IntegrityError, OperationalError, models, transaction
 from django.utils import timezone
 
 from .execution_activity import console_line
@@ -23,6 +23,7 @@ from .models import (
     ExecutionStartRequest,
 )
 from .models import ExecutionProvider as ExecutionProviderRecord
+from .provider_events import redact_value
 from .providers import (
     CodexCliAdapter,
     ProviderStart,
@@ -42,7 +43,6 @@ ACTIVE_STATES = {
     ExecutionRun.Lifecycle.DOCUMENTING,
     ExecutionRun.Lifecycle.CLOSING,
 }
-SECRET_MARKERS = ("token", "secret", "password", "authorization", "bearer")
 MAX_PROVIDER_START_ATTEMPTS = 2
 
 # These are immutable-authority failures.  Re-running the same claimed job
@@ -279,22 +279,21 @@ def provider(identity: str | None = None) -> ExecutionProvider:
 
 
 def _safe_details(details: dict[str, object]) -> dict[str, object]:
-    safe: dict[str, object] = {}
-    for key, value in details.items():
-        if any(marker in key.lower() for marker in SECRET_MARKERS):
-            continue
-        rendered = str(value)
-        # Provider output is observational only and must never preserve a
-        # credential-shaped value even when it appears in free text.
-        if any(marker in rendered.lower() for marker in SECRET_MARKERS):
-            rendered = "[redacted]"
-        safe[key] = rendered[:500] if isinstance(value, str) else value
-    return safe
+    """Apply recursive redaction and bounded text retention before persistence."""
+    safe = redact_value(details)
+    return safe if isinstance(safe, dict) else {}
 
 
 def add_event(
     run: ExecutionRun, event_type: str, **details: object
 ) -> ExecutionProgressEvent:
+    provider_event_id = str(details.pop("provider_event_id", "") or "")[:255]
+    if provider_event_id:
+        existing = ExecutionProgressEvent.objects.filter(
+            run=run, provider_event_id=provider_event_id
+        ).first()
+        if existing is not None:
+            return existing
     for attempt in range(3):
         try:
             with transaction.atomic():
@@ -309,8 +308,16 @@ def add_event(
                     sequence=1 if last is None else last.sequence + 1,
                     event_type=event_type,
                     details=_safe_details(details),
+                    provider_event_id=provider_event_id or None,
                 )
             break
+        except IntegrityError:
+            if provider_event_id:
+                existing = ExecutionProgressEvent.objects.get(
+                    run=run, provider_event_id=provider_event_id
+                )
+                return existing
+            raise
         except OperationalError:
             if attempt == 2:
                 raise
@@ -466,11 +473,19 @@ def start_run(
                 selected_provider, "start_with_activity", None
             )
             if callable(start_with_activity):
+                add_event(
+                    run,
+                    "PROVIDER_STARTED",
+                    provider=run.provider_name,
+                    message="Codex provider launch started",
+                )
                 started = start_with_activity(
                     repository=workspace_root,
                     prompt=_prompt(contract),
                     activity_callback=lambda details: add_event(
-                        run, "PROVIDER_OUTPUT", **details
+                        run,
+                        str(details.pop("event_type", "PROVIDER_MESSAGE")),
+                        **details,
                     ),
                 )
             else:

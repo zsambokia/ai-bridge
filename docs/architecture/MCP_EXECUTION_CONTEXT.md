@@ -178,6 +178,19 @@ It is retained because `execution.get_run_status` and `execution.list_events`
 cannot provide one bounded, continuously recomputed checklist without making
 every client reproduce Bridge lifecycle semantics.
 
+### Provider event fidelity repair
+
+The Codex adapter reads stdout and stderr independently and treats every line
+as untrusted input. JSON objects are projected into the canonical provider
+event taxonomy; JSON scalars, malformed JSON, and plain text are retained as
+bounded, redacted provider messages rather than terminating the reader thread.
+The persisted projection retains real message, command, output, exit-code, and
+file-path fields after redaction. Provider event identities are unique per run,
+so reconnecting or restarting a worker does not duplicate a provider event.
+Read-only consumers expose separate Activity, Provider Output, and Raw Events
+views; the latter is the redacted structured provider payload, never an
+unredacted credential-bearing transcript.
+
 Technical repair stays inside the same stream: `ROOT_CAUSE_IDENTIFIED`,
 `REPAIR_APPLIED`, `GATE_RERUN_STARTED`, and either `GATE_RERUN_PASSED` plus
 `REPAIR_VERIFIED` or `GATE_RERUN_FAILED` are persisted in order. A repair item

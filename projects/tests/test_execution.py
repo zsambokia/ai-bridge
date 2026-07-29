@@ -301,9 +301,12 @@ def test_read_only_audit_cannot_report_a_repository_mutation(
         complete_run(run, "b" * 40, completion)
 
 
-def test_secret_filter_removes_credential_named_fields() -> None:
-    assert _safe_details({"token": "x", "message": "okay"}) == {"message": "okay"}
-    assert _safe_details({"message": "Bearer xyz"}) == {"message": "[redacted]"}
+def test_secret_filter_redacts_credential_named_fields() -> None:
+    assert _safe_details({"token": "x", "message": "okay"}) == {
+        "token": "[REDACTED]",
+        "message": "okay",
+    }
+    assert _safe_details({"message": "Bearer xyz"}) == {"message": "[REDACTED]"}
 
 
 @pytest.mark.django_db
@@ -330,7 +333,7 @@ def test_activity_summary_is_derived_from_canonical_run_and_events(
     event = event_view(run.events.get(event_type="EXECUTOR_STARTED"))
     assert event["actor"] == "Codex"
     assert event["title"] == "Codex execution started"
-    provider_event = event_view(run.events.get(event_type="PROVIDER_OUTPUT"))
+    provider_event = event_view(run.events.get(event_type="PROVIDER_MESSAGE"))
     assert provider_event["details"] == {
         "activity_type": "task_started",
         "message": "Codex reported task_started",

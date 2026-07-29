@@ -20,6 +20,18 @@ _EVENTS = {
         "Live activity monitoring started",
     ),
     "PROVIDER_OUTPUT": ("EXECUTING", "Codex", "INFO", "Codex activity received"),
+    "PROVIDER_STARTED": ("EXECUTING", "Codex", "INFO", "Codex"),
+    "PROVIDER_MESSAGE": ("EXECUTING", "Codex", "INFO", "Codex"),
+    "PROVIDER_REASONING_SUMMARY": ("EXECUTING", "Codex", "INFO", "Codex reasoning"),
+    "COMMAND_STARTED": ("EXECUTING", "Codex", "INFO", "Command started"),
+    "COMMAND_OUTPUT": ("EXECUTING", "Codex", "INFO", "Command output"),
+    "COMMAND_COMPLETED": ("EXECUTING", "Codex", "INFO", "Command completed"),
+    "FILE_CHANGED": ("EXECUTING", "Codex", "INFO", "File changed"),
+    "TEST_STARTED": ("VALIDATING", "Codex", "INFO", "Test started"),
+    "TEST_RESULT": ("VALIDATING", "Codex", "INFO", "Test result"),
+    "PROVIDER_WARNING": ("EXECUTING", "Codex", "WARNING", "Codex warning"),
+    "PROVIDER_ERROR": ("EXECUTING", "Codex", "ERROR", "Codex error"),
+    "PROVIDER_COMPLETED": ("EXECUTING", "Codex", "INFO", "Codex completed"),
     "PROVIDER_START_RETRYING": (
         "REPAIRING",
         "AI Bridge",
@@ -96,7 +108,7 @@ def event_view(event: ExecutionProgressEvent) -> dict[str, Any]:
         ("EXECUTING", "AI Bridge", "INFO", event.event_type.replace("_", " ").title()),
     )
     details = event.details if isinstance(event.details, dict) else {}
-    message = str(details.get("message", details.get("reason", title)))[:500]
+    message = _activity_message(event.event_type, details, title)
     return {
         "sequence": event.sequence,
         "type": event.event_type,
@@ -113,10 +125,71 @@ def event_view(event: ExecutionProgressEvent) -> dict[str, Any]:
 def console_line(event: ExecutionProgressEvent) -> str:
     """Produce a brief, human-readable DEV activity line from persisted state."""
     view = event_view(event)
-    label = {"INFO": "INFO", "WARNING": "WARNING", "ERROR": "ERROR"}.get(
-        view["severity"], "EVENT"
-    )
-    return f"[{label}] [{view['sequence']}] {view['title']}: {view['message']}"
+    return f"[{view['sequence']}] {view['title']}: {view['message']}"
+
+
+def _activity_message(event_type: str, details: dict[str, Any], fallback: str) -> str:
+    message = str(details.get("message") or "")
+    command = str(details.get("command") or "")
+    if event_type == "COMMAND_STARTED" and command:
+        return command[:500]
+    if event_type == "COMMAND_COMPLETED" and command:
+        exit_code = details.get("exit_code")
+        prefix = (
+            "successfully: "
+            if exit_code in (0, "0", None)
+            else f"with exit code {exit_code}: "
+        )
+        return (prefix + command)[:500]
+    if event_type == "FILE_CHANGED" and details.get("file_path"):
+        return str(details["file_path"])[:500]
+    return (message or str(details.get("reason") or fallback))[:500]
+
+
+def provider_output_view(event: ExecutionProgressEvent) -> dict[str, Any]:
+    details = event.details if isinstance(event.details, dict) else {}
+    return {
+        "sequence": event.sequence,
+        "type": event.event_type,
+        "timestamp": details.get("provider_timestamp") or event.created_at.isoformat(),
+        "provider": details.get("provider", "codex-cli"),
+        "item_identifier": details.get("item_identifier", ""),
+        "message": details.get("message", ""),
+        "command": details.get("command", ""),
+        "exit_code": details.get("exit_code"),
+        "stdout": details.get("stdout", ""),
+        "stderr": details.get("stderr", ""),
+        "file_path": details.get("file_path", ""),
+        "created_at": event.created_at.isoformat(),
+    }
+
+
+def raw_event_view(event: ExecutionProgressEvent) -> dict[str, Any]:
+    details = event.details if isinstance(event.details, dict) else {}
+    return {
+        "sequence": event.sequence,
+        "type": event.event_type,
+        "provider_event_type": details.get("provider_event_type", ""),
+        "provider_event_id": event.provider_event_id,
+        "timestamp": details.get("provider_timestamp") or event.created_at.isoformat(),
+        "raw_event": details.get("raw_event", details),
+        "created_at": event.created_at.isoformat(),
+    }
+
+
+def events_for_view(
+    run: ExecutionRun,
+    view: str = "ACTIVITY",
+    *,
+    after_sequence: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    events = run.events.filter(sequence__gt=after_sequence).order_by("sequence")[:limit]
+    if view == "PROVIDER_OUTPUT":
+        return [provider_output_view(event) for event in events]
+    if view == "RAW_EVENTS":
+        return [raw_event_view(event) for event in events]
+    return [event_view(event) for event in events]
 
 
 def activity_summary(run: ExecutionRun) -> dict[str, Any]:
@@ -132,7 +205,7 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
     done = {
         "contract": bool(run.contract_id),
         "preflight": "PREFLIGHT_COMPLETED" in types,
-        "provider": "EXECUTOR_STARTED" in types,
+        "provider": bool({"EXECUTOR_STARTED", "PROVIDER_STARTED"} & types),
         "execution": completed,
         "validation": completed,
         "repair": "REPAIR_VERIFIED" in types,
@@ -166,5 +239,7 @@ def activity_summary(run: ExecutionRun) -> dict[str, Any]:
         "current_activity": event_view(events[-1]) if events else None,
         "latest_events": [event_view(event) for event in events[-100:]],
         "events": [event_view(event) for event in events[:100]],
+        "provider_output": [provider_output_view(event) for event in events[:100]],
+        "raw_events": [raw_event_view(event) for event in events[:100]],
         "heartbeat": heartbeat_projection(run),
     }

@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 
 from projects.governed_mcp import invoke_public_tool
 from projects.models import ExecutionProvider
+from projects.provider_events import project_provider_line
 from projects.providers import (
     CodexCliAdapter,
     check_health,
@@ -21,7 +22,9 @@ from projects.providers import (
 )
 
 
-def test_codex_activity_projection_never_retains_provider_text() -> None:
+def test_codex_activity_projection_retains_redacted_structured_provider_output() -> (
+    None
+):
     received: list[dict[str, object]] = []
 
     CodexCliAdapter._project_activity(
@@ -30,9 +33,81 @@ def test_codex_activity_projection_never_retains_provider_text() -> None:
     )
 
     assert received == [
-        {"activity_type": "item.completed", "message": "Codex reported item.completed"},
-        {"activity_type": "output", "message": "Codex reported output"},
+        {
+            "event_type": "PROVIDER_MESSAGE",
+            "provider": "codex-cli",
+            "provider_event_type": "item.completed",
+            "provider_timestamp": "",
+            "provider_event_id": "",
+            "item_identifier": "",
+            "message": "[REDACTED]",
+            "command": "",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "file_path": "",
+            "source_stream": "stdout",
+            "raw_event": {"type": "item.completed", "message": "[REDACTED]"},
+        },
+        {
+            "event_type": "PROVIDER_MESSAGE",
+            "provider": "codex-cli",
+            "provider_event_type": "plain_text",
+            "provider_timestamp": "",
+            "provider_event_id": "",
+            "item_identifier": "",
+            "message": "plain output",
+            "command": "",
+            "exit_code": None,
+            "stdout": "plain output",
+            "stderr": "",
+            "file_path": "",
+            "source_stream": "stdout",
+            "raw_event": {"raw_text": "plain output"},
+        },
     ]
+
+
+def test_codex_activity_projection_accepts_a_json_string_without_stopping() -> None:
+    received: list[dict[str, object]] = []
+
+    CodexCliAdapter._project_activity(
+        BytesIO(b'"provider protocol message"\n{"type":"turn.completed"}\n'),
+        received.append,
+    )
+
+    assert [event["event_type"] for event in received] == [
+        "PROVIDER_MESSAGE",
+        "PROVIDER_COMPLETED",
+    ]
+    assert received[0]["message"] == "provider protocol message"
+    assert received[1]["message"] == "Codex reported turn.completed"
+
+
+def test_codex_activity_projection_continues_after_an_unexpected_projection_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    received: list[dict[str, object]] = []
+    original = project_provider_line
+    calls = 0
+
+    def fail_once(line: bytes | str, *, source_stream: str) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TypeError("unexpected provider event")
+        return original(line, source_stream=source_stream)
+
+    monkeypatch.setattr("projects.providers.project_provider_line", fail_once)
+
+    CodexCliAdapter._project_activity(BytesIO(b"first\nsecond\n"), received.append)
+
+    assert [event["event_type"] for event in received] == [
+        "PROVIDER_WARNING",
+        "PROVIDER_MESSAGE",
+    ]
+    assert received[0]["raw_event"] == {"error_type": "TypeError"}
+    assert received[1]["message"] == "second"
 
 
 def configure_codex_runtime(

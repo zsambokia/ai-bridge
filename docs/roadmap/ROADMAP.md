@@ -95,6 +95,14 @@ read-only operational admin view, and a compact MCP activity summary for
 ChatGPT. This strengthens the proving loop without adding a parallel lifecycle
 or simulated organizational actors.
 
+### Provider activity fidelity repair
+
+The Codex provider activity stream now treats each stdout and stderr line as
+untrusted input: valid object events are projected to typed, redacted evidence,
+while JSON scalars and malformed lines remain safe text output.  A projection
+failure is isolated to that line so the reader and worker continue processing
+subsequent activity.
+
 ### Issue #11 Sprint A â€” Durable queue and worker separation
 
 Sprint A implements the first ordered child of the Durable Autonomous

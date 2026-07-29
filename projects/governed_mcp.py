@@ -53,7 +53,7 @@ from .execution import (
     provider,
     start_run,
 )
-from .execution_activity import activity_summary, event_view, heartbeat_projection
+from .execution_activity import activity_summary, events_for_view, heartbeat_projection
 from .knowledge import (
     context_package as akb_context_package,
 )
@@ -565,9 +565,20 @@ _TOOLS = [
     ),
     _tool(
         "execution.list_events",
-        "List ordered bounded events for one execution run.",
+        (
+            "List ordered, redacted events in Activity, Provider Output, or Raw "
+            "Events view."
+        ),
         READ_ONLY,
-        {"execution_token": {"type": "string"}},
+        {
+            "execution_token": {"type": "string"},
+            "view": {
+                "type": "string",
+                "enum": ["ACTIVITY", "PROVIDER_OUTPUT", "RAW_EVENTS"],
+            },
+            "after_sequence": {"type": "integer", "minimum": 0},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+        },
         ["execution_token"],
     ),
     _tool(
@@ -1603,11 +1614,16 @@ def _provider_has_completed(run: ExecutionRun) -> bool:
     """
     if provider(run.provider_name).status(run.provider_execution_id) == "FINISHED":
         return True
-    return ExecutionProgressEvent.objects.filter(
-        run=run,
-        event_type="PROVIDER_OUTPUT",
-        details__activity_type="turn.completed",
-    ).exists()
+    return (
+        ExecutionProgressEvent.objects.filter(
+            run=run, event_type="PROVIDER_COMPLETED"
+        ).exists()
+        or ExecutionProgressEvent.objects.filter(
+            run=run,
+            event_type="PROVIDER_OUTPUT",
+            details__activity_type="turn.completed",
+        ).exists()
+    )
 
 
 def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None:
@@ -2708,14 +2724,18 @@ def invoke_public_tool(
                     cancel_run(run, approval_reference=approval.reference)
                     result = {"status": "CANCELLED", "execution_token": str(run.token)}
             elif name == "execution.list_events":
+                view = str(arguments.get("view", "ACTIVITY"))
+                if view not in {"ACTIVITY", "PROVIDER_OUTPUT", "RAW_EVENTS"}:
+                    raise ValueError("EXECUTION_EVENT_VIEW_INVALID")
                 result = {
                     "execution_token": str(run.token),
-                    "events": [
-                        event_view(event)
-                        for event in ExecutionProgressEvent.objects.filter(run=run)[
-                            :100
-                        ]
-                    ],
+                    "view": view,
+                    "events": events_for_view(
+                        run,
+                        view,
+                        after_sequence=int(arguments.get("after_sequence", 0)),
+                        limit=min(int(arguments.get("limit", 100)), 500),
+                    ),
                 }
             elif name == "execution.get_activity_summary":
                 result = activity_summary(run)

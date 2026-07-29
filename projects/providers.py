@@ -19,6 +19,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from .models import ExecutionProvider, ProviderAuditEvent
+from .provider_events import project_provider_line
 
 CAPABILITIES = {
     "CODE_EXECUTION",
@@ -356,39 +357,63 @@ class CodexCliAdapter:
             cwd=repository,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE if capture_activity else subprocess.DEVNULL,
-            stderr=subprocess.STDOUT if capture_activity else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if capture_activity else subprocess.DEVNULL,
             shell=False,
             env=environment,
         )  # noqa: S603
         time.sleep(0.15)
         if process.poll() is not None:
             raise ValueError("CODEX_SUBPROCESS_EXITED_EARLY")
-        if capture_activity and activity_callback and process.stdout is not None:
-            Thread(
-                target=self._project_activity,
-                args=(process.stdout, activity_callback),
-                daemon=True,
-            ).start()
+        if capture_activity and activity_callback:
+            for stream_name, stream in (
+                ("stdout", process.stdout),
+                ("stderr", process.stderr),
+            ):
+                if stream is not None:
+                    Thread(
+                        target=self._project_activity,
+                        args=(stream, activity_callback, stream_name),
+                        daemon=True,
+                    ).start()
         return ProviderStart(str(process.pid), str(repository))
 
     @staticmethod
     def _project_activity(
-        stream: BinaryIO, activity_callback: Callable[[dict[str, object]], None]
+        stream: BinaryIO,
+        activity_callback: Callable[[dict[str, object]], None],
+        source_stream: str = "stdout",
     ) -> None:
-        """Expose output occurrence and type, never provider text or credentials."""
+        """Project each stdout/stderr line without letting one line end the reader."""
         for line in stream:
             try:
-                decoded = json.loads(line)
-            except json.JSONDecodeError:
-                activity_type = "output"
-            else:
-                activity_type = str(decoded.get("type", "output"))[:80]
-            activity_callback(
-                {
-                    "activity_type": activity_type,
-                    "message": f"Codex reported {activity_type}",
+                activity = project_provider_line(line, source_stream=source_stream)
+            except Exception as error:  # pragma: no cover - defensive provider boundary
+                # Provider output is untrusted.  Keep reading after a malformed or
+                # newly introduced event shape, without retaining exception text
+                # that could include provider content or credentials.
+                activity = {
+                    "event_type": "PROVIDER_WARNING",
+                    "provider": "codex-cli",
+                    "provider_event_type": "projection_error",
+                    "provider_timestamp": "",
+                    "provider_event_id": "",
+                    "item_identifier": "",
+                    "message": "Codex activity projection failed; reading continues",
+                    "command": "",
+                    "exit_code": None,
+                    "stdout": "",
+                    "stderr": "",
+                    "file_path": "",
+                    "source_stream": source_stream,
+                    "raw_event": {"error_type": type(error).__name__},
                 }
-            )
+            try:
+                activity_callback(activity)
+            except Exception:  # pragma: no cover - persistence boundary
+                # A transient persistence failure must not terminate the provider
+                # reader or the provider subprocess.  A subsequent line can still
+                # be persisted once the database is available again.
+                continue
 
     def status(self, execution_id: str) -> str:
         process_id = int(execution_id)
