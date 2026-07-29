@@ -19,7 +19,7 @@ from .models import ExecutableScope, GovernanceApproval, Project
 SCOPE_SCHEMA = "ai-bridge-scope/v1"
 SPRINT_SCHEMA = "ai-bridge-sprint/v1"
 WORK_ITEM_SCHEMA = "ai-bridge-work-item/v1"
-FINAL_STATUSES = {"COMPLETED", "CANCELLED", "SUPERSEDED"}
+FINAL_STATUSES = {"COMPLETED", "CANCELLED", "SUPERSEDED", "ACCEPTED"}
 
 
 def canonical_hash(record: dict[str, Any]) -> str:

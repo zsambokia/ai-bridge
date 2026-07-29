@@ -306,3 +306,13 @@ The database, rather than Django memory or the autoreloader, owns the queue
 state. An expired worker lease is reclaimable without creating a second run or
 losing the event history. This is the completed Sprint A foundation only;
 Epic #11 Sprints B-D remain ordered, unstarted work.
+
+## External governed-execution lifecycle reconciliation
+
+Evidence-backed external or Factory Development Mode work can be admitted into
+the canonical lifecycle without a provider run, an execution contract, or
+synthetic historical runtime events. The reconciliation verifies the registered
+repository, final commit, scope-bound evidence, passing engineering audit and
+Product Owner acceptance; it records an additive transition trail from
+`RECONCILING` through `PASS` to `ACCEPTED`. Identical retries are idempotent,
+while changed or unverifiable input fails closed.

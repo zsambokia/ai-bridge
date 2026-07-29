@@ -417,6 +417,8 @@ class ExecutableScope(models.Model):
         APPROVED = "APPROVED", "Approved"
         ACTIVE = "ACTIVE", "Active"
         COMPLETED = "COMPLETED", "Completed"
+        RECONCILING = "RECONCILING", "Reconciling external execution"
+        ACCEPTED = "ACCEPTED", "Pass accepted"
         CANCELLED = "CANCELLED", "Cancelled"
         SUPERSEDED = "SUPERSEDED", "Superseded"
 
@@ -438,6 +440,40 @@ class ExecutableScope(models.Model):
 
     class Meta:
         ordering = ["identifier", "version"]
+
+
+class ExternalExecutionReconciliation(models.Model):
+    """Append-only acceptance record for a verified non-provider execution.
+
+    This is deliberately separate from ``ExecutionRun`` and
+    ``ExecutionContract``: it records when already completed Factory or
+    external work is admitted after evidence verification, never a synthetic
+    provider execution.
+    """
+
+    class Status(models.TextChoices):
+        RECONCILING = "RECONCILING", "Reconciling"
+        PASS = "PASS", "Pass"
+        ACCEPTED = "ACCEPTED", "Accepted"
+
+    scope = models.OneToOneField(
+        ExecutableScope,
+        on_delete=models.PROTECT,
+        related_name="external_reconciliation",
+    )
+    status = models.CharField(max_length=16, choices=Status.choices)
+    source_kind = models.CharField(max_length=32)
+    final_commit_sha = models.CharField(max_length=40)
+    evidence_manifest = models.JSONField(default=dict)
+    evidence_digest = models.CharField(max_length=64)
+    engineering_audit_path = models.CharField(max_length=255)
+    acceptance_evidence_path = models.CharField(max_length=255)
+    acceptance_reference = models.CharField(max_length=128)
+    transition_log = models.JSONField(default=list)
+    verification = models.JSONField(default=dict)
+    reconciled_by = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class ContractConsumption(models.Model):

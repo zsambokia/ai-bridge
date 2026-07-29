@@ -445,3 +445,13 @@ remediation and governed executor dispatch; independent validation and
 workflow continuation; and governed deployment, rollback, and end-to-end
 proof. Sprint A establishes the safe decision boundary only; it does not grant
 an LLM execution authority or replace the existing scope and contract lifecycle.
+
+## Lifecycle reconciliation capability
+
+The platform can now canonically admit a previously completed Factory
+Development Mode or external governed execution when, and only when, its final
+commit, scope-bound evidence, PASS engineering audit, and Product Owner
+acceptance can be verified together. This closes a lifecycle-recording gap
+without replaying a provider run or weakening the normal proposal,
+confirmation, contract, and worker path for future Sprints. The capability is
+idempotent and preserves a durable reconciliation audit trail.

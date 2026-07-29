@@ -220,6 +220,25 @@ Stale-run reconciliation, policy classification and child remediation, and the
 local Codex wrapper integration remain ordered later Epic #11 Sprints and are
 not represented as completed here.
 
+## Lifecycle reconciliation for externally governed execution
+
+An already completed Factory Development Mode or external governed execution
+may be admitted without inventing an `ExecutionRun`, provider event, consumed
+contract, or a second Product Owner conversation. The dedicated
+`ExternalExecutionReconciliation` record is intentionally separate from the
+normal provider lifecycle. It binds one canonical scope to the exact final Git
+commit, evidence manifest and digest, PASS engineering audit, and durable
+Product Owner acceptance reference.
+
+The trusted local `reconcile_external_execution` management command verifies
+all of those inputs against the Project repository before it changes the
+scope. It records `RECONCILING`, `PASS`, and `ACCEPTED` in an immutable
+transition log, writes an MCP audit event, and then makes the scope's
+canonical state `ACCEPTED`. Repeating the identical request returns the same
+record; changing any verified input fails closed. This is lifecycle admission,
+not retrospective provider execution, so it never creates historic runtime
+events or bypasses ordinary contract-based execution for new work.
+
 ## MCP execution lookup failure handling
 
 The four public execution-token tools (`execution.get_run_status`,
