@@ -1,0 +1,12 @@
+{
+  "scope": "bridge:ai-bridge:sprint:25d12ab1-be45-467d-80da-1ed8c6385752",
+  "proposal_version": 1,
+  "proposal_hash": "c3be5185731a9e1dad42a1a93a588d3aa4513a858cbf80c633e50e026bcdca6c",
+  "status": "PASS — READY FOR PRODUCT OWNER REVIEW",
+  "targeted_tests": "3 passed",
+  "repository_release_gate": "PASS: 152 tests, Django check, Ruff, Ruff format, mypy",
+  "scope_validation": "PASS",
+  "migration_validation": "PASS",
+  "provider_execution_started": false,
+  "execution_contract_consumed": false
+}
