@@ -11,7 +11,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .engineering_memory import ingest_lifecycle_event
-from .execution import cancel_run, start_run
+from .execution import cancel_run, enqueue_run
 from .models import (
     DeploymentRecord,
     ExecutableScope,
@@ -208,11 +208,12 @@ def dispatch_remediation(
             "approval": approval.reference,
         },
     )
-    run = start_run(contract, request, platform_root, audit_event_id=audit.pk)
+    job = enqueue_run(contract, request, platform_root, audit_event_id=audit.pk)
+    run = job.run
     audit.outcome = "DISPATCHED"
     audit.save(update_fields=["outcome"])
-    request.status = "EXECUTION_STARTED"
-    request.next_action = "Independent validation is required after completion."
+    request.status = "EXECUTION_QUEUED"
+    request.next_action = "Independent worker must claim the durable job."
     request.save(update_fields=["status", "next_action"])
     workflow.start_request = request
     workflow.run = run

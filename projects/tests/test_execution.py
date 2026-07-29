@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable, Iterator
 
 import pytest
+from django.core.management import call_command
+from django.utils import timezone
 
 from projects.contracts import (
     _normalized_hash,
@@ -19,7 +22,10 @@ from projects.contracts import (
 from projects.execution import (
     ProviderStart,
     _safe_details,
+    claim_next_job,
     complete_run,
+    enqueue_run,
+    execute_claimed_job,
     record_gate_rerun,
     repair_failure,
     start_run,
@@ -31,6 +37,7 @@ from projects.execution_activity import (
 )
 from projects.models import (
     ExecutionContract,
+    ExecutionJob,
     ExecutionRun,
     ExecutionStartRequest,
     GovernanceApproval,
@@ -397,3 +404,77 @@ def test_repair_gate_rerun_updates_the_derived_activity_checklist(
         "GATE_RERUN_PASSED",
         "REPAIR_VERIFIED",
     ]
+
+
+@pytest.mark.django_db
+def test_durable_queue_is_claimed_by_an_independent_worker(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+
+    job = enqueue_run(contract, request, root)
+    assert job.status == ExecutionJob.Status.QUEUED
+    assert job.run.lifecycle == ExecutionRun.Lifecycle.REQUESTED
+    assert job.run.events.get().event_type == "EXECUTION_ENQUEUED"
+
+    claimed = claim_next_job("worker-a", 60)
+    assert claimed is not None
+    run = execute_claimed_job(claimed, "worker-a", root)
+
+    claimed.refresh_from_db()
+    assert claimed.status == ExecutionJob.Status.STARTED
+    assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert "WORKER_LEASE_ACQUIRED" in list(
+        run.events.values_list("event_type", flat=True)
+    )
+
+
+@pytest.mark.django_db
+def test_expired_worker_lease_is_reclaimed_without_losing_the_execution(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = consumed_contract
+    job = enqueue_run(contract, request, root)
+    first = claim_next_job("worker-a", 60)
+    assert first is not None
+    job.lease_expires_at = timezone.now() - timedelta(seconds=1)
+    job.save(update_fields=["lease_expires_at"])
+
+    reclaimed = claim_next_job("worker-b", 60)
+    assert reclaimed is not None
+    assert reclaimed.pk == job.pk
+    assert reclaimed.lease_owner == "worker-b"
+    assert reclaimed.run.events.filter(event_type="WORKER_LEASE_RECLAIMED").exists()
+
+
+@pytest.mark.django_db
+def test_worker_command_starts_a_queued_job_outside_the_web_process(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    monkeypatch.setattr(
+        "projects.management.commands.run_execution_worker.settings.BASE_DIR", root
+    )
+    job = enqueue_run(contract, request, root)
+
+    stdout = StringIO()
+    call_command(
+        "run_execution_worker",
+        "--once",
+        "--worker-id",
+        "worker-command",
+        stdout=stdout,
+    )
+
+    job.refresh_from_db()
+    assert job.status == ExecutionJob.Status.STARTED
+    assert job.run.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert str(job.run.token) in stdout.getvalue()

@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 from time import sleep
 from typing import Protocol
 
 from django.conf import settings
-from django.db import OperationalError, transaction
+from django.db import OperationalError, models, transaction
 from django.utils import timezone
 
 from .execution_activity import console_line
 from .models import (
     ContractConsumption,
     ExecutionContract,
+    ExecutionJob,
     ExecutionProgressEvent,
     ExecutionRun,
     ExecutionStartRequest,
@@ -42,6 +44,107 @@ ACTIVE_STATES = {
 }
 SECRET_MARKERS = ("token", "secret", "password", "authorization", "bearer")
 MAX_PROVIDER_START_ATTEMPTS = 2
+
+
+def enqueue_run(
+    contract: ExecutionContract,
+    request: ExecutionStartRequest,
+    platform_root: Path,
+    audit_event_id: int | None = None,
+) -> ExecutionJob:
+    """Persist provider work; a web request never starts the provider itself."""
+    if contract.lifecycle not in {
+        ExecutionContract.Lifecycle.CONSUMED,
+        ExecutionContract.Lifecycle.RUNNING,
+    }:
+        raise ValueError("CONTRACT_NOT_CONSUMED")
+    receipt = ContractConsumption.objects.filter(contract=contract).first()
+    if receipt is None:
+        raise ValueError("CONSUMPTION_RECEIPT_REQUIRED")
+    from .contracts import validate_issued_execution_contract
+
+    validate_issued_execution_contract(contract, platform_root)
+    workspace_root = project_repository_root(contract.project, platform_root)
+    execution = contract.payload["execution"]
+    with transaction.atomic():
+        run, created = ExecutionRun.objects.get_or_create(
+            start_request=request,
+            defaults={
+                "contract": contract,
+                "repository": contract.payload["project"]["repository"],
+                "branch": execution["target_branch"],
+                "baseline_commit": execution["baseline_commit"],
+                "contract_hash": contract.contract_hash,
+                "workspace_identifier": str(workspace_root),
+                "provider_name": receipt.provider_identity,
+                "audit_event_id": audit_event_id,
+                "lifecycle": ExecutionRun.Lifecycle.REQUESTED,
+                "current_phase": "QUEUED",
+                "evidence_root": contract.payload["evidence"]["root"],
+            },
+        )
+        if run.contract_id != contract.pk:
+            raise ValueError("EXECUTION_REQUEST_CONTRACT_MISMATCH")
+        job, job_created = ExecutionJob.objects.get_or_create(run=run)
+    if created or job_created:
+        add_event(run, "EXECUTION_ENQUEUED", job_token=str(job.token))
+    return job
+
+
+def claim_next_job(worker_id: str, lease_seconds: int) -> ExecutionJob | None:
+    """Atomically lease queued work, including work abandoned by a dead worker."""
+    if not worker_id or lease_seconds <= 0:
+        raise ValueError("INVALID_WORKER_LEASE")
+    now = timezone.now()
+    with transaction.atomic():
+        job = (
+            ExecutionJob.objects.select_for_update()
+            .filter(status__in=[ExecutionJob.Status.QUEUED, ExecutionJob.Status.LEASED])
+            .filter(
+                models.Q(status=ExecutionJob.Status.QUEUED)
+                | models.Q(lease_expires_at__lt=now)
+            )
+            .order_by("created_at", "id")
+            .first()
+        )
+        if job is None:
+            return None
+        reclaimed = job.status == ExecutionJob.Status.LEASED
+        job.status = ExecutionJob.Status.LEASED
+        job.lease_owner = worker_id
+        job.lease_expires_at = now + timedelta(seconds=lease_seconds)
+        job.last_heartbeat_at = now
+        job.save(
+            update_fields=[
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "last_heartbeat_at",
+                "updated_at",
+            ]
+        )
+    add_event(
+        job.run,
+        "WORKER_LEASE_RECLAIMED" if reclaimed else "WORKER_LEASE_ACQUIRED",
+        worker=worker_id,
+    )
+    return job
+
+
+def heartbeat_job(
+    job: ExecutionJob, worker_id: str, lease_seconds: int
+) -> ExecutionJob:
+    """Renew only the lease held by this worker and record durable liveness."""
+    now = timezone.now()
+    with transaction.atomic():
+        job = ExecutionJob.objects.select_for_update().get(pk=job.pk)
+        if job.status != ExecutionJob.Status.LEASED or job.lease_owner != worker_id:
+            raise ValueError("WORKER_LEASE_NOT_OWNED")
+        job.last_heartbeat_at = now
+        job.lease_expires_at = now + timedelta(seconds=lease_seconds)
+        job.save(update_fields=["last_heartbeat_at", "lease_expires_at", "updated_at"])
+    add_event(job.run, "WORKER_HEARTBEAT", worker=worker_id)
+    return job
 
 
 class ExecutionProvider(Protocol):
@@ -146,7 +249,10 @@ def start_run(
     recoverable_run = (
         ExecutionRun.objects.filter(
             contract=contract,
-            lifecycle=ExecutionRun.Lifecycle.STARTING,
+            lifecycle__in=[
+                ExecutionRun.Lifecycle.REQUESTED,
+                ExecutionRun.Lifecycle.STARTING,
+            ],
             provider_execution_id="",
         )
         .order_by("id")
@@ -232,7 +338,9 @@ def start_run(
                 "updated_at",
             ]
         )
-        add_event(run, "START_RECOVERED", reason="resuming persisted blocked run")
+        add_event(
+            run, "START_RECOVERED", reason="resuming persisted queued or blocked run"
+        )
 
     started: ProviderStart | None = None
     failure: Exception | None = None
@@ -318,6 +426,24 @@ def start_run(
     add_event(run, "EXECUTION_ACTIVITY_STARTED", message="provider process is running")
     contract.lifecycle = ExecutionContract.Lifecycle.RUNNING
     contract.save(update_fields=["lifecycle"])
+    return run
+
+
+def execute_claimed_job(
+    job: ExecutionJob, worker_id: str, platform_root: Path
+) -> ExecutionRun:
+    """Run a claimed job from the independent worker process only."""
+    if job.status != ExecutionJob.Status.LEASED or job.lease_owner != worker_id:
+        raise ValueError("WORKER_LEASE_NOT_OWNED")
+    run = start_run(job.run.contract, job.run.start_request, platform_root)
+    job.status = ExecutionJob.Status.STARTED
+    job.provider_attempt_metadata = {
+        "attempt_count": run.attempt_count,
+        "provider_execution_id": run.provider_execution_id,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+    }
+    job.save(update_fields=["status", "provider_attempt_metadata", "updated_at"])
+    add_event(run, "WORKER_DISPATCH_COMPLETED", worker=worker_id)
     return run
 
 

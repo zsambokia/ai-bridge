@@ -291,3 +291,18 @@ foundation persists sessions and decisions, exposes only bounded MCP status,
 assessment, and cancellation operations, and contains no execution or approval
 path. The remaining incident, remediation, validation, and deployment stages
 are explicitly planned as separate dependent Sprints.
+
+## Issue #11 Sprint A durable execution queue
+
+Issue #11 Sprint A adds the persisted hand-off between the governed web/MCP
+path and provider startup. `ExecutionJob` is one-to-one with the canonical
+`ExecutionRun`; it records queued, leased, started, or failed state, worker
+identity, expiry, heartbeat and safe provider-attempt metadata. The normal
+conversation and remediation dispatch paths enqueue after existing governance
+checks; an independent `run_execution_worker` command atomically leases and
+starts the job.
+
+The database, rather than Django memory or the autoreloader, owns the queue
+state. An expired worker lease is reclaimable without creating a second run or
+losing the event history. This is the completed Sprint A foundation only;
+Epic #11 Sprints B-D remain ordered, unstarted work.

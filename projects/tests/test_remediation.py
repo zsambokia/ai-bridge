@@ -309,9 +309,9 @@ class RemediationWorkflowTests(TestCase):
         )
         self.assertEqual(cancelled.status, RemediationWorkflow.Status.CANCELLED)
 
-    @patch("projects.remediation.start_run")
-    def test_dispatch_uses_canonical_executor_and_audit_linkage(
-        self, start_run: Mock
+    @patch("projects.remediation.enqueue_run")
+    def test_dispatch_uses_durable_queue_and_audit_linkage(
+        self, enqueue_run: Mock
     ) -> None:
         workflow = self._linked_workflow()
         request = ExecutionStartRequest.objects.create(
@@ -329,7 +329,7 @@ class RemediationWorkflowTests(TestCase):
             lifecycle=ExecutionRun.Lifecycle.RUNNING,
             evidence_root="docs/evidence/test",
         )
-        start_run.return_value = run
+        enqueue_run.return_value = Mock(run=run)
 
         dispatched = dispatch_remediation(
             workflow,
@@ -338,11 +338,16 @@ class RemediationWorkflowTests(TestCase):
         )
 
         audit = McpAuditEvent.objects.get(tool_name="remediation.dispatch")
-        start_run.assert_called_once_with(
+        enqueue_run.assert_called_once_with(
             self.contract,
             request,
             Path("."),
             audit_event_id=audit.pk,
+        )
+        request.refresh_from_db()
+        self.assertEqual(request.status, "EXECUTION_QUEUED")
+        self.assertEqual(
+            request.next_action, "Independent worker must claim the durable job."
         )
         self.assertEqual(dispatched.run, run)
         self.assertEqual(audit.details["approval"], self.approval.reference)
@@ -360,7 +365,7 @@ class RemediationWorkflowTests(TestCase):
             ),
             dispatched,
         )
-        start_run.assert_called_once()
+        enqueue_run.assert_called_once()
 
     def test_rejects_an_unapproved_cross_project_remediation_context(self) -> None:
         workflow = create_remediation(
