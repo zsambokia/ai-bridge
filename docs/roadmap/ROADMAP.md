@@ -457,3 +457,12 @@ acceptance can be verified together. This closes a lifecycle-recording gap
 without replaying a provider run or weakening the normal proposal,
 confirmation, contract, and worker path for future Sprints. The capability is
 idempotent and preserves a durable reconciliation audit trail.
+
+## Issue #11 Sprint C — automated technical remediation
+
+Sprint C is complete and ready for Product Owner review. It adds the governed
+technical-remediation loop required for Orki to repair an in-scope technical
+blocker, rerun its invalidated gate, and resume the original parent execution.
+The loop creates an auditable linked Work Item, never a replacement provider
+run or Execution Contract. The next Epic #11 dependency is Sprint D: the local
+Codex wrapper and durable handoff proof.

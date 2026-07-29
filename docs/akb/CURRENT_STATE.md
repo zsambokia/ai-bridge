@@ -324,3 +324,18 @@ repository, final commit, scope-bound evidence, passing engineering audit and
 Product Owner acceptance; it records an additive transition trail from
 `RECONCILING` through `PASS` to `ACCEPTED`. Identical retries are idempotent,
 while changed or unverifiable input fails closed.
+
+## Sprint C remediation operational knowledge
+
+`TechnicalRemediationLoop` is the durable record for automatic remediation of
+an existing parent execution. It accepts only an explicit
+`TECHNICAL_REMEDIATION` classification, creates a child `WORK_ITEM` bound to
+the parent run and scope, records policy/evidence, and changes the parent to
+`REPAIRING`. Completion is allowed only with fresh evidence and a successful
+rerun of the failed gate; only then does the original run return to `RUNNING`.
+`BUSINESS_DECISION_REQUIRED`, `SECURITY_OR_GOVERNANCE_CONFLICT`,
+`EXTERNAL_DEPENDENCY`, and `NON_RECOVERABLE` are deliberately not automatic.
+The operation is idempotent; changed retry bindings and incomplete evidence
+fail closed. A corrupted published scope file can be re-projected from the
+unchanged canonical record, the bounded repair for a deterministic
+published-content-hash mismatch.

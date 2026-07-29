@@ -880,6 +880,56 @@ class ExecutionRecoveryAttempt(models.Model):
         ordering = ["created_at", "id"]
 
 
+class TechnicalRemediationLoop(models.Model):
+    """A bounded child remediation that can resume its existing parent run.
+
+    Unlike ``RemediationWorkflow``, this record never issues or consumes an
+    execution contract.  It is limited to repairing an in-scope technical
+    blocker discovered by the already-authorized parent execution.
+    """
+
+    class Classification(models.TextChoices):
+        BUSINESS_DECISION_REQUIRED = (
+            "BUSINESS_DECISION_REQUIRED",
+            "Business decision required",
+        )
+        TECHNICAL_REMEDIATION = "TECHNICAL_REMEDIATION", "Technical remediation"
+        SECURITY_OR_GOVERNANCE_CONFLICT = (
+            "SECURITY_OR_GOVERNANCE_CONFLICT",
+            "Security or governance conflict",
+        )
+        EXTERNAL_DEPENDENCY = "EXTERNAL_DEPENDENCY", "External dependency"
+        NON_RECOVERABLE = "NON_RECOVERABLE", "Non-recoverable"
+
+    class Status(models.TextChoices):
+        REMEDIATING = "REMEDIATING", "Remediating"
+        RESUMED = "RESUMED", "Parent resumed"
+        ESCALATED = "ESCALATED", "Escalated"
+        FAILED = "FAILED", "Repair or gate failed"
+
+    parent_run = models.ForeignKey(
+        "ExecutionRun", on_delete=models.PROTECT, related_name="technical_remediations"
+    )
+    parent_scope = models.ForeignKey(
+        ExecutableScope, on_delete=models.PROTECT, related_name="technical_remediations"
+    )
+    remediation_scope = models.OneToOneField(
+        ExecutableScope, on_delete=models.PROTECT, related_name="remediation_parent"
+    )
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    classification = models.CharField(max_length=40, choices=Classification.choices)
+    gate_name = models.CharField(max_length=128)
+    policy_basis = models.CharField(max_length=1000)
+    evidence_references = models.JSONField(default=list)
+    status = models.CharField(max_length=16, choices=Status.choices)
+    timeline = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
 class ExecutionProgressEvent(models.Model):
     """Ordered, bounded and secret-free projection of execution progress."""
 
