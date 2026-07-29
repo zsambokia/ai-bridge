@@ -70,6 +70,15 @@ Sprint 003 establishes this boundary for Project lifecycle, onboarding, and Cont
 
 ## 4. Milestone sequence
 
+### Sprint 2 — AKB readiness advancement
+
+Implemented under the approved AKB knowledge-platform Sprint 2: a normalized,
+project-isolated engineering-memory layer with versioned entities, typed
+relations, approval-controlled publication, lifecycle-event candidates, and
+first-class Roadmap, Constitution, UI Plan, and System Design MCP adapters.
+Deployment and rollback ingestion remain deferred because the present
+deployment lifecycle does not emit those events.
+
 ### Sprint 014 — Execution provider platform and secure configuration
 
 Implemented under its approved Sprint: a provider-neutral registry, safe

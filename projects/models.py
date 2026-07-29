@@ -603,6 +603,110 @@ class KnowledgeRevision(models.Model):
         ]
 
 
+class EngineeringEntity(models.Model):
+    """A project-isolated, normalized engineering-memory node."""
+
+    class Kind(models.TextChoices):
+        APPLICATION = "APPLICATION", "Application"
+        CAPABILITY = "CAPABILITY", "Capability"
+        FEATURE = "FEATURE", "Feature"
+        COMPONENT = "COMPONENT", "Component"
+        SERVICE = "SERVICE", "Service"
+        API = "API", "API"
+        INTEGRATION = "INTEGRATION", "Integration"
+        ROADMAP_ITEM = "ROADMAP_ITEM", "Roadmap item"
+        CONSTITUTION_SECTION = "CONSTITUTION_SECTION", "Constitution section"
+        UI_PLAN = "UI_PLAN", "UI plan"
+        SYSTEM_DESIGN = "SYSTEM_DESIGN", "System design"
+        ARCHITECTURE_DECISION = "ARCHITECTURE_DECISION", "Architecture decision"
+        SPRINT = "SPRINT", "Sprint"
+        RELEASE = "RELEASE", "Release"
+        ENGINEERING_GATE = "ENGINEERING_GATE", "Engineering gate"
+        REMEDIATION = "REMEDIATION", "Remediation"
+        INCIDENT = "INCIDENT", "Incident"
+        KNOWN_ISSUE = "KNOWN_ISSUE", "Known issue"
+        RUNBOOK = "RUNBOOK", "Runbook"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="engineering_entities"
+    )
+    entity_key = models.CharField(max_length=160)
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    name = models.CharField(max_length=255)
+    state = models.CharField(max_length=32, default="CURRENT")
+    description = models.TextField(blank=True)
+    source_reference = models.CharField(max_length=255)
+    evidence_references = models.JSONField(default=list)
+    attributes = models.JSONField(default=dict)
+    approval_reference = models.CharField(max_length=128, blank=True)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "entity_key"], name="unique_engineering_entity_key"
+            )
+        ]
+        ordering = ["kind", "entity_key"]
+
+
+class EngineeringRelationship(models.Model):
+    """Typed, evidenced relationship between two engineering-memory nodes."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="engineering_relationships"
+    )
+    source = models.ForeignKey(
+        EngineeringEntity,
+        on_delete=models.CASCADE,
+        related_name="outgoing_relationships",
+    )
+    target = models.ForeignKey(
+        EngineeringEntity,
+        on_delete=models.CASCADE,
+        related_name="incoming_relationships",
+    )
+    relationship_type = models.CharField(max_length=64)
+    work_reference = models.CharField(max_length=255, blank=True)
+    evidence_references = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "source", "target", "relationship_type"],
+                name="unique_engineering_relationship",
+            )
+        ]
+        ordering = ["source_id", "relationship_type", "target_id"]
+
+
+class EngineeringEntityRevision(models.Model):
+    """Append-only provenance and version history for engineering-memory nodes."""
+
+    entity = models.ForeignKey(
+        EngineeringEntity, on_delete=models.CASCADE, related_name="revisions"
+    )
+    actor = models.CharField(max_length=128)
+    previous_version = models.PositiveIntegerField(default=0)
+    new_version = models.PositiveIntegerField()
+    source_reference = models.CharField(max_length=255)
+    approval_reference = models.CharField(max_length=128, blank=True)
+    reason = models.CharField(max_length=1000)
+    snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["entity", "new_version"],
+                name="unique_engineering_entity_revision_version",
+            )
+        ]
+
+
 class ExecutionPreparation(models.Model):
     """A non-issuing, project-scoped execution preparation record."""
 

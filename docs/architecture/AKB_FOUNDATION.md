@@ -34,12 +34,41 @@ assessment. Providers therefore receive context that is attributable to a
 specific AKB package, while raw repository contents and secrets remain
 excluded.
 
+## Sprint 2 engineering-memory extension
+
+Sprint 2 adds a separate, normalized engineering-memory graph alongside the
+generic `KnowledgeEntry` layer. `EngineeringEntity` is project-isolated and
+holds a stable entity key, type, state, evidence/source references, structured
+attributes, durable approval reference, version, and timestamps.
+`EngineeringEntityRevision` is append-only. `EngineeringRelationship` creates
+typed, evidenced relations only within the same Project.
+
+The implemented entity types cover application, capability, feature,
+component, service, API, integration, roadmap item, Constitution section, UI
+plan, system design, architecture decision, Sprint, release, engineering gate,
+remediation, incident, known issue, and runbook. The dedicated Roadmap,
+Constitution, UI Plan, and System Design adapters require their defined
+structured fields before a candidate is accepted. A candidate remains
+non-active until a project-bound Product Owner approval activates it; event
+ingestion and MCP authoring cannot bypass that boundary.
+
+The governed MCP surface adds `engineering.search`, `engineering.get_entity`,
+`engineering.link`, `engineering.impact`, and `engineering.plan`, plus
+first-class `roadmap`, `constitution`, `ui_plan`, and `system_design` search
+and candidate-authoring adapters. Search is project-isolated; role profiles
+only affect result ordering and never authorization. Planning analysis reports
+missing capabilities, missing dependencies, and duplicated GitHub references
+from active Roadmap objects.
+
 ## Event-driven input
 
 Closing an incident creates or revises an `INCIDENT_LESSON` candidate with its
 bounded evidence references. It never activates the lesson automatically.
-Sprint closure, remediation, validation, test, release, deployment, and
-rollback events have no automatic AKB writer in this Sprint.
+Sprint completion, gate results, remediation completion, incident resolution,
+and release completion now also create retry-safe engineering-memory
+candidates. The implementation intentionally does not claim deployment or
+rollback ingestion because those lifecycle events are not yet emitted by the
+current deployment subsystem.
 
 Every AKB MCP read/write receives the existing append-only `McpAuditEvent`.
 Its details include operation, context identifiers, non-content input

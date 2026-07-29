@@ -10,6 +10,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from .engineering_memory import ingest_lifecycle_event
 from .execution import cancel_run, start_run
 from .models import (
     DeploymentRecord,
@@ -365,6 +366,25 @@ def continue_workflow(workflow: RemediationWorkflow) -> RemediationWorkflow:
         workflow.incident.save(update_fields=["status", "updated_at"])
         workflow.status = RemediationWorkflow.Status.RESUMED
         event = "WORKFLOW_RESUMED"
+        ingest_lifecycle_event(
+            workflow.project,
+            event_type="REMEDIATION_COMPLETED",
+            event_key=str(workflow.pk),
+            source_reference=f"remediation:{workflow.pk}",
+            evidence_references=validation.evidence_references,
+            attributes={
+                "validator": validation.validator_identity,
+                "outcome": validation.outcome,
+            },
+        )
+        ingest_lifecycle_event(
+            workflow.project,
+            event_type="INCIDENT_RESOLVED",
+            event_key=str(workflow.incident.token),
+            source_reference=f"incident:{workflow.incident.token}",
+            evidence_references=validation.evidence_references,
+            attributes={"via_remediation": workflow.pk},
+        )
     elif workflow.incident.causal_classification in {"BUSINESS", "MIXED", "UNSAFE"}:
         workflow.status = RemediationWorkflow.Status.ESCALATED
         event = "BUSINESS_AUTHORITY_ESCALATED"
@@ -467,4 +487,13 @@ def deploy_or_rollback(
         workflow, f"{action}_COMPLETED", environment=environment, receipt=receipt[:255]
     )
     workflow.save(update_fields=["timeline", "updated_at"])
+    if action == DeploymentRecord.Action.DEPLOY:
+        ingest_lifecycle_event(
+            workflow.project,
+            event_type="RELEASE_COMPLETED",
+            event_key=str(record.pk),
+            source_reference=f"deployment:{record.pk}",
+            evidence_references=[record.provider_receipt],
+            attributes={"environment": environment, "remediation": workflow.pk},
+        )
     return record

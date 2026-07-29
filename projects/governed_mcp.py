@@ -8,7 +8,7 @@ import re
 import unicodedata
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from django.conf import settings
 from django.db import transaction
@@ -22,6 +22,27 @@ from .contracts import (
     issue_execution_contract,
     supersede_execution_contract,
     validate_execution_contract,
+)
+from .engineering_memory import (
+    activate_candidate as activate_engineering_candidate,
+)
+from .engineering_memory import (
+    impact as engineering_impact,
+)
+from .engineering_memory import (
+    ingest_lifecycle_event,
+    planning_assessment,
+    revision_diff,
+    revision_history,
+)
+from .engineering_memory import (
+    link as link_engineering_entities,
+)
+from .engineering_memory import (
+    search as engineering_search,
+)
+from .engineering_memory import (
+    upsert_candidate as upsert_engineering_candidate,
 )
 from .execution import (
     ACTIVE_STATES,
@@ -46,6 +67,7 @@ from .knowledge import (
 from .mcp import invoke_operation
 from .models import (
     ConversationOrchestration,
+    EngineeringEntity,
     ExecutableScope,
     ExecutionContract,
     ExecutionPreparation,
@@ -149,6 +171,20 @@ _AKB_ENTRY = {
     "freshness_status": {"type": "string", "maxLength": 32},
     "knowledge_owner_role": {"type": "string", "maxLength": 64},
     "is_must_know": {"type": "boolean"},
+}
+_ENGINEERING_ENTITY = {
+    "entity_key": {"type": "string", "minLength": 1, "maxLength": 160},
+    "kind": {"type": "string", "enum": list(EngineeringEntity.Kind.values)},
+    "name": {"type": "string", "minLength": 1, "maxLength": 255},
+    "description": {"type": "string", "maxLength": 12000},
+    "source_reference": {"type": "string", "minLength": 1, "maxLength": 255},
+    "evidence_references": {
+        "type": "array",
+        "maxItems": 20,
+        "items": {"type": "string", "maxLength": 255},
+    },
+    "attributes": {"type": "object"},
+    "expected_version": {"type": "integer", "minimum": 1},
 }
 
 
@@ -365,6 +401,118 @@ _TOOLS = [
         ["project_id"],
     ),
     _tool(
+        "engineering.search",
+        (
+            "Search active, project-isolated engineering-memory entities; role only "
+            "affects ordering."
+        ),
+        READ_ONLY,
+        {
+            **_PROJECT,
+            "query": {"type": "string", "maxLength": 200},
+            "kinds": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                    "type": "string",
+                    "enum": list(EngineeringEntity.Kind.values),
+                },
+            },
+            "role_profile": {
+                "type": "string",
+                "enum": [
+                    "PRODUCT",
+                    "DEVELOPMENT",
+                    "APPLICATION",
+                    "SUPPORT",
+                    "OPERATIONS",
+                ],
+            },
+        },
+        ["project_id"],
+    ),
+    _tool(
+        "engineering.get_entity",
+        "Get a project-isolated engineering-memory entity and its provenance.",
+        READ_ONLY,
+        {**_PROJECT, "entity_key": _ENGINEERING_ENTITY["entity_key"]},
+        ["project_id", "entity_key"],
+    ),
+    _tool(
+        "engineering.upsert_candidate",
+        (
+            "Create or version a reviewable engineering-memory candidate; it never "
+            "activates knowledge."
+        ),
+        PREPARATORY_STATE,
+        {**_PROJECT, **_ENGINEERING_ENTITY, **_IDEMPOTENCY},
+        [
+            "project_id",
+            "entity_key",
+            "kind",
+            "name",
+            "source_reference",
+            "idempotency_key",
+        ],
+    ),
+    _tool(
+        "engineering.review_candidate",
+        "Activate a candidate only with durable Product Owner approval.",
+        APPROVAL_REQUIRED,
+        {
+            **_PROJECT,
+            "entity_key": _ENGINEERING_ENTITY["entity_key"],
+            **_APPROVAL,
+            **_IDEMPOTENCY,
+        },
+        ["project_id", "entity_key", "approval_reference", "idempotency_key"],
+    ),
+    _tool(
+        "engineering.link",
+        "Create or update an evidenced typed relation within one project.",
+        PREPARATORY_STATE,
+        {
+            **_PROJECT,
+            "source_key": _ENGINEERING_ENTITY["entity_key"],
+            "target_key": _ENGINEERING_ENTITY["entity_key"],
+            "relationship_type": {"type": "string", "minLength": 1, "maxLength": 64},
+            "work_reference": {"type": "string", "maxLength": 255},
+            "evidence_references": _ENGINEERING_ENTITY["evidence_references"],
+            **_IDEMPOTENCY,
+        },
+        [
+            "project_id",
+            "source_key",
+            "target_key",
+            "relationship_type",
+            "idempotency_key",
+        ],
+    ),
+    _tool(
+        "engineering.impact",
+        "Return one-hop, project-isolated impact relations for an engineering entity.",
+        READ_ONLY,
+        {**_PROJECT, "entity_key": _ENGINEERING_ENTITY["entity_key"]},
+        ["project_id", "entity_key"],
+    ),
+    _tool(
+        "engineering.history",
+        (
+            "Return append-only revision metadata for a project-isolated engineering "
+            "entity."
+        ),
+        READ_ONLY,
+        {**_PROJECT, "entity_key": _ENGINEERING_ENTITY["entity_key"]},
+        ["project_id", "entity_key"],
+    ),
+    _tool(
+        "engineering.plan",
+        "Assess governed roadmap prerequisites, capability gaps, and GitHub conflicts.",
+        READ_ONLY,
+        _PROJECT,
+        ["project_id"],
+    ),
+    _tool(
         "execution.prepare",
         "Create a non-issuing preparation from an approved canonical scope.",
         PREPARATORY_STATE,
@@ -456,6 +604,61 @@ _TOOLS = [
         ["execution_token"],
     ),
 ]
+
+# First-class MCP adapters keep the important planning/design objects discoverable
+# while reusing the one governed engineering-memory authoring path.
+_ENGINEERING_ADAPTERS = {
+    "roadmap": "ROADMAP_ITEM",
+    "constitution": "CONSTITUTION_SECTION",
+    "ui_plan": "UI_PLAN",
+    "system_design": "SYSTEM_DESIGN",
+}
+for _adapter, _kind in _ENGINEERING_ADAPTERS.items():
+    _TOOLS.extend(
+        [
+            _tool(
+                f"{_adapter}.search",
+                (
+                    f"Search active project-isolated {_adapter} engineering-memory "
+                    "objects."
+                ),
+                READ_ONLY,
+                {**_PROJECT, "query": {"type": "string", "maxLength": 200}},
+                ["project_id"],
+            ),
+            _tool(
+                f"{_adapter}.upsert_candidate",
+                (
+                    f"Create or revise a governed {_adapter} candidate; activation "
+                    "remains approval-controlled."
+                ),
+                PREPARATORY_STATE,
+                {**_PROJECT, **_ENGINEERING_ENTITY, **_IDEMPOTENCY},
+                [
+                    "project_id",
+                    "entity_key",
+                    "name",
+                    "source_reference",
+                    "idempotency_key",
+                ],
+            ),
+        ]
+    )
+
+_TOOLS.append(
+    _tool(
+        "constitution.diff",
+        "Compare two append-only Constitution section revisions.",
+        READ_ONLY,
+        {
+            **_PROJECT,
+            "entity_key": _ENGINEERING_ENTITY["entity_key"],
+            "from_version": {"type": "integer", "minimum": 1},
+            "to_version": {"type": "integer", "minimum": 1},
+        },
+        ["project_id", "entity_key", "from_version", "to_version"],
+    )
+)
 for action, classification in [
     ("generate", PREPARATORY_STATE),
     ("validate", PREPARATORY_STATE),
@@ -1083,7 +1286,16 @@ def _akb_audit_details(
     name: str, arguments: dict[str, Any], result: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """Record AKB operation metadata without putting knowledge content in audit logs."""
-    if not name.startswith("akb."):
+    if not name.startswith(
+        (
+            "akb.",
+            "engineering.",
+            "roadmap.",
+            "constitution.",
+            "ui_plan.",
+            "system_design.",
+        )
+    ):
         return {}
     details: dict[str, Any] = {
         "operation_type": name,
@@ -1101,6 +1313,9 @@ def _akb_audit_details(
     if result:
         details["modified_entry_ids"] = (
             [result["entry_id"]] if "entry_id" in result else []
+        )
+        details["modified_entity_keys"] = (
+            [result["entity_key"]] if "entity_key" in result else []
         )
         details["context_package_hash"] = result.get("hash", "")
     return details
@@ -1763,6 +1978,25 @@ def _complete_orchestration(
         flow.save(
             update_fields=["status", "current_step", "failure_detail", "updated_at"]
         )
+    ingest_lifecycle_event(
+        project,
+        event_type="SPRINT_COMPLETED",
+        event_key=scope.identifier,
+        source_reference=contract.handoff_identifier,
+        evidence_references=list(manifest.values()),
+        attributes={"final_commit_sha": arguments["final_commit_sha"]},
+        actor=caller,
+    )
+    for gate, outcome in gates.items():
+        ingest_lifecycle_event(
+            project,
+            event_type="GATE_RESULT",
+            event_key=f"{scope.identifier}:{gate}",
+            source_reference=contract.handoff_identifier,
+            evidence_references=list(manifest.values()),
+            attributes={"outcome": outcome, "scope_identifier": scope.identifier},
+            actor=caller,
+        )
     _audit(
         caller,
         "scope.complete_execution",
@@ -2196,6 +2430,169 @@ def invoke_public_tool(
                     }
                     for item in queue
                 ]
+            }
+        elif name == "engineering.search":
+            assert project is not None
+            entities = engineering_search(
+                project,
+                query=arguments.get("query", ""),
+                kinds=arguments.get("kinds"),
+                role_profile=arguments.get("role_profile"),
+            )
+            result = {
+                "results": [
+                    {
+                        "entity_key": item.entity_key,
+                        "kind": item.kind,
+                        "name": item.name,
+                        "state": item.state,
+                        "version": item.version,
+                    }
+                    for item in entities
+                ],
+                "role_profile": arguments.get("role_profile", ""),
+            }
+        elif name == "engineering.get_entity":
+            assert project is not None
+            entity_item = EngineeringEntity.objects.get(
+                project=project, entity_key=arguments["entity_key"]
+            )
+            result = {
+                "entity_key": entity_item.entity_key,
+                "kind": entity_item.kind,
+                "name": entity_item.name,
+                "state": entity_item.state,
+                "description": entity_item.description,
+                "attributes": entity_item.attributes,
+                "evidence_references": entity_item.evidence_references,
+                "source_reference": entity_item.source_reference,
+                "version": entity_item.version,
+                "approval_reference": entity_item.approval_reference,
+            }
+        elif name == "engineering.upsert_candidate":
+            assert project is not None
+            entity_item = upsert_engineering_candidate(
+                project, arguments, actor=caller, upsert=True
+            )
+            result = {
+                "entity_key": entity_item.entity_key,
+                "state": entity_item.state,
+                "version": entity_item.version,
+                "next_allowed_action": "engineering.review_candidate",
+            }
+        elif name == "engineering.review_candidate":
+            assert project is not None
+            approval = _approval(arguments, project, "engineering.review_candidate")
+            entity_item = activate_engineering_candidate(
+                project,
+                arguments["entity_key"],
+                approval_reference=approval.reference,
+                actor=caller,
+            )
+            result = {
+                "entity_key": entity_item.entity_key,
+                "state": entity_item.state,
+                "version": entity_item.version,
+                "approval_reference": entity_item.approval_reference,
+            }
+        elif name == "engineering.link":
+            assert project is not None
+            relation = link_engineering_entities(
+                project,
+                source_key=arguments["source_key"],
+                target_key=arguments["target_key"],
+                relationship_type=arguments["relationship_type"],
+                evidence_references=arguments.get("evidence_references", []),
+                work_reference=arguments.get("work_reference", ""),
+            )
+            result = {
+                "relationship_id": relation.pk,
+                "source_key": relation.source.entity_key,
+                "target_key": relation.target.entity_key,
+                "relationship_type": relation.relationship_type,
+            }
+        elif name == "engineering.impact":
+            assert project is not None
+            graph = engineering_impact(project, arguments["entity_key"])
+            result = {
+                "entity_key": graph["entity"].entity_key,
+                "affected_keys": graph["affected_keys"],
+                "relations": [
+                    {
+                        "source_key": item.source.entity_key,
+                        "target_key": item.target.entity_key,
+                        "relationship_type": item.relationship_type,
+                    }
+                    for item in graph["relations"]
+                ],
+            }
+        elif name == "engineering.history":
+            assert project is not None
+            result = {
+                "entity_key": arguments["entity_key"],
+                "revisions": [
+                    {
+                        "version": revision.new_version,
+                        "previous_version": revision.previous_version,
+                        "source_reference": revision.source_reference,
+                        "approval_reference": revision.approval_reference,
+                        "reason": revision.reason,
+                        "created_at": revision.created_at.isoformat(),
+                    }
+                    for revision in revision_history(project, arguments["entity_key"])
+                ],
+            }
+        elif name == "engineering.plan":
+            assert project is not None
+            result = cast(dict[str, object], planning_assessment(project))
+        elif name == "constitution.diff":
+            assert project is not None
+            entity_item = EngineeringEntity.objects.get(
+                project=project, entity_key=arguments["entity_key"]
+            )
+            if entity_item.kind != "CONSTITUTION_SECTION":
+                raise ValueError("CONSTITUTION_SECTION_REQUIRED")
+            result = revision_diff(
+                project,
+                arguments["entity_key"],
+                from_version=arguments["from_version"],
+                to_version=arguments["to_version"],
+            )
+        elif name in {f"{adapter}.search" for adapter in _ENGINEERING_ADAPTERS}:
+            assert project is not None
+            adapter = name.split(".", 1)[0]
+            entities = engineering_search(
+                project,
+                query=arguments.get("query", ""),
+                kinds=[_ENGINEERING_ADAPTERS[adapter]],
+            )
+            result = {
+                "results": [
+                    {
+                        "entity_key": item.entity_key,
+                        "name": item.name,
+                        "state": item.state,
+                        "version": item.version,
+                    }
+                    for item in entities
+                ]
+            }
+        elif name in {
+            f"{adapter}.upsert_candidate" for adapter in _ENGINEERING_ADAPTERS
+        }:
+            assert project is not None
+            adapter = name.split(".", 1)[0]
+            entity_item = upsert_engineering_candidate(
+                project,
+                {**arguments, "kind": _ENGINEERING_ADAPTERS[adapter]},
+                actor=caller,
+                upsert=True,
+            )
+            result = {
+                "entity_key": entity_item.entity_key,
+                "state": entity_item.state,
+                "version": entity_item.version,
+                "next_allowed_action": "engineering.review_candidate",
             }
         elif name == "execution.prepare":
             assert project is not None

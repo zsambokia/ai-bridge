@@ -6,6 +6,7 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
+from .engineering_memory import ingest_lifecycle_event
 from .knowledge import create_or_upsert_candidate
 from .models import (
     FailureIncident,
@@ -189,9 +190,7 @@ def assess_ownership(
     return assessment
 
 
-def close_incident(
-    incident: FailureIncident, actor: str = "system"
-) -> KnowledgeEntry:
+def close_incident(incident: FailureIncident, actor: str = "system") -> KnowledgeEntry:
     """Close an incident and record its bounded lesson as a reviewable AKB candidate.
 
     This intentionally does not activate knowledge: a separately approved AKB
@@ -225,4 +224,13 @@ def close_incident(
     incident.status = FailureIncident.Status.CLOSED
     incident.timeline = [*incident.timeline, {"event": "CLOSED", "actor": actor}][-20:]
     incident.save(update_fields=["status", "timeline", "updated_at"])
+    ingest_lifecycle_event(
+        incident.project,
+        event_type="INCIDENT_RESOLVED",
+        event_key=str(incident.token),
+        source_reference=f"incident:{incident.token}",
+        evidence_references=evidence,
+        attributes={"causal_classification": incident.causal_classification},
+        actor=actor,
+    )
     return entry

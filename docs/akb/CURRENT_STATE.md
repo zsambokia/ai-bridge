@@ -32,6 +32,17 @@ Orchestrator Context Packages, and an approval-controlled candidate-to-active
 lifecycle. The implementation and deliberately deferred capabilities are
 described in `docs/architecture/AKB_FOUNDATION.md`.
 
+## AKB Sprint 2 engineering memory
+
+Sprint 2 adds the governed, project-isolated engineering-memory graph:
+versioned entities, typed evidence-bearing relations, approval-gated
+publication, first-class Roadmap/Constitution/UI Plan/System Design objects,
+role-ranked retrieval, planning-gap analysis, and retry-safe lifecycle
+candidate ingestion. Append-only entity history and Constitution revision diff
+are read-only MCP operations. The implementation details and explicit
+deployment/rollback limitation are documented in
+`docs/akb/ENGINEERING_MEMORY.md`.
+
 ## Verified current execution
 
 Sprint 003 bootstrap was run against this repository's own Project Definition.
