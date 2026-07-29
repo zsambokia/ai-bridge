@@ -1,6 +1,6 @@
 # Provider activity fidelity acceptance results
 
-Scope: `bridge:ai-bridge:sprint:b138a008-a53c-42ed-a836-462c885cffbe`  
+Scope: `bridge:ai-bridge:sprint:b138a008-a53c-42ed-a836-462c885cffbe`
 Proposal: version `1`, hash `da41810c2c5092154bd9d89b3f995c8ec41efc65bed1eb17e7bc442733d541d9`
 
 | Acceptance criterion | Result | Evidence |
