@@ -1,4 +1,4 @@
-# Bridge Constitution v1.2
+# Bridge Constitution v1.3
 
 **Status:** CANONICAL DRAFT  
 **Owner:** Product Owner  
@@ -449,7 +449,7 @@ Bridge and Codex must not report success merely because:
 - a migration file exists but is not applied where runtime acceptance requires it;
 - a planned external validation has not actually run.
 
-Every closure statement must distinguish implementation, deployment, runtime validation, technical PASS, and Product Owner acceptance.
+Every closure statement must distinguish implementation, deployment, runtime validation, technical PASS, Product Owner acceptance, and Operational Acceptance.
 
 ---
 
@@ -471,7 +471,38 @@ Direct database edits that bypass lifecycle services are forbidden except under 
 
 ---
 
-# Article XVI — Constitutional Change
+# Article XVI — Operational Acceptance Principle
+
+Engineering acceptance alone is not sufficient to consider an Epic, Sprint, or Work Item complete.
+
+A governed change SHALL NOT be considered fully completed until the accepted implementation is demonstrably active in the intended runtime environment.
+
+Operational acceptance requires verification that:
+
+- the accepted revision has been merged into the intended execution branch;
+- the intended runtime is executing the accepted revision;
+- required schema migrations and runtime dependencies have been applied;
+- required background workers, schedulers, and recovery components are operational;
+- operational verification, such as a smoke test or equivalent, confirms that the delivered capability functions in the target environment.
+
+The AI Bridge platform SHALL treat Engineering Acceptance and Operational Acceptance as separate lifecycle stages.
+
+The platform SHALL automatically verify operational deployment after Product Owner acceptance whenever deployment is within its responsibility.
+
+If operational verification fails, the platform SHALL:
+
+- identify the missing deployment step or runtime inconsistency;
+- collect evidence supporting the diagnosis;
+- initiate governed remediation when authorized;
+- avoid requiring Product Owner intervention unless a genuine business or governance decision is necessary.
+
+A Product Owner SHALL NOT be responsible for determining whether an accepted implementation has been successfully deployed or activated. This responsibility belongs to the AI Bridge platform whenever deployment automation is available.
+
+An Epic, Sprint, or Work Item may be Engineering Accepted while Operational Acceptance is pending or failed, but it SHALL NOT be represented as fully completed until Operational Acceptance passes or an explicit external operational boundary is recorded with evidence.
+
+---
+
+# Article XVII — Constitutional Change
 
 This Constitution may be changed only by an explicit Product Owner decision committed to the canonical repository.
 
@@ -479,7 +510,7 @@ A Sprint may propose a constitutional amendment, but Codex may not weaken consti
 
 Every amendment must preserve the historical repository record and state why the change was necessary.
 
-## 24. Canonical executable scope authority
+## 17.1 Canonical executable scope authority
 
 AI Bridge is the system of record for newly proposed executable Sprints and
 standalone Work Items. Canonical scope records must be machine-validatable,
