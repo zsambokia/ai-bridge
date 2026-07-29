@@ -43,4 +43,7 @@ executor created the required local commit binding after the provider completed.
 All resolved release gates pass. Canonical scope documents were republished from
 their existing authoritative records where projections were missing, then the
 scope gate was rerun. This is a repository consistency repair, not a new scope
-or a manual database operation.
+or a manual database operation. A post-closure validation repair now preserves
+the published content hash on new terminal scope records and accepts the
+historical immutable contract binding for legacy terminal records; it introduced
+no model, migration, or manual database change.

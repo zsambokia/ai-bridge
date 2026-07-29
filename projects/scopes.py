@@ -458,6 +458,10 @@ def close_scope(scope: ExecutableScope, status: str) -> ExecutableScope:
             "status": status,
             "execution_authorization": "NONE",
             "updated_at": timezone.now().isoformat(),
+            # The published document is the immutable approved proposal.  A
+            # terminal transition changes this live record, so retain the
+            # document's original binding separately for publication checks.
+            "published_content_hash": scope.content_hash,
         }
     )
     record["content_hash"] = canonical_hash(record)

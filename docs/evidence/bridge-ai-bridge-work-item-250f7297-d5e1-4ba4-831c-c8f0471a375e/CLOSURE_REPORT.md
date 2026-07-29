@@ -16,14 +16,17 @@
   coverage, and made `Run ID` the first `ExecutionRunAdmin` data column.
 - Restored missing deterministic scope publications from existing authoritative
   records and recorded final gate results.
+- Repaired terminal scope publication-hash validation without altering persisted
+  business data: new closures retain their published hash, while historical
+  closures remain bound to their issued immutable contract hash.
 
 ## Final gates
 
 | Gate | Result |
 | --- | --- |
-| `pytest -q -p no:cacheprovider` | PASS — 163 passed |
+| `pytest -q -p no:cacheprovider` | PASS — 165 passed |
 | `ruff check .` | PASS |
-| `mypy .` | PASS — 133 source files |
+| `mypy .` | PASS — 134 source files |
 | `python manage.py validate_scopes` | PASS |
 | `python manage.py migrate --check` | PASS |
 

@@ -3,7 +3,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 
-from projects.models import ExecutableScope
+from projects.models import ExecutableScope, ExecutionContract
 from projects.scopes import parse_scope_document
 from projects.services import project_repository_root
 
@@ -25,7 +25,31 @@ class Command(BaseCommand):
                     (root / scope.published_path).read_text(encoding="utf-8"),
                     scope.project,
                 )
-                if parsed.get("content_hash") != scope.content_hash:
+                published_hash = scope.record.get("published_content_hash")
+                legacy_hashes = {scope.content_hash}
+                if not published_hash and scope.status in {
+                    ExecutableScope.Status.COMPLETED,
+                    ExecutableScope.Status.ACCEPTED,
+                    ExecutableScope.Status.CANCELLED,
+                    ExecutableScope.Status.SUPERSEDED,
+                }:
+                    # Legacy terminal records predate ``published_content_hash``.
+                    # Their issued contract is append-only and therefore retains
+                    # the authoritative approved-document binding.
+                    for contract in ExecutionContract.objects.filter(
+                        project=scope.project,
+                        approved_sprint_path=scope.published_path,
+                    ).order_by("-created_at"):
+                        approved = contract.payload.get("approved_scope", {})
+                        if approved.get("identifier") == scope.identifier:
+                            contract_hash = approved.get("content_hash")
+                            if contract_hash:
+                                legacy_hashes.add(contract_hash)
+                if published_hash:
+                    valid_hashes = {published_hash}
+                else:
+                    valid_hashes = legacy_hashes
+                if parsed.get("content_hash") not in valid_hashes:
                     raise ValueError("published content hash differs")
             except (OSError, ValueError) as exc:
                 errors.append(f"{scope.identifier}: {exc}")

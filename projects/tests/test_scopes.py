@@ -10,6 +10,7 @@ from projects.models import GovernanceApproval, Project
 from projects.scopes import (
     answer_clarifications,
     bind_approval,
+    close_scope,
     parse_scope_document,
     propose_scope,
     publish_scope,
@@ -73,6 +74,24 @@ def test_closed_scope_is_immutable(project: Project) -> None:
     scope.save(update_fields=["status"])
     with pytest.raises(ValueError, match="CLOSED_SCOPE_IMMUTABLE"):
         bind_approval(scope, "missing")
+
+
+@pytest.mark.django_db
+def test_closing_scope_preserves_published_content_binding(project: Project) -> None:
+    scope = propose_scope(project, "A published scope", kind="WORK_ITEM")
+    approval = GovernanceApproval.objects.create(
+        reference="PO-close",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="PO",
+    )
+    approved = bind_approval(scope, approval.reference)
+    published_hash = approved.content_hash
+
+    closed = close_scope(approved, "COMPLETED")
+
+    assert closed.content_hash != published_hash
+    assert closed.record["published_content_hash"] == published_hash
 
 
 @pytest.mark.django_db
