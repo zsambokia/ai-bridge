@@ -18,7 +18,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("--execution-token", required=True)
-        parser.add_argument("--worker-id", default=f"local-codex:{socket.gethostname()}")
+        parser.add_argument(
+            "--worker-id", default=f"local-codex:{socket.gethostname()}"
+        )
         parser.add_argument("--lease-seconds", type=int, default=120)
 
     def handle(self, *args: object, **options: Any) -> None:
@@ -31,4 +33,12 @@ class Command(BaseCommand):
             )
         except ValueError as exc:
             raise CommandError(str(exc)) from exc
-        self.stdout.write(json.dumps({"job_token": str(job.token), "execution_token": str(job.run.token), "status": job.status}))
+        self.stdout.write(
+            json.dumps(
+                {
+                    "job_token": str(job.token),
+                    "execution_token": str(job.run.token),
+                    "status": job.status,
+                }
+            )
+        )
