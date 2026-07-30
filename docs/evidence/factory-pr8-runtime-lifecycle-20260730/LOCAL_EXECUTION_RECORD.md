@@ -97,3 +97,14 @@ provider process `5500` in `FINISHED` state and a historical
   `270e42be...` work-item document listed in the intake table.
 - **Discarded:** none.  No reset, deletion, history rewrite, or unverified
   overwrite was performed.
+
+## Publication and final runtime verification
+
+The integrated implementation was committed on `main` as
+`01e505e5c0ece867d6c96130657bf8e767239a86` and pushed to
+`origin/main`; `git ls-remote` returned that same revision.  The deployed
+local service returned HTTP `200` and `{"status":"ok","service":"ai-bridge"}`
+at `/health/` using its configured stage host.  The
+`AI-Bridge-Execution-Recovery-Reconciler` scheduled task was `Ready`, and a
+post-publication query confirmed the c7 execution stayed terminal with latest
+event `PROVIDER_TERMINAL_RECONCILED`.
