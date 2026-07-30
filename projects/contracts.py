@@ -389,6 +389,7 @@ def supersede_execution_contract(
     replacement: ExecutionContract,
     *,
     allow_running_binding_repair: bool = False,
+    allow_consumed_pre_execution_binding_repair: bool = False,
 ) -> ExecutionContract:
     allowed_lifecycles = {
         ExecutionContract.Lifecycle.ISSUED,
@@ -396,10 +397,18 @@ def supersede_execution_contract(
     }
     if allow_running_binding_repair:
         allowed_lifecycles.add(ExecutionContract.Lifecycle.RUNNING)
+    if allow_consumed_pre_execution_binding_repair:
+        allowed_lifecycles.add(ExecutionContract.Lifecycle.CONSUMED)
     if contract.lifecycle not in allowed_lifecycles:
         raise ValueError("CONTRACT_NOT_SUPERSEDABLE")
     if replacement.project_id != contract.project_id:
         raise ValueError("CONTRACT_PROJECT_MISMATCH")
+    if contract.lifecycle == ExecutionContract.Lifecycle.CONSUMED and (
+        ExecutionRun.objects.filter(contract=contract)
+        .exclude(provider_execution_id="")
+        .exists()
+    ):
+        raise ValueError("CONSUMED_CONTRACT_PROVIDER_ALREADY_STARTED")
     contract.lifecycle = ExecutionContract.Lifecycle.SUPERSEDED
     contract.superseded_by = replacement
     contract.save(update_fields=["lifecycle", "superseded_by"])

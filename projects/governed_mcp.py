@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from .contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPES
 from .contracts import (
+    _baseline_exists,
     complete_execution_contract,
     consume_execution_contract,
     generate_scope_execution_contract,
@@ -47,10 +48,12 @@ from .engineering_memory import (
 from .execution import (
     ACTIVE_STATES,
     add_event,
-    cancel_run,
     complete_run,
+    confirm_execution_cancellation,
     enqueue_run,
+    prepare_execution_cancellation,
     provider,
+    request_execution_cancellation,
     start_run,
 )
 from .execution_activity import activity_summary, events_for_view, heartbeat_projection
@@ -602,11 +605,49 @@ _TOOLS = [
         ["project_id", "scope_identifier"],
     ),
     _tool(
+        "execution.prepare_cancel",
+        "Prepare a durable Product Owner cancellation request.",
+        PREPARATORY_STATE,
+        {
+            "execution_token": {"type": "string"},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+            **_IDEMPOTENCY,
+        },
+        ["execution_token", "reason", "idempotency_key"],
+    ),
+    _tool(
+        "execution.confirm_cancel",
+        "Confirm the exact durable execution cancellation request.",
+        LIFECYCLE_MUTATION,
+        {
+            "execution_token": {"type": "string"},
+            "confirmation_text": {"type": "string", "minLength": 1},
+            **_IDEMPOTENCY,
+        },
+        ["execution_token", "confirmation_text", "idempotency_key"],
+    ),
+    _tool(
         "execution.cancel",
-        "Cancel one active execution with durable Product Owner authority.",
+        "Execute a previously confirmed, durable cancellation request.",
         EXECUTION_BOUNDARY,
-        {"execution_token": {"type": "string"}, **_APPROVAL, **_IDEMPOTENCY},
-        ["execution_token", "approval_reference", "idempotency_key"],
+        {
+            "execution_token": {"type": "string"},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+            "requested_by": {"type": "string", "minLength": 1, "maxLength": 255},
+            "confirmation_reference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+            },
+            **_IDEMPOTENCY,
+        },
+        [
+            "execution_token",
+            "reason",
+            "requested_by",
+            "confirmation_reference",
+            "idempotency_key",
+        ],
     ),
     _tool(
         "execution.evidence_summary",
@@ -1603,6 +1644,62 @@ def _recover_incomplete_contract_binding(
     flow.save(update_fields=["contract", "run", "failure_detail", "updated_at"])
 
 
+def _recover_pre_execution_baseline_binding(
+    flow: ConversationOrchestration, root: Path
+) -> None:
+    """Replace a consumed contract whose baseline is absent from its target repo.
+
+    A contract is immutable once issued.  The narrow exception here retains
+    that property by superseding it with a new contract, and is safe only when
+    workspace provisioning stopped before any provider was started.
+    """
+    contract = flow.contract
+    run = flow.run
+    if (
+        contract is None
+        or run is None
+        or contract.lifecycle != ExecutionContract.Lifecycle.CONSUMED
+        or run.lifecycle != ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+        or run.current_phase != "WORKSPACE_FAILED"
+        or run.provider_execution_id
+    ):
+        return
+    workspace_root = project_repository_root(contract.project, root)
+    baseline = contract.payload["execution"]["baseline_commit"]
+    if _baseline_exists(workspace_root, baseline):
+        return
+
+    run.lifecycle = ExecutionRun.Lifecycle.FAILED_GOVERNANCE
+    run.current_phase = "CONTRACT_BASELINE_REPAIRED"
+    run.current_blocker = {
+        "category": "contract binding defect",
+        "evidence": (
+            "Contract baseline is absent from the registered target repository."
+        ),
+    }
+    run.ended_at = timezone.now()
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "ended_at",
+            "updated_at",
+        ]
+    )
+    add_event(run, "CONTRACT_SUPERSEDED", reason="target baseline absent")
+    replacement = generate_scope_execution_contract(flow.scope, root)
+    supersede_execution_contract(
+        contract,
+        replacement,
+        allow_consumed_pre_execution_binding_repair=True,
+    )
+    flow.contract = replacement
+    flow.run = None
+    flow.failure_detail = {}
+    flow.save(update_fields=["contract", "run", "failure_detail", "updated_at"])
+
+
 def _provider_has_completed(run: ExecutionRun) -> bool:
     """Recognize a durable provider terminal event when PID probing is stale.
 
@@ -1641,6 +1738,7 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
             publish_scope(scope, root)
         _transition(flow, caller, "PREPARATION", "PUBLISHED")
         _recover_incomplete_contract_binding(flow, root)
+        _recover_pre_execution_baseline_binding(flow, root)
         if flow.preparation_id is None:
             authorized = approved_scope(scope)
             flow.preparation = ExecutionPreparation.objects.create(
@@ -1883,6 +1981,24 @@ def _normalise_confirmation(value: str) -> str:
         character for character in decomposed if not unicodedata.combining(character)
     )
     return re.sub(r"[^a-z0-9]+", " ", without_accents.casefold()).strip()
+
+
+def _cancellation_requester(caller: str) -> str:
+    """Bind cancellation attribution to the authenticated MCP caller."""
+    digest = hashlib.sha256(caller.encode("utf-8")).hexdigest()
+    return f"authenticated-mcp-caller:{digest}"
+
+
+def _cancellation_confirmation_reference(run: ExecutionRun, caller: str) -> str:
+    binding = {
+        "execution_token": str(run.token),
+        "requester": _cancellation_requester(caller),
+        "reason": run.cancellation.reason,
+    }
+    digest = hashlib.sha256(
+        json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return f"execution-cancellation-confirmation:v1:{digest}"
 
 
 def _confirm_conversation(
@@ -2702,27 +2818,61 @@ def invoke_public_tool(
             "execution.list_events",
             "execution.get_activity_summary",
             "execution.evidence_summary",
+            "execution.prepare_cancel",
+            "execution.confirm_cancel",
             "execution.cancel",
         }:
             run = _execution_run(arguments["execution_token"])
-            if name == "execution.cancel":
-                approval = _approval_for_contract(
-                    arguments, run.contract, "execution.cancel"
+            if name == "execution.prepare_cancel":
+                cancellation = prepare_execution_cancellation(
+                    run,
+                    requested_by=_cancellation_requester(caller),
+                    reason=arguments["reason"],
                 )
-                if run.lifecycle == ExecutionRun.Lifecycle.CANCELLED:
-                    result = {
-                        "status": "CANCELLED",
-                        "execution_token": str(run.token),
-                        "idempotent": True,
-                    }
-                elif run.lifecycle not in {
-                    ExecutionRun.Lifecycle.RUNNING,
-                    ExecutionRun.Lifecycle.STARTING,
-                }:
-                    raise ValueError("EXECUTION_NOT_CANCELLABLE")
-                else:
-                    cancel_run(run, approval_reference=approval.reference)
-                    result = {"status": "CANCELLED", "execution_token": str(run.token)}
+                result = {
+                    "status": cancellation.status,
+                    "execution_token": str(run.token),
+                    "cancellation_token": str(cancellation.token),
+                    "confirmation_required": True,
+                    "next_tool": "execution.confirm_cancel",
+                }
+            elif name == "execution.confirm_cancel":
+                if (
+                    _normalise_confirmation(arguments["confirmation_text"])
+                    not in _PRODUCT_OWNER_CONFIRMATIONS
+                ):
+                    raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
+                requester = _cancellation_requester(caller)
+                confirmation_reference = _cancellation_confirmation_reference(
+                    run, caller
+                )
+                cancellation = confirm_execution_cancellation(
+                    run,
+                    requested_by=requester,
+                    confirmation_reference=confirmation_reference,
+                )
+                result = {
+                    "status": cancellation.status,
+                    "execution_token": str(run.token),
+                    "reason": cancellation.reason,
+                    "requested_by": requester,
+                    "confirmation_reference": confirmation_reference,
+                    "next_tool": "execution.cancel",
+                }
+            elif name == "execution.cancel":
+                if arguments["requested_by"] != _cancellation_requester(caller):
+                    raise ValueError("CANCELLATION_REQUESTER_MISMATCH")
+                cancelled, status = request_execution_cancellation(
+                    run,
+                    requested_by=arguments["requested_by"],
+                    reason=arguments["reason"],
+                    confirmation_reference=arguments["confirmation_reference"],
+                )
+                result = {
+                    "status": status,
+                    "execution_token": str(cancelled.token),
+                    "lifecycle": cancelled.lifecycle,
+                }
             elif name == "execution.list_events":
                 view = str(arguments.get("view", "ACTIVITY"))
                 if view not in {"ACTIVITY", "PROVIDER_OUTPUT", "RAW_EVENTS"}:

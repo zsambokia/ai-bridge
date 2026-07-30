@@ -19,6 +19,7 @@ from projects.governed_mcp import (
 from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
+    ExecutionCancellation,
     ExecutionContract,
     ExecutionProgressEvent,
     ExecutionRun,
@@ -44,7 +45,9 @@ from projects.scopes import bind_approval, propose_scope
             "execution.cancel",
             {
                 "execution_token": str(uuid.uuid4()),
-                "approval_reference": "PO-cancel",
+                "reason": "Product Owner requested cancellation.",
+                "requested_by": "authenticated-mcp-caller:test",
+                "confirmation_reference": "PO-cancel",
                 "idempotency_key": "cancel-missing-run-001",
             },
         ),
@@ -211,6 +214,92 @@ def test_provider_terminal_activity_event_overrides_a_stale_pid_probe(
     )
 
     assert governed_mcp._provider_has_completed(run) is True
+
+
+@pytest.mark.django_db
+def test_confirmed_cancellation_terminalizes_a_finished_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="cancellation-project",
+        display_name="Cancellation Project",
+        repository_full_name="example/cancellation-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    contract = ExecutionContract.objects.create(
+        project=project,
+        handoff_identifier="cancellation-contract",
+        approved_sprint_path="docs/sprints/cancellation.md",
+        contract_hash="e" * 64,
+        payload={"execution": {"target_branch": "main"}},
+        lifecycle=ExecutionContract.Lifecycle.RUNNING,
+    )
+    approval = GovernanceApproval.objects.create(
+        reference="PO-cancellation",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="Product Owner",
+    )
+    request = ExecutionStartRequest.objects.create(contract=contract, approval=approval)
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository=project.repository_full_name,
+        branch="main",
+        baseline_commit="f" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier="cancellation-workspace",
+        provider_name="codex-cli",
+        provider_execution_id="already-finished",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/test",
+    )
+    monkeypatch.setattr(
+        "projects.execution.provider",
+        lambda _name: SimpleNamespace(status=lambda _identifier: "FINISHED"),
+    )
+    caller = "product-owner-session"
+    prepared = invoke_public_tool(
+        "execution.prepare_cancel",
+        {
+            "execution_token": str(run.token),
+            "reason": "Product Owner requested cancellation.",
+            "idempotency_key": "prepare-cancellation-001",
+        },
+        caller=caller,
+    )
+    confirmed = invoke_public_tool(
+        "execution.confirm_cancel",
+        {
+            "execution_token": str(run.token),
+            "confirmation_text": "igen",
+            "idempotency_key": "confirm-cancellation-001",
+        },
+        caller=caller,
+    )
+    result = invoke_public_tool(
+        "execution.cancel",
+        {
+            "execution_token": str(run.token),
+            "reason": "Product Owner requested cancellation.",
+            "requested_by": confirmed["requested_by"],
+            "confirmation_reference": confirmed["confirmation_reference"],
+            "idempotency_key": "cancel-cancellation-001",
+        },
+        caller=caller,
+    )
+
+    run.refresh_from_db()
+    contract.refresh_from_db()
+    cancellation = ExecutionCancellation.objects.get(run=run)
+    assert prepared["status"] == ExecutionCancellation.Status.CONFIRMATION_REQUIRED
+    assert result["status"] == "ALREADY_FINISHED"
+    assert run.lifecycle == ExecutionRun.Lifecycle.CANCELLED
+    assert run.terminal_state == "CANCELLED — PRODUCT OWNER REQUESTED"
+    assert cancellation.status == ExecutionCancellation.Status.CANCELLED
+    assert contract.lifecycle == ExecutionContract.Lifecycle.CANCELLED
+    assert run.events.filter(event_type="CANCELLATION_EVIDENCE_COMPLETED").exists()
 
 
 @pytest.mark.django_db

@@ -125,6 +125,50 @@ def test_stale_alive_provider_is_queued_for_worker_reattach(
 
 
 @pytest.mark.django_db
+def test_finished_provider_is_terminalized_without_inventing_completion(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = recovery_consumed_contract
+    contract.lifecycle = ExecutionContract.Lifecycle.RUNNING
+    contract.save(update_fields=["lifecycle"])
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        provider_execution_id="finished-provider",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/test",
+    )
+    job = ExecutionJob.objects.create(
+        run=run,
+        status=ExecutionJob.Status.STARTED,
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+        last_heartbeat_at=timezone.now(),
+    )
+
+    decisions = reconcile_execution_jobs(
+        provider_status=lambda _name, _id: "FINISHED", now=timezone.now()
+    )
+
+    run.refresh_from_db()
+    job.refresh_from_db()
+    contract.refresh_from_db()
+    assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.REVIEW_REQUIRED
+    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    assert run.current_phase == "PROVIDER_TERMINALIZED"
+    assert run.terminal_state == "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+    assert job.status == ExecutionJob.Status.FAILED
+    assert contract.lifecycle == ExecutionContract.Lifecycle.CANCELLED
+    assert contract.closure_state == run.terminal_state
+    assert run.events.filter(event_type="PROVIDER_TERMINAL_RECONCILED").exists()
+
+
+@pytest.mark.django_db
 def test_missing_checkpoint_restarts_same_authoritative_run(
     recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,

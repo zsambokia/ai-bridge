@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from time import sleep
 from typing import Protocol
@@ -16,6 +16,7 @@ from django.utils import timezone
 from .execution_activity import console_line
 from .models import (
     ContractConsumption,
+    ExecutionCancellation,
     ExecutionContract,
     ExecutionJob,
     ExecutionProgressEvent,
@@ -40,6 +41,7 @@ ACTIVE_STATES = {
     ExecutionRun.Lifecycle.REQUESTED,
     ExecutionRun.Lifecycle.STARTING,
     ExecutionRun.Lifecycle.RUNNING,
+    ExecutionRun.Lifecycle.CANCELLING,
     ExecutionRun.Lifecycle.VALIDATING,
     ExecutionRun.Lifecycle.REPAIRING,
     ExecutionRun.Lifecycle.DOCUMENTING,
@@ -165,10 +167,14 @@ def heartbeat_job(
     now = timezone.now()
     with transaction.atomic():
         job = ExecutionJob.objects.select_for_update().get(pk=job.pk)
-        if job.status not in {
-            ExecutionJob.Status.LEASED,
-            ExecutionJob.Status.STARTED,
-        } or job.lease_owner != worker_id:
+        if (
+            job.status
+            not in {
+                ExecutionJob.Status.LEASED,
+                ExecutionJob.Status.STARTED,
+            }
+            or job.lease_owner != worker_id
+        ):
             raise ValueError("WORKER_LEASE_NOT_OWNED")
         job.last_heartbeat_at = now
         job.lease_expires_at = now + timedelta(seconds=lease_seconds)
@@ -302,6 +308,46 @@ def fail_claimed_job(job: ExecutionJob, worker_id: str, reason: str) -> Executio
     return locked
 
 
+def requeue_workspace_provisioning_failure(run: ExecutionRun) -> ExecutionJob:
+    """Return one provider-free workspace failure to the durable worker queue."""
+    with transaction.atomic():
+        job = (
+            ExecutionJob.objects.select_for_update().select_related("run").get(run=run)
+        )
+        locked_run = job.run
+        if (
+            job.status != ExecutionJob.Status.FAILED
+            or locked_run.lifecycle != ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+            or locked_run.current_phase != "WORKSPACE_FAILED"
+            or locked_run.provider_execution_id
+        ):
+            raise ValueError("WORKSPACE_FAILURE_REQUEUE_NOT_ALLOWED")
+        job.status = ExecutionJob.Status.QUEUED
+        job.lease_owner = ""
+        job.lease_expires_at = None
+        job.next_recovery_at = None
+        job.provider_attempt_metadata = {
+            **job.provider_attempt_metadata,
+            "recovery_action": "RESTART_WORKSPACE_PROVISIONING",
+        }
+        job.save(
+            update_fields=[
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "next_recovery_at",
+                "provider_attempt_metadata",
+                "updated_at",
+            ]
+        )
+    add_event(
+        locked_run,
+        "WORKSPACE_PROVISIONING_REQUEUED",
+        provider_started=False,
+    )
+    return job
+
+
 class ExecutionProvider(Protocol):
     name: str
 
@@ -337,6 +383,7 @@ def add_event(
             run=run, provider_event_id=provider_event_id
         ).first()
         if existing is not None:
+            _terminalize_provider_event_if_needed(run, existing)
             return existing
     for attempt in range(3):
         try:
@@ -360,6 +407,7 @@ def add_event(
                 existing = ExecutionProgressEvent.objects.get(
                     run=run, provider_event_id=provider_event_id
                 )
+                _terminalize_provider_event_if_needed(run, existing)
                 return existing
             raise
         except OperationalError:
@@ -368,7 +416,105 @@ def add_event(
             sleep(0.05 * (attempt + 1))
     if settings.AI_BRIDGE_DEV_EXECUTION_ACTIVITY:
         print(console_line(event), flush=True)
+    _terminalize_provider_event_if_needed(run, event)
     return event
+
+
+def _is_provider_terminal_event(event: ExecutionProgressEvent) -> bool:
+    details = event.details if isinstance(event.details, dict) else {}
+    return event.event_type == "PROVIDER_COMPLETED" or (
+        event.event_type == "PROVIDER_OUTPUT"
+        and details.get("activity_type") == "turn.completed"
+    )
+
+
+def _terminalize_provider_event_if_needed(
+    run: ExecutionRun, event: ExecutionProgressEvent
+) -> None:
+    """Close an exited provider's canonical state exactly once.
+
+    A provider terminal event is evidence that execution can no longer own an
+    active lease.  It is not completion evidence, so ordinary runs become a
+    truthful external-input block; a confirmed cancellation becomes cancelled.
+    """
+    if not _is_provider_terminal_event(event):
+        return
+    with transaction.atomic():
+        locked = (
+            ExecutionRun.objects.select_for_update()
+            .select_related("contract")
+            .get(pk=run.pk)
+        )
+        job = ExecutionJob.objects.select_for_update().filter(run=locked).first()
+        now = timezone.now()
+        try:
+            cancellation = locked.cancellation
+        except ExecutionCancellation.DoesNotExist:
+            cancellation = None
+        if (
+            locked.lifecycle == ExecutionRun.Lifecycle.CANCELLING
+            and cancellation is not None
+        ):
+            _complete_cancellation_locked(
+                locked, cancellation, job=job, acknowledged=True, now=now
+            )
+            outcome = "CANCELLED"
+        elif locked.lifecycle in ACTIVE_STATES:
+            locked.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+            locked.current_phase = "PROVIDER_TERMINALIZED"
+            locked.current_blocker = {
+                "category": "PROVIDER_TERMINAL_EVENT",
+                "reason": (
+                    "provider reported terminal activity before canonical "
+                    "completion evidence"
+                ),
+                "event_type": event.event_type,
+                "event_sequence": event.sequence,
+            }
+            locked.terminal_state = "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+            locked.ended_at = now
+            locked.save(
+                update_fields=[
+                    "lifecycle",
+                    "current_phase",
+                    "current_blocker",
+                    "terminal_state",
+                    "ended_at",
+                    "updated_at",
+                ]
+            )
+            if job is not None:
+                job.status = ExecutionJob.Status.FAILED
+                job.lease_owner = ""
+                job.lease_expires_at = None
+                job.next_recovery_at = None
+                job.save(
+                    update_fields=[
+                        "status",
+                        "lease_owner",
+                        "lease_expires_at",
+                        "next_recovery_at",
+                        "updated_at",
+                    ]
+                )
+            contract = locked.contract
+            if contract.lifecycle == ExecutionContract.Lifecycle.RUNNING:
+                contract.lifecycle = ExecutionContract.Lifecycle.CANCELLED
+                contract.closure_state = locked.terminal_state
+                contract.completed_at = now
+                contract.save(
+                    update_fields=["lifecycle", "closure_state", "completed_at"]
+                )
+            outcome = "BLOCKED_EXTERNAL_INPUT"
+        else:
+            return
+    add_event(
+        run,
+        "PROVIDER_TERMINAL_LIFECYCLE_TERMINALIZED",
+        outcome=outcome,
+        source_event=event.event_type,
+        source_sequence=event.sequence,
+    )
 
 
 def _prompt(contract: ExecutionContract) -> str:
@@ -736,10 +882,207 @@ def execute_claimed_job(
     return run
 
 
+def prepare_execution_cancellation(
+    run: ExecutionRun, *, requested_by: str, reason: str
+) -> ExecutionCancellation:
+    """Persist a cancellation request before asking for confirmation."""
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        try:
+            cancellation = locked.cancellation
+        except ExecutionCancellation.DoesNotExist:
+            cancellation = None
+        if cancellation is not None:
+            if (
+                cancellation.requested_by != requested_by
+                or cancellation.reason != reason
+            ):
+                raise ValueError("CANCELLATION_REQUEST_ALREADY_EXISTS")
+            return cancellation
+        cancellation = ExecutionCancellation.objects.create(
+            run=locked, requested_by=requested_by, reason=reason
+        )
+    add_event(
+        locked,
+        "CANCELLATION_CONFIRMATION_REQUIRED",
+        requested_by=requested_by,
+        reason=reason,
+    )
+    return cancellation
+
+
+def confirm_execution_cancellation(
+    run: ExecutionRun, *, requested_by: str, confirmation_reference: str
+) -> ExecutionCancellation:
+    """Bind an authenticated Product Owner confirmation durably."""
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        try:
+            cancellation = locked.cancellation
+        except ExecutionCancellation.DoesNotExist as error:
+            raise ValueError("CANCELLATION_CONFIRMATION_REQUIRED") from error
+        if cancellation.requested_by != requested_by:
+            raise ValueError("CANCELLATION_REQUESTER_MISMATCH")
+        if cancellation.status == ExecutionCancellation.Status.CONFIRMATION_REQUIRED:
+            cancellation.confirmation_reference = confirmation_reference
+            cancellation.status = ExecutionCancellation.Status.CONFIRMED
+            cancellation.save(
+                update_fields=["confirmation_reference", "status", "updated_at"]
+            )
+        elif cancellation.confirmation_reference != confirmation_reference:
+            raise ValueError("CANCELLATION_CONFIRMATION_MISMATCH")
+        else:
+            return cancellation
+    add_event(
+        locked, "CANCELLATION_CONFIRMED", confirmation_reference=confirmation_reference
+    )
+    return cancellation
+
+
+def _complete_cancellation_locked(
+    run: ExecutionRun,
+    cancellation: ExecutionCancellation,
+    *,
+    job: ExecutionJob | None,
+    acknowledged: bool,
+    now: datetime | None = None,
+) -> None:
+    completed_at = now or timezone.now()
+    run.lifecycle = ExecutionRun.Lifecycle.CANCELLED
+    run.current_phase = "CANCELLED"
+    run.current_blocker = {}
+    run.terminal_state = "CANCELLED — PRODUCT OWNER REQUESTED"
+    run.ended_at = completed_at
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "terminal_state",
+            "ended_at",
+            "updated_at",
+        ]
+    )
+    cancellation.status = ExecutionCancellation.Status.CANCELLED
+    cancellation.completed_at = completed_at
+    if acknowledged and cancellation.provider_acknowledged_at is None:
+        cancellation.provider_acknowledged_at = completed_at
+    cancellation.save(
+        update_fields=[
+            "status",
+            "completed_at",
+            "provider_acknowledged_at",
+            "updated_at",
+        ]
+    )
+    if job is not None:
+        job.status = ExecutionJob.Status.FAILED
+        job.lease_owner = ""
+        job.lease_expires_at = None
+        job.next_recovery_at = None
+        job.save(
+            update_fields=[
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "next_recovery_at",
+                "updated_at",
+            ]
+        )
+    contract = run.contract
+    if contract.lifecycle == ExecutionContract.Lifecycle.RUNNING:
+        contract.lifecycle = ExecutionContract.Lifecycle.CANCELLED
+        contract.closure_state = run.terminal_state
+        contract.completed_at = completed_at
+        contract.save(update_fields=["lifecycle", "closure_state", "completed_at"])
+
+
+def request_execution_cancellation(
+    run: ExecutionRun, *, requested_by: str, reason: str, confirmation_reference: str
+) -> tuple[ExecutionRun, str]:
+    """Request provider cancellation only after durable confirmation."""
+    with transaction.atomic():
+        locked = (
+            ExecutionRun.objects.select_for_update()
+            .select_related("contract")
+            .get(pk=run.pk)
+        )
+        try:
+            cancellation = locked.cancellation
+        except ExecutionCancellation.DoesNotExist as error:
+            raise ValueError("CANCELLATION_CONFIRMATION_REQUIRED") from error
+        if (
+            cancellation.requested_by,
+            cancellation.reason,
+            cancellation.confirmation_reference,
+        ) != (requested_by, reason, confirmation_reference):
+            raise ValueError("CANCELLATION_CONFIRMATION_MISMATCH")
+        if locked.lifecycle == ExecutionRun.Lifecycle.CANCELLED:
+            return locked, "ALREADY_CANCELLED"
+        if locked.lifecycle not in ACTIVE_STATES:
+            cancellation.status = ExecutionCancellation.Status.ALREADY_TERMINAL
+            cancellation.save(update_fields=["status", "updated_at"])
+            return locked, "ALREADY_TERMINAL"
+        locked.lifecycle = ExecutionRun.Lifecycle.CANCELLING
+        locked.current_phase = "CANCELLING"
+        locked.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+        cancellation.status = ExecutionCancellation.Status.PROVIDER_CANCELLING
+        cancellation.save(update_fields=["status", "updated_at"])
+    add_event(
+        locked,
+        "CANCELLATION_REQUESTED",
+        requested_by=requested_by,
+        reason=reason,
+        confirmation_reference=confirmation_reference,
+    )
+    try:
+        if (
+            not locked.provider_execution_id
+            or provider(locked.provider_name).status(locked.provider_execution_id)
+            == "FINISHED"
+        ):
+            return reconcile_execution_cancellation(locked), "ALREADY_FINISHED"
+        provider(locked.provider_name).cancel(locked.provider_execution_id)
+    except OSError:
+        add_event(
+            locked, "CANCELLATION_PROVIDER_UNRESPONSIVE", provider=locked.provider_name
+        )
+        return locked, "CANCELLING"
+    add_event(locked, "CANCELLATION_PROVIDER_REQUESTED", provider=locked.provider_name)
+    return locked, "CANCELLING"
+
+
+def reconcile_execution_cancellation(run: ExecutionRun) -> ExecutionRun:
+    """Finish a pending cancellation after a provider exit or restart."""
+    if run.lifecycle != ExecutionRun.Lifecycle.CANCELLING:
+        return run
+    if (
+        run.provider_execution_id
+        and provider(run.provider_name).status(run.provider_execution_id) != "FINISHED"
+    ):
+        return run
+    with transaction.atomic():
+        locked = (
+            ExecutionRun.objects.select_for_update()
+            .select_related("contract")
+            .get(pk=run.pk)
+        )
+        if locked.lifecycle != ExecutionRun.Lifecycle.CANCELLING:
+            return locked
+        job = ExecutionJob.objects.select_for_update().filter(run=locked).first()
+        _complete_cancellation_locked(
+            locked, locked.cancellation, job=job, acknowledged=True
+        )
+    add_event(locked, "CANCELLATION_PROVIDER_ACKNOWLEDGED")
+    add_event(locked, "EXECUTION_CANCELLED")
+    add_event(locked, "CANCELLATION_EVIDENCE_COMPLETED")
+    return locked
+
+
 def cancel_run(
     run: ExecutionRun, *, approval_reference: str, phase: str = "CANCELLED"
 ) -> ExecutionRun:
-    """Cancel a provider run through the one canonical executor boundary."""
+    """Legacy internal cancellation boundary retained for remediation callers."""
     if run.lifecycle == ExecutionRun.Lifecycle.CANCELLED:
         return run
     if run.lifecycle not in {
@@ -748,9 +1091,8 @@ def cancel_run(
     }:
         raise ValueError("EXECUTION_NOT_CANCELLABLE")
     try:
-        adapter = provider(run.provider_name)
-        if adapter.status(run.provider_execution_id) != "FINISHED":
-            adapter.cancel(run.provider_execution_id)
+        if provider(run.provider_name).status(run.provider_execution_id) != "FINISHED":
+            provider(run.provider_name).cancel(run.provider_execution_id)
     except OSError as exc:
         raise ValueError("EXECUTION_PROVIDER_UNAVAILABLE") from exc
     run.lifecycle = ExecutionRun.Lifecycle.CANCELLED

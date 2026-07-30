@@ -14,7 +14,12 @@ from django.db import transaction
 from django.utils import timezone
 
 from .execution import ACTIVE_STATES, add_event
-from .models import ExecutionJob, ExecutionRecoveryAttempt, ExecutionRun
+from .models import (
+    ExecutionContract,
+    ExecutionJob,
+    ExecutionRecoveryAttempt,
+    ExecutionRun,
+)
 
 MAX_RECOVERY_ATTEMPTS = 3
 RECOVERY_BACKOFF_SECONDS = 30
@@ -98,6 +103,51 @@ def _terminalize_recovery_review_required(
     )
 
 
+def _terminalize_finished_provider(
+    *,
+    run: ExecutionRun,
+    job: ExecutionJob,
+    evidence: dict[str, object],
+    observed_at: datetime,
+) -> None:
+    """Reconcile a verified provider exit without inventing completion evidence."""
+    run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    run.current_phase = "PROVIDER_TERMINALIZED"
+    run.current_blocker = {
+        "category": "PROVIDER_TERMINAL_EVENT",
+        "reason": "provider was verified FINISHED before canonical completion",
+        "evidence": evidence,
+    }
+    run.terminal_state = "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+    run.ended_at = observed_at
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "terminal_state",
+            "ended_at",
+            "updated_at",
+        ]
+    )
+    job.status = ExecutionJob.Status.FAILED
+    job.lease_owner = ""
+    job.lease_expires_at = None
+    job.next_recovery_at = None
+    contract = ExecutionContract.objects.select_for_update().get(pk=run.contract_id)
+    if contract.lifecycle == ExecutionContract.Lifecycle.RUNNING:
+        contract.lifecycle = ExecutionContract.Lifecycle.CANCELLED
+        contract.closure_state = run.terminal_state
+        contract.completed_at = observed_at
+        contract.save(update_fields=["lifecycle", "closure_state", "completed_at"])
+    add_event(
+        run,
+        "PROVIDER_TERMINAL_RECONCILED",
+        **evidence,
+        terminal_state=run.terminal_state,
+    )
+
+
 def reconcile_execution_jobs(
     *,
     provider_status: Callable[[str, str], str],
@@ -154,7 +204,16 @@ def reconcile_execution_jobs(
             or candidate.last_heartbeat_at is None
             or candidate.last_heartbeat_at <= observed_at - timedelta(seconds=120)
         )
-        if not stale:
+        try:
+            provider_state = provider_status(
+                candidate.run.provider_name, candidate.run.provider_execution_id
+            )
+        except (OSError, ValueError):
+            # An unreachable provider is not terminal evidence.  Keep a live
+            # worker untouched, while allowing the existing stale recovery
+            # path to use its checkpointed authority.
+            provider_state = "MISSING"
+        if provider_state != "FINISHED" and not stale:
             continue
         with transaction.atomic():
             job = (
@@ -165,14 +224,6 @@ def reconcile_execution_jobs(
             if job.next_recovery_at and job.next_recovery_at > observed_at:
                 continue
             run = job.run
-            try:
-                provider_state = provider_status(
-                    run.provider_name, run.provider_execution_id
-                )
-            except (OSError, ValueError):
-                # Provider interruption is recoverable input: only a verified
-                # checkpoint may move this same authoritative run forward.
-                provider_state = "MISSING"
             evidence = {
                 "observed_at": observed_at.isoformat(),
                 "provider_state": provider_state,
@@ -193,6 +244,15 @@ def reconcile_execution_jobs(
                 outcome = ExecutionRecoveryAttempt.Outcome.REATTACH
                 reason = "provider remains alive; a new worker may reattach"
                 add_event(run, "RECOVERY_REATTACH_QUEUED", **evidence)
+            elif provider_state == "FINISHED":
+                _terminalize_finished_provider(
+                    run=run,
+                    job=job,
+                    evidence=evidence,
+                    observed_at=observed_at,
+                )
+                outcome = ExecutionRecoveryAttempt.Outcome.REVIEW_REQUIRED
+                reason = "provider finished without canonical completion evidence"
             elif job.recovery_attempts < MAX_RECOVERY_ATTEMPTS:
                 job.status = ExecutionJob.Status.RECOVERING
                 job.recovery_attempts += 1

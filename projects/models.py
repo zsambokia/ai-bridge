@@ -788,6 +788,7 @@ class ExecutionRun(models.Model):
         REQUESTED = "REQUESTED", "Requested"
         STARTING = "STARTING", "Starting"
         RUNNING = "RUNNING", "Running"
+        CANCELLING = "CANCELLING", "Cancelling"
         VALIDATING = "VALIDATING", "Validating"
         REPAIRING = "REPAIRING", "Repairing"
         DOCUMENTING = "DOCUMENTING", "Documenting"
@@ -831,6 +832,32 @@ class ExecutionRun(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class ExecutionCancellation(models.Model):
+    """Durable Product Owner cancellation authority for one execution run."""
+
+    class Status(models.TextChoices):
+        CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED", "Confirmation required"
+        CONFIRMED = "CONFIRMED", "Confirmed"
+        PROVIDER_CANCELLING = "PROVIDER_CANCELLING", "Provider cancelling"
+        CANCELLED = "CANCELLED", "Cancelled"
+        ALREADY_TERMINAL = "ALREADY_TERMINAL", "Already terminal"
+
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    run = models.OneToOneField(
+        ExecutionRun, on_delete=models.PROTECT, related_name="cancellation"
+    )
+    requested_by = models.CharField(max_length=255)
+    reason = models.CharField(max_length=1000)
+    confirmation_reference = models.CharField(max_length=255, blank=True, unique=True)
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.CONFIRMATION_REQUIRED
+    )
+    provider_acknowledged_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class ExecutionWorkspace(models.Model):

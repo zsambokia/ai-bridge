@@ -357,8 +357,10 @@ def test_authentication_and_protocol_failures_are_json_not_html() -> None:
         (
             "execution.cancel",
             {
-                "approval_reference": "PO-missing-execution",
+                "confirmation_reference": "PO-missing-execution",
                 "idempotency_key": "cancel-missing-execution-001",
+                "reason": "Product Owner requested cancellation",
+                "requested_by": "test-product-owner",
             },
         ),
     ],

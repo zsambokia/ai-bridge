@@ -13,12 +13,14 @@ from projects.contracts import (
     generate_execution_contract,
     generate_scope_execution_contract,
     issue_execution_contract,
+    supersede_execution_contract,
     validate_execution_contract,
 )
 from projects.mcp import scope_complete
 from projects.models import (
     ContractConsumption,
     ExecutableScope,
+    ExecutionContract,
     ExecutionRun,
     GovernanceApproval,
     Project,
@@ -111,6 +113,41 @@ def test_contract_hash_binds_the_rendered_scope_for_a_separate_workspace(
         root / scope.published_path
     ).read_text(encoding="utf-8")
     assert contract.contract_hash == _normalized_hash(contract.payload)
+
+
+@pytest.mark.django_db
+def test_consumed_contract_can_only_be_superseded_for_pre_execution_binding_repair(
+    canonical_scope: tuple[Path, Project, ExecutableScope],
+) -> None:
+    root, _project, scope = canonical_scope
+    issued = issue_execution_contract(
+        validate_execution_contract(
+            generate_scope_execution_contract(scope, root), root
+        ),
+        root,
+    )
+    original = consume_execution_contract(
+        issued,
+        root,
+        expected_hash=issued.contract_hash,
+        provider_identity="codex-cli",
+        observed_baseline="a" * 40,
+        schema_version="2.0",
+        idempotency_key="supersede-consumed-contract",
+    )
+    replacement = generate_scope_execution_contract(scope, root)
+
+    with pytest.raises(ValueError, match="CONTRACT_NOT_SUPERSEDABLE"):
+        supersede_execution_contract(original, replacement)
+
+    supersede_execution_contract(
+        original,
+        replacement,
+        allow_consumed_pre_execution_binding_repair=True,
+    )
+    original.refresh_from_db()
+    assert original.lifecycle == ExecutionContract.Lifecycle.SUPERSEDED
+    assert original.superseded_by_id == replacement.pk
 
 
 @pytest.mark.django_db

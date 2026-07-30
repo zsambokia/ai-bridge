@@ -5,10 +5,13 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import stat
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from django.conf import settings
 from django.db import transaction
@@ -16,10 +19,34 @@ from django.utils import timezone
 
 from .models import ExecutionRun, ExecutionWorkspace
 from .runtime_bootstrap import BootstrapProfileError, resolve_profile
+from .services import _repository_identity, project_repository_root
 
 
 class WorkspaceError(ValueError):
     """A provisioning failure that must prevent provider startup."""
+
+
+def _command_label(command: list[str]) -> str:
+    """Return a non-sensitive label for a failed provisioning command."""
+    executable = Path(command[0]).name.lower()
+    if executable == "git":
+        index = 1
+        while index < len(command):
+            if command[index] == "-C":
+                index += 2
+                continue
+            if command[index].startswith("-"):
+                index += 1
+                continue
+            return f"git:{command[index]}"
+        return "git"
+    if len(command) > 2 and command[1:3] == ["-m", "venv"]:
+        return "python:venv"
+    if len(command) > 2 and command[1:3] == ["-m", "pip"]:
+        return "python:pip"
+    if Path(command[0]).name.lower().startswith("python") and len(command) > 1:
+        return f"python:{Path(command[1]).name}"
+    return executable
 
 
 def _run(
@@ -38,7 +65,7 @@ def _run(
         shell=False,
     )  # noqa: S603
     if completed.returncode:
-        raise WorkspaceError("WORKSPACE_COMMAND_FAILED")
+        raise WorkspaceError(f"WORKSPACE_COMMAND_FAILED:{_command_label(command)}")
     return completed.stdout.strip()
 
 
@@ -92,6 +119,66 @@ def _fingerprint(repository: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_installable_python_project(repository: Path) -> bool:
+    return any(
+        (repository / filename).is_file()
+        for filename in ("pyproject.toml", "setup.py", "setup.cfg")
+    )
+
+
+def _target_repository(run: ExecutionRun) -> tuple[Path, str]:
+    """Resolve the registered target repository, never the control-plane checkout."""
+    repository_root = project_repository_root(
+        run.contract.project, Path(settings.BASE_DIR)
+    )
+    if _repository_identity(repository_root) != run.repository:
+        raise WorkspaceError("WORKSPACE_REPOSITORY_BINDING_MISMATCH")
+    repository_url = _run(
+        ["git", "-C", str(repository_root), "remote", "get-url", "origin"]
+    )
+    return repository_root, repository_url
+
+
+def _target_repository_url(run: ExecutionRun) -> str:
+    return _target_repository(run)[1]
+
+
+def _set_repository_remote(repository: Path, name: str, url: str) -> None:
+    remote_names = _run(["git", "-C", str(repository), "remote"]).splitlines()
+    if name in remote_names:
+        _run(["git", "-C", str(repository), "remote", "set-url", name, url])
+    else:
+        _run(["git", "-C", str(repository), "remote", "add", name, url])
+
+
+def _discard_mismatched_workspace_repository(
+    repository: Path, workspace_root: Path, repository_url: str
+) -> None:
+    """Remove only a failed workspace clone whose origin is not the target repo."""
+    if not repository.exists():
+        return
+    if not _under(repository, workspace_root) or repository == workspace_root:
+        raise WorkspaceError("WORKSPACE_PATH_UNSAFE")
+    try:
+        observed_url = _run(
+            ["git", "-C", str(repository), "remote", "get-url", "origin"]
+        )
+    except WorkspaceError:
+        observed_url = ""
+    if observed_url != repository_url:
+        shutil.rmtree(repository, onexc=_retry_readonly_delete)
+
+
+def _retry_readonly_delete(
+    function: Callable[..., Any], path: str, exc: BaseException
+) -> None:
+    """Retry deletion of a Windows read-only path under a controlled workspace."""
+    if not isinstance(exc, PermissionError):
+        raise exc
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
 class WorkspaceManager:
     """The sole idempotent provisioning and cleanup path for execution work."""
 
@@ -140,18 +227,63 @@ class WorkspaceManager:
             repo_path = workspace_root / "repository"
             if not _under(workspace_root, root) or workspace_root == root:
                 raise WorkspaceError("WORKSPACE_PATH_UNSAFE")
-            repository_url = _run(
-                ["git", "-C", str(settings.BASE_DIR), "remote", "get-url", "origin"]
-            )
+            source_repository, repository_url = _target_repository(run)
             cache_key = hashlib.sha256(repository_url.encode()).hexdigest()[:24]
             mirror = cache_root / f"{cache_key}.git"
+            # A cache entry may have been created by an older implementation.
+            # Bind it to the same canonical remote before it can supply a clone.
+            _discard_mismatched_workspace_repository(
+                mirror, cache_root, repository_url
+            )
             if not mirror.exists():
-                _run(["git", "clone", "--mirror", repository_url, str(mirror)])
-            else:
-                _run(["git", "-C", str(mirror), "fetch", "--prune", "origin"])
+                _run(
+                    ["git", "clone", "--mirror", str(source_repository), str(mirror)]
+                )
+                _run(
+                    [
+                        "git",
+                        "-C",
+                        str(mirror),
+                        "remote",
+                        "set-url",
+                        "origin",
+                        repository_url,
+                    ]
+                )
+            # The approved baseline can be a local commit not yet pushed to origin.
+            # Refresh only from the registered target repository, while retaining the
+            # declared remote as this cache and workspace's canonical origin binding.
+            _set_repository_remote(mirror, "registered-source", str(source_repository))
+            _run(
+                [
+                    "git",
+                    "-C",
+                    str(mirror),
+                    "fetch",
+                    "--prune",
+                    "registered-source",
+                    "+refs/heads/*:refs/heads/*",
+                ]
+            )
+            _discard_mismatched_workspace_repository(
+                repo_path, workspace_root, repository_url
+            )
             if not repo_path.exists():
                 workspace_root.mkdir(parents=True, exist_ok=True)
                 _run(["git", "clone", "--no-checkout", str(mirror), str(repo_path)])
+                _run(
+                    [
+                        "git",
+                        "-C",
+                        str(repo_path),
+                        "remote",
+                        "set-url",
+                        "origin",
+                        repository_url,
+                    ]
+                )
+            _set_repository_remote(repo_path, "workspace-cache", str(mirror))
+            _run(["git", "-C", str(repo_path), "fetch", "--prune", "workspace-cache"])
             _run(
                 [
                     "git",
@@ -195,17 +327,25 @@ class WorkspaceManager:
                 "AI_BRIDGE_RUNTIME_DB": str(db_path),
                 **profile.environment,
             }
-            _run([str(workspace_python), "-m", "pip", "install", "."], repo_path)
-            _run(
-                [str(workspace_python), "manage.py", "migrate", "--noinput"],
-                repo_path,
-                environment,
-            )
-            _run(
-                [str(workspace_python), "manage.py", "migrate", "--check"],
-                repo_path,
-                environment,
-            )
+            if _is_installable_python_project(repo_path):
+                _run([str(workspace_python), "-m", "pip", "install", "."], repo_path)
+            migration_state: dict[str, object] = {
+                "status": "PENDING",
+                "verified": False,
+                "reason": "DJANGO_PROJECT_NOT_YET_PRESENT",
+            }
+            if (repo_path / "manage.py").is_file():
+                _run(
+                    [str(workspace_python), "manage.py", "migrate", "--noinput"],
+                    repo_path,
+                    environment,
+                )
+                _run(
+                    [str(workspace_python), "manage.py", "migrate", "--check"],
+                    repo_path,
+                    environment,
+                )
+                migration_state = {"status": "APPLIED", "verified": True}
             seed_state: dict[str, object] = {"status": "SKIPPED"}
             if profile.seed_command:
                 _run(profile.seed_command, repo_path, environment)
@@ -235,7 +375,7 @@ class WorkspaceManager:
                     "seed_configured": bool(profile.seed_command),
                     "service_count": len(profile.services),
                 }
-                workspace.migration_state = {"status": "APPLIED", "verified": True}
+                workspace.migration_state = migration_state
                 workspace.seed_state = seed_state
                 workspace.runtime_services = services
                 workspace.dependency_fingerprint = fingerprint

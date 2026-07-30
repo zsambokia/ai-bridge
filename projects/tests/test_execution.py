@@ -23,6 +23,7 @@ from projects.contracts import (
 from projects.execution import (
     ProviderStart,
     _safe_details,
+    add_event,
     claim_next_job,
     complete_run,
     enqueue_run,
@@ -31,6 +32,7 @@ from projects.execution import (
     record_gate_rerun,
     reject_claimed_job,
     repair_failure,
+    requeue_workspace_provisioning_failure,
     start_run,
 )
 from projects.execution_activity import (
@@ -228,6 +230,34 @@ def test_provider_starts_only_after_consumption(
 
 
 @pytest.mark.django_db
+def test_provider_terminal_event_closes_the_canonical_lifecycle(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    job = ExecutionJob.objects.create(run=run, status=ExecutionJob.Status.STARTED)
+
+    add_event(run, "PROVIDER_OUTPUT", activity_type="turn.completed")
+
+    run.refresh_from_db()
+    job.refresh_from_db()
+    contract.refresh_from_db()
+    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    assert run.current_phase == "PROVIDER_TERMINALIZED"
+    assert run.terminal_state == "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
+    assert job.status == ExecutionJob.Status.FAILED
+    assert contract.lifecycle == ExecutionContract.Lifecycle.CANCELLED
+    assert contract.closure_state == run.terminal_state
+    assert run.events.filter(
+        event_type="PROVIDER_TERMINAL_LIFECYCLE_TERMINALIZED"
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_workspace_cleanup_is_token_scoped_and_idempotent(
     consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,
@@ -260,6 +290,39 @@ def test_workspace_cleanup_is_token_scoped_and_idempotent(
     assert run.events.filter(event_type="WORKSPACE_CLEANUP_STARTED").exists()
     assert run.events.filter(event_type="WORKSPACE_CLEANED").exists()
     assert manager.reconcile_cleanup() == []
+
+
+@pytest.mark.django_db
+def test_workspace_failure_can_be_requeued_without_provider_execution(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = consumed_contract
+    job = enqueue_run(contract, request, root)
+    run = job.run
+    job.status = ExecutionJob.Status.FAILED
+    job.save(update_fields=["status", "updated_at"])
+    run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    run.current_phase = "WORKSPACE_FAILED"
+    run.current_blocker = {"reason": "WORKSPACE_PROVISIONING_FAILED"}
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "updated_at",
+        ]
+    )
+
+    requeued = requeue_workspace_provisioning_failure(run)
+
+    requeued.refresh_from_db()
+    assert requeued.status == ExecutionJob.Status.QUEUED
+    assert requeued.provider_attempt_metadata["recovery_action"] == (
+        "RESTART_WORKSPACE_PROVISIONING"
+    )
+    assert run.events.filter(
+        event_type="WORKSPACE_PROVISIONING_REQUEUED"
+    ).exists()
 
 
 @pytest.mark.django_db
