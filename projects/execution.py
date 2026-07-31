@@ -49,6 +49,61 @@ ACTIVE_STATES = {
 }
 MAX_PROVIDER_START_ATTEMPTS = 2
 
+
+def lifecycle_status_projection(run: ExecutionRun) -> dict[str, object]:
+    """Return the one safe lifecycle projection for API and administration.
+
+    It deliberately exposes ownership as booleans, never a worker identity or
+    PID.  Every caller observes the same durable run, job, workspace and
+    activity state rather than reconstructing a process-local view.
+    """
+    from .execution_activity import heartbeat_projection
+
+    job = ExecutionJob.objects.filter(run=run).first()
+    workspace = ExecutionWorkspace.objects.filter(run=run).first()
+    return {
+        "execution_token": str(run.token),
+        "status": run.lifecycle,
+        "phase": run.current_phase,
+        "provider": run.provider_name,
+        "provider_execution_id": run.provider_execution_id,
+        "attempt_count": run.attempt_count,
+        "current_blocker": run.current_blocker,
+        "heartbeat": heartbeat_projection(run),
+        "queue": {
+            "status": job.status if job else None,
+            "lease_owner_present": bool(job and job.lease_owner),
+            "lease_expires_at": job.lease_expires_at.isoformat()
+            if job and job.lease_expires_at
+            else None,
+            "last_heartbeat_at": job.last_heartbeat_at.isoformat()
+            if job and job.last_heartbeat_at
+            else None,
+            "fencing_token": job.lease_fencing_token if job else None,
+            "recovery_attempts": job.recovery_attempts if job else None,
+            "next_recovery_at": job.next_recovery_at.isoformat()
+            if job and job.next_recovery_at
+            else None,
+            "recovery_action": job.provider_attempt_metadata.get("recovery_action")
+            if job
+            else None,
+        },
+        "workspace": {
+            "status": workspace.status if workspace else None,
+            "provider_pid_present": bool(workspace and workspace.provider_pid),
+            "retention_until": workspace.retention_until.isoformat()
+            if workspace and workspace.retention_until
+            else None,
+            "retention_reason": workspace.retention_reason if workspace else None,
+        },
+        "evidence": {
+            "evidence_root": run.evidence_root,
+            "final_commit_sha": run.final_commit_sha,
+            "terminal_state": run.terminal_state,
+        },
+    }
+
+
 # These are immutable-authority failures.  Re-running the same claimed job
 # cannot make them true, so retrying would only reclaim it forever.  Keep this
 # intentionally closed: unknown failures still surface to the worker process
@@ -145,12 +200,14 @@ def claim_next_job(worker_id: str, lease_seconds: int) -> ExecutionJob | None:
         job.lease_owner = worker_id
         job.lease_expires_at = now + timedelta(seconds=lease_seconds)
         job.last_heartbeat_at = now
+        job.lease_fencing_token += 1
         job.save(
             update_fields=[
                 "status",
                 "lease_owner",
                 "lease_expires_at",
                 "last_heartbeat_at",
+                "lease_fencing_token",
                 "updated_at",
             ]
         )
@@ -158,6 +215,7 @@ def claim_next_job(worker_id: str, lease_seconds: int) -> ExecutionJob | None:
         job.run,
         "WORKER_LEASE_RECLAIMED" if reclaimed else "WORKER_LEASE_ACQUIRED",
         worker=worker_id,
+        fencing_token=job.lease_fencing_token,
     )
     return job
 
@@ -166,9 +224,12 @@ def heartbeat_job(
     job: ExecutionJob, worker_id: str, lease_seconds: int
 ) -> ExecutionJob:
     """Renew only the lease held by this worker and record durable liveness."""
+    expected_fencing_token = job.lease_fencing_token
     now = timezone.now()
     with transaction.atomic():
         job = ExecutionJob.objects.select_for_update().get(pk=job.pk)
+        if job.lease_fencing_token != expected_fencing_token:
+            raise ValueError("WORKER_FENCING_TOKEN_STALE")
         if (
             job.status
             not in {
@@ -203,6 +264,7 @@ def reject_claimed_job(
     if not is_non_retryable_execution_failure(error):
         raise ValueError("REJECTION_REQUIRES_NON_RETRYABLE_EXECUTION_FAILURE")
     reason = str(error)
+    expected_fencing_token = job.lease_fencing_token
     now = timezone.now()
     with transaction.atomic():
         locked_job = (
@@ -210,6 +272,8 @@ def reject_claimed_job(
             .select_related("run", "run__contract")
             .get(pk=job.pk)
         )
+        if locked_job.lease_fencing_token != expected_fencing_token:
+            raise ValueError("WORKER_FENCING_TOKEN_STALE")
         if (
             locked_job.status != ExecutionJob.Status.LEASED
             or locked_job.lease_owner != worker_id
@@ -291,12 +355,15 @@ def reject_claimed_job(
 
 def fail_claimed_job(job: ExecutionJob, worker_id: str, reason: str) -> ExecutionJob:
     """Terminalize one execution failure while keeping the worker available."""
+    expected_fencing_token = job.lease_fencing_token
     with transaction.atomic():
         locked = (
             ExecutionJob.objects.select_for_update()
             .select_related("run")
             .get(pk=job.pk)
         )
+        if locked.lease_fencing_token != expected_fencing_token:
+            raise ValueError("WORKER_FENCING_TOKEN_STALE")
         if (
             locked.status != ExecutionJob.Status.LEASED
             or locked.lease_owner != worker_id
@@ -868,12 +935,15 @@ def execute_claimed_job(
     job: ExecutionJob, worker_id: str, platform_root: Path
 ) -> ExecutionRun:
     """Run a claimed job from the independent worker process only."""
+    expected_fencing_token = job.lease_fencing_token
     with transaction.atomic():
         job = (
             ExecutionJob.objects.select_for_update()
             .select_related("run", "run__contract")
             .get(pk=job.pk)
         )
+        if job.lease_fencing_token != expected_fencing_token:
+            raise ValueError("WORKER_FENCING_TOKEN_STALE")
         if job.status != ExecutionJob.Status.LEASED or job.lease_owner != worker_id:
             raise ValueError("WORKER_LEASE_NOT_OWNED")
         if job.run.lifecycle not in ACTIVE_STATES:

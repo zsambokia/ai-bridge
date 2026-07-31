@@ -109,6 +109,19 @@ def _retention(run: ExecutionRun) -> datetime | None:
     return timezone.now() + timedelta(hours=settings.BRIDGE_WORKSPACE_RETENTION_HOURS)
 
 
+def _retention_reason(run: ExecutionRun) -> str:
+    if run.current_phase in {"RECOVERING", "RECOVERY_REVIEW_REQUIRED"}:
+        return "RECOVERY_EVIDENCE_REQUIRED"
+    if run.lifecycle == ExecutionRun.Lifecycle.COMPLETED:
+        return "COMPLETED_RUN_EVIDENCE_RETENTION"
+    if run.lifecycle in {
+        ExecutionRun.Lifecycle.BLOCKED_BUSINESS_DECISION,
+        ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+    }:
+        return "BLOCKED_RUN_EVIDENCE_RETENTION"
+    return "ACTIVE_RUN_RETENTION_GUARD"
+
+
 def _fingerprint(repository: Path) -> str:
     digest = hashlib.sha256()
     for name in ("pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock"):
@@ -235,13 +248,9 @@ class WorkspaceManager:
             mirror = cache_root / f"{cache_key}.git"
             # A cache entry may have been created by an older implementation.
             # Bind it to the same canonical remote before it can supply a clone.
-            _discard_mismatched_workspace_repository(
-                mirror, cache_root, repository_url
-            )
+            _discard_mismatched_workspace_repository(mirror, cache_root, repository_url)
             if not mirror.exists():
-                _run(
-                    ["git", "clone", "--mirror", str(source_repository), str(mirror)]
-                )
+                _run(["git", "clone", "--mirror", str(source_repository), str(mirror)])
                 _run(
                     [
                         "git",
@@ -521,8 +530,15 @@ class WorkspaceManager:
         workspace.status = ExecutionWorkspace.Status.RETAINED
         workspace.provider_pid = None
         workspace.retention_until = _retention(run)
+        workspace.retention_reason = _retention_reason(run)
         workspace.save(
-            update_fields=["status", "provider_pid", "retention_until", "updated_at"]
+            update_fields=[
+                "status",
+                "provider_pid",
+                "retention_until",
+                "retention_reason",
+                "updated_at",
+            ]
         )
 
     def reconcile_ownership(
@@ -549,11 +565,13 @@ class WorkspaceManager:
                 workspace.status = ExecutionWorkspace.Status.RETAINED
                 workspace.provider_pid = None
                 workspace.retention_until = _retention(workspace.run)
+                workspace.retention_reason = _retention_reason(workspace.run)
                 workspace.save(
                     update_fields=[
                         "status",
                         "provider_pid",
                         "retention_until",
+                        "retention_reason",
                         "updated_at",
                     ]
                 )
@@ -576,13 +594,37 @@ class WorkspaceManager:
             status=ExecutionWorkspace.Status.CLEANED
         ).filter(retention_until__lte=observed):
             with transaction.atomic():
-                workspace = ExecutionWorkspace.objects.select_for_update().get(
-                    pk=candidate.pk
+                workspace = (
+                    ExecutionWorkspace.objects.select_for_update()
+                    .select_related("run")
+                    .get(pk=candidate.pk)
                 )
                 if workspace.status == ExecutionWorkspace.Status.CLEANED or (
                     workspace.retention_until is not None
                     and workspace.retention_until > observed
                 ):
+                    continue
+                if workspace.status in {
+                    ExecutionWorkspace.Status.IN_USE,
+                    ExecutionWorkspace.Status.PROVISIONING,
+                    ExecutionWorkspace.Status.VALIDATING,
+                }:
+                    workspace.retention_until = None
+                    workspace.retention_reason = "ACTIVE_RUN_CLEANUP_FORBIDDEN"
+                    workspace.save(
+                        update_fields=[
+                            "retention_until",
+                            "retention_reason",
+                            "updated_at",
+                        ]
+                    )
+                    from .execution import add_event
+
+                    add_event(
+                        workspace.run,
+                        "WORKSPACE_CLEANUP_SKIPPED_ACTIVE",
+                        workspace_id=str(workspace.token),
+                    )
                     continue
                 root, _ = _settings()
                 path = Path(workspace.root_path)

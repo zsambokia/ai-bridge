@@ -20,8 +20,8 @@ end-to-end delivery/acceptance evidence.
 
 Sprint 016, [Canonical Execution Lifecycle Integrity and Autonomous
 Recovery](../sprints/SPRINT_016_CANONICAL_EXECUTION_LIFECYCLE_INTEGRITY_AND_AUTONOMOUS_RECOVERY.md),
-is implemented under Product Owner Factory Development Mode and is awaiting
-independent audit and Product Owner review. Its recovery invariants are
+is implemented under Product Owner Factory Development Mode, independently
+repository-audited, and ready for Product Owner review. Its recovery invariants are
 documented in [Canonical execution lifecycle recovery](../architecture/EXECUTION_LIFECYCLE_RECOVERY.md).
 
 **Status:** ACTIVE PROJECT ROADMAP  

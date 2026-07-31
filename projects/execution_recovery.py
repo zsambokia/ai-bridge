@@ -36,6 +36,125 @@ REQUIRED_CHECKPOINT_KEYS = {
     "next_recommended_action",
 }
 
+RECOVERY_CLASSIFICATIONS = {
+    "HEALTHY_ACTIVE",
+    "COMPLETED_PENDING_VALIDATION",
+    "STALE_LEASE",
+    "DEAD_PROVIDER_RECOVERABLE",
+    "DEAD_PROVIDER_RESTARTABLE",
+    "WORKSPACE_RECOVERABLE",
+    "WORKSPACE_CORRUPT_REPLACEMENT_REQUIRED",
+    "CONTRACT_INTEGRITY_FAILURE",
+    "NON_RECOVERABLE_EXECUTION_FAILURE",
+    "EXTERNAL_DEPENDENCY_BLOCKED",
+    "TERMINAL_CLEANUP_PENDING",
+}
+
+
+def classify_execution_recovery(
+    job: ExecutionJob, *, now: datetime | None = None
+) -> dict[str, object]:
+    """Classify recovery from durable facts, never a worker's memory.
+
+    The structured result is also suitable for evidence and API consumers:
+    every classification declares safe next actions, retry budget and whether
+    Product Owner involvement is permitted (it is never required for a normal
+    technical recovery).
+    """
+    observed = now or timezone.now()
+    run = job.run
+    try:
+        workspace = run.workspace
+    except ExecutionWorkspace.DoesNotExist:
+        workspace = None
+    facts: dict[str, object] = {
+        "run_lifecycle": run.lifecycle,
+        "job_status": job.status,
+        "lease_expired": bool(job.lease_expires_at and job.lease_expires_at < observed),
+        "checkpoint_resumable": checkpoint_is_resumable(job.checkpoint),
+        "workspace_status": workspace.status if workspace else None,
+        "provider_execution_present": bool(run.provider_execution_id),
+    }
+    evidence = [f"execution-run:{run.token}", f"execution-job:{job.token}"]
+    retry_budget = max(0, MAX_RECOVERY_ATTEMPTS - job.recovery_attempts)
+    classification = "HEALTHY_ACTIVE"
+    actions = ["continue_monitoring"]
+    if run.contract_hash != run.contract.contract_hash:
+        classification, actions = (
+            "CONTRACT_INTEGRITY_FAILURE",
+            ["fail_closed", "preserve_evidence"],
+        )
+    elif run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT:
+        classification, actions = (
+            "EXTERNAL_DEPENDENCY_BLOCKED",
+            ["preserve_evidence", "await_external_dependency"],
+        )
+    elif workspace and workspace.status == ExecutionWorkspace.Status.FAILED:
+        classification, actions = (
+            "WORKSPACE_CORRUPT_REPLACEMENT_REQUIRED",
+            ["replace_workspace", "resume_from_checkpoint"],
+        )
+    elif (
+        workspace
+        and workspace.status
+        in {
+            ExecutionWorkspace.Status.RETAINED,
+            ExecutionWorkspace.Status.CLEANUP_PENDING,
+        }
+        and run.lifecycle not in ACTIVE_STATES
+    ):
+        classification, actions = (
+            "TERMINAL_CLEANUP_PENDING",
+            ["retain_until_policy_expiry", "cleanup_when_safe"],
+        )
+    elif run.lifecycle == ExecutionRun.Lifecycle.VALIDATING:
+        classification, actions = (
+            "COMPLETED_PENDING_VALIDATION",
+            ["resume_validation", "record_validation_evidence"],
+        )
+    elif job.recovery_attempts >= MAX_RECOVERY_ATTEMPTS:
+        classification, actions = (
+            "NON_RECOVERABLE_EXECUTION_FAILURE",
+            ["fail_closed", "preserve_evidence"],
+        )
+    elif facts["lease_expired"]:
+        classification, actions = (
+            "STALE_LEASE",
+            ["reclaim_with_new_fencing_token", "classify_provider"],
+        )
+    elif (
+        run.provider_execution_id
+        and workspace
+        and not provider_pid_is_alive(workspace.provider_pid)
+    ):
+        classification = (
+            "DEAD_PROVIDER_RECOVERABLE"
+            if facts["checkpoint_resumable"]
+            else "DEAD_PROVIDER_RESTARTABLE"
+        )
+        actions = [
+            "reattach_or_resume"
+            if facts["checkpoint_resumable"]
+            else "restart_authorized_provider",
+            "record_recovery_attempt",
+        ]
+    elif workspace is None or workspace.status in {
+        ExecutionWorkspace.Status.REQUESTED,
+        ExecutionWorkspace.Status.READY,
+    }:
+        classification, actions = (
+            "WORKSPACE_RECOVERABLE",
+            ["provision_or_reuse_workspace", "resume_authorized_run"],
+        )
+    return {
+        "classification": classification,
+        "facts": facts,
+        "evidence_references": evidence,
+        "permitted_next_actions": actions,
+        "retry_budget_remaining": retry_budget,
+        "product_owner_involvement": "FORBIDDEN_FOR_TECHNICAL_RECOVERY",
+    }
+
 
 def checkpoint_is_resumable(checkpoint: object) -> bool:
     return isinstance(checkpoint, dict) and REQUIRED_CHECKPOINT_KEYS <= set(checkpoint)
@@ -74,9 +193,11 @@ def _converge_run_job_integrity(
         ExecutionJob.Status.FAILED,
         ExecutionJob.Status.REJECTED,
     ]
-    for candidate in ExecutionJob.objects.select_related("run").filter(
-        status__in=active_job_states
-    ).exclude(run__lifecycle__in=ACTIVE_STATES):
+    for candidate in (
+        ExecutionJob.objects.select_related("run")
+        .filter(status__in=active_job_states)
+        .exclude(run__lifecycle__in=ACTIVE_STATES)
+    ):
         with transaction.atomic():
             job = (
                 ExecutionJob.objects.select_for_update()
@@ -406,6 +527,11 @@ def reconcile_execution_jobs(
                 "workspace_status": workspace.status if workspace else None,
                 "provider_pid_missing": provider_pid_missing,
             }
+            classification = classify_execution_recovery(job, now=observed_at)
+            evidence["recovery_classification"] = classification["classification"]
+            evidence["permitted_next_actions"] = classification[
+                "permitted_next_actions"
+            ]
             if provider_state == "RUNNING":
                 job.status = ExecutionJob.Status.QUEUED
                 job.lease_owner = ""

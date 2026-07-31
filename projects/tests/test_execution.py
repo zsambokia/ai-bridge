@@ -28,6 +28,7 @@ from projects.execution import (
     complete_run,
     enqueue_run,
     execute_claimed_job,
+    heartbeat_job,
     is_non_retryable_execution_failure,
     record_gate_rerun,
     reject_claimed_job,
@@ -656,6 +657,25 @@ def test_expired_worker_lease_is_reclaimed_without_losing_the_execution(
     assert reclaimed.pk == job.pk
     assert reclaimed.lease_owner == "worker-b"
     assert reclaimed.run.events.filter(event_type="WORKER_LEASE_RECLAIMED").exists()
+
+
+@pytest.mark.django_db
+def test_expired_worker_cannot_write_after_a_fenced_reclaim(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = consumed_contract
+    job = enqueue_run(contract, request, root)
+    first = claim_next_job("worker-a", 60)
+    assert first is not None
+    job.refresh_from_db()
+    job.lease_expires_at = timezone.now() - timedelta(seconds=1)
+    job.save(update_fields=["lease_expires_at"])
+
+    reclaimed = claim_next_job("worker-b", 60)
+    assert reclaimed is not None
+    assert reclaimed.lease_fencing_token == first.lease_fencing_token + 1
+    with pytest.raises(ValueError, match="WORKER_FENCING_TOKEN_STALE"):
+        heartbeat_job(first, "worker-a", 60)
 
 
 @pytest.mark.django_db

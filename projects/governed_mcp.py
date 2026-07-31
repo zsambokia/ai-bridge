@@ -51,12 +51,13 @@ from .execution import (
     complete_run,
     confirm_execution_cancellation,
     enqueue_run,
+    lifecycle_status_projection,
     prepare_execution_cancellation,
     provider,
     request_execution_cancellation,
     start_run,
 )
-from .execution_activity import activity_summary, events_for_view, heartbeat_projection
+from .execution_activity import activity_summary, events_for_view
 from .knowledge import (
     context_package as akb_context_package,
 )
@@ -74,13 +75,11 @@ from .models import (
     EngineeringEntity,
     ExecutableScope,
     ExecutionContract,
-    ExecutionJob,
     ExecutionPreparation,
     ExecutionProgressEvent,
     ExecutionProvider,
     ExecutionRun,
     ExecutionStartRequest,
-    ExecutionWorkspace,
     GovernanceApproval,
     KnowledgeEntry,
     McpAuditEvent,
@@ -2900,51 +2899,7 @@ def invoke_public_tool(
                     "contract_hash": run.contract_hash,
                 }
             else:
-                job = ExecutionJob.objects.filter(run=run).first()
-                workspace = ExecutionWorkspace.objects.filter(run=run).first()
-                result = {
-                    "execution_token": str(run.token),
-                    "status": run.lifecycle,
-                    "phase": run.current_phase,
-                    "provider": run.provider_name,
-                    "provider_execution_id": run.provider_execution_id,
-                    "attempt_count": run.attempt_count,
-                    "current_blocker": run.current_blocker,
-                    "heartbeat": heartbeat_projection(run),
-                    "queue": {
-                        "status": job.status if job else None,
-                        "lease_owner_present": bool(job and job.lease_owner),
-                        "lease_expires_at": job.lease_expires_at.isoformat()
-                        if job and job.lease_expires_at
-                        else None,
-                        "last_heartbeat_at": job.last_heartbeat_at.isoformat()
-                        if job and job.last_heartbeat_at
-                        else None,
-                        "recovery_attempts": job.recovery_attempts if job else None,
-                        "next_recovery_at": job.next_recovery_at.isoformat()
-                        if job and job.next_recovery_at
-                        else None,
-                        "recovery_action": job.provider_attempt_metadata.get(
-                            "recovery_action"
-                        )
-                        if job
-                        else None,
-                    },
-                    "workspace": {
-                        "status": workspace.status if workspace else None,
-                        "provider_pid_present": bool(
-                            workspace and workspace.provider_pid
-                        ),
-                        "retention_until": workspace.retention_until.isoformat()
-                        if workspace and workspace.retention_until
-                        else None,
-                    },
-                    "evidence": {
-                        "evidence_root": run.evidence_root,
-                        "final_commit_sha": run.final_commit_sha,
-                        "terminal_state": run.terminal_state,
-                    },
-                }
+                result = lifecycle_status_projection(run)
         elif name.startswith("scope.") or name in {
             "sprint.propose",
             "work_item.propose",

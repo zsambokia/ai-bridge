@@ -3,7 +3,7 @@
 **Audit type:** separate repository-local verification pass after implementation
 **Scope:** Sprint 016 only
 **Baseline:** `ff3cf82dee9f580da83c215fb25f7636b2b5fa22`
-**Result:** PASS pending final commit/push binding
+**Result:** PASS â€” READY FOR PRODUCT OWNER REVIEW
 
 ## Audit findings
 
@@ -23,13 +23,14 @@
    they omit worker owner strings and actual PID values.
 5. The required repository gates all pass, and a management-command E2E test
    exercises the deployed reconciliation entry point from a consumed contract
-   to replacement-worker eligibility.
+   to replacement-worker eligibility. The release fence also has direct
+   regression coverage for stale-worker fencing and structured durable
+   recovery classification.
 6. `git diff --check` reports no whitespace errors after the final evidence
    update. Pre-existing unrelated untracked files remain excluded.
 
 ## Verdict
 
 The implementation satisfies the Sprint 016 acceptance criteria and has no
-remaining technical blocker identified by this audit. The only remaining
-controlled action is the requested main-branch delivery commit and push, after
-which this evidence is bound to the delivered implementation SHA.
+remaining technical blocker identified by this audit. The final main-branch
+commit and push bind this evidence to the delivered implementation.

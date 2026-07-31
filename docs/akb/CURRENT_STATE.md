@@ -91,11 +91,12 @@ durable `Run ID` as its first changelist data column; the provider token remains
 available as a separate correlation value.
 
 Sprint 016 strengthens that same lifecycle with transactional worker dispatch
-rechecks, run/job divergence convergence, bounded recovery and review
-terminalization, workspace PID-loss recovery, and orphan-workspace retention.
-The reconciliation command, Django Admin, and `execution.get_run_status` MCP
-tool project the same safe lifecycle, lease, recovery, workspace, and evidence
-state. The operating invariants are in
+rechecks, persisted lease-fencing tokens, run/job divergence convergence,
+structured recovery classification, bounded recovery and review terminalization,
+workspace PID-loss recovery, and reasoned orphan-workspace retention. The
+reconciliation command, Django Admin, and `execution.get_run_status` MCP tool
+project the same safe lifecycle, lease, recovery, workspace, and evidence state.
+The operating invariants are in
 [`EXECUTION_LIFECYCLE_RECOVERY.md`](../architecture/EXECUTION_LIFECYCLE_RECOVERY.md);
 Sprint acceptance remains subject to the recorded Release Gates and audit
 evidence.

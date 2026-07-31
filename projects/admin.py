@@ -11,7 +11,6 @@ from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
-    ExecutionJob,
     ExecutionProgressEvent,
     ExecutionProvider,
     ExecutionRun,
@@ -418,32 +417,11 @@ class ExecutionRunAdmin(admin.ModelAdmin):
     def recovery_summary(self, obj: ExecutionRun) -> str:
         import json
 
-        job = ExecutionJob.objects.filter(run=obj).first()
-        workspace = ExecutionWorkspace.objects.filter(run=obj).first()
+        from .execution import lifecycle_status_projection
+
         return format_html(
             "<pre>{}</pre>",
-            json.dumps(
-                {
-                    "job_status": job.status if job else None,
-                    "lease_expires_at": job.lease_expires_at.isoformat()
-                    if job and job.lease_expires_at
-                    else None,
-                    "last_heartbeat_at": job.last_heartbeat_at.isoformat()
-                    if job and job.last_heartbeat_at
-                    else None,
-                    "recovery_attempts": job.recovery_attempts if job else None,
-                    "recovery_action": job.provider_attempt_metadata.get(
-                        "recovery_action"
-                    )
-                    if job
-                    else None,
-                    "workspace_status": workspace.status if workspace else None,
-                    "workspace_provider_pid": workspace.provider_pid
-                    if workspace
-                    else None,
-                },
-                indent=2,
-            ),
+            json.dumps(lifecycle_status_projection(obj), indent=2),
         )
 
     @admin.display(description="Provider Output")

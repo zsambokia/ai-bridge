@@ -900,6 +900,9 @@ class ExecutionWorkspace(models.Model):
     provisioned_at = models.DateTimeField(null=True, blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
     retention_until = models.DateTimeField(null=True, blank=True)
+    # A retained workspace is evidence, not an unbounded cache.  Persist the
+    # policy reason beside its expiry for deterministic reconciliation.
+    retention_reason = models.CharField(max_length=128, blank=True)
     cleanup_started_at = models.DateTimeField(null=True, blank=True)
     cleaned_at = models.DateTimeField(null=True, blank=True)
     failure_code = models.CharField(max_length=128, blank=True)
@@ -942,6 +945,10 @@ class ExecutionJob(models.Model):
     lease_owner = models.CharField(max_length=128, blank=True)
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     last_heartbeat_at = models.DateTimeField(null=True, blank=True)
+    # Incremented for every claim.  A worker must present the value it received
+    # with the claim before it can renew, start, or reject work.  This prevents a
+    # previously expired lease from writing after the job has been reclaimed.
+    lease_fencing_token = models.PositiveIntegerField(default=0)
     provider_attempt_metadata = models.JSONField(default=dict, blank=True)
     checkpoint = models.JSONField(default=dict, blank=True)
     recovery_attempts = models.PositiveIntegerField(default=0)

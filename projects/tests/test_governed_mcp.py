@@ -274,6 +274,7 @@ def test_execution_status_exposes_consistent_queue_workspace_and_evidence() -> N
         "lease_owner_present": False,
         "lease_expires_at": None,
         "last_heartbeat_at": None,
+        "fencing_token": 0,
         "recovery_attempts": 2,
         "next_recovery_at": None,
         "recovery_action": "RESUME_FROM_CHECKPOINT",
@@ -282,6 +283,7 @@ def test_execution_status_exposes_consistent_queue_workspace_and_evidence() -> N
         "status": "IN_USE",
         "provider_pid_present": True,
         "retention_until": None,
+        "retention_reason": "",
     }
     assert status["evidence"]["evidence_root"] == "docs/evidence/lifecycle-status"
 

@@ -25,7 +25,11 @@ store or a parallel queue.
    canonical terminal review lifecycle; it never loops indefinitely.
 5. An `IN_USE` workspace whose locally recorded provider PID is no longer
    alive is reset to `READY` before recovery. A workspace attached to a
-   terminal run is retained exactly once and its PID is cleared.
+   terminal run is retained exactly once and its PID is cleared. Retention has
+   a persisted policy reason as well as an expiry.
+6. Every lease claim increments a persisted fencing token. A worker must
+   present the token it was issued before it may heartbeat, start, reject, or
+   fail work. An expired worker cannot write after a replacement claim.
 
 All reconciliation decisions are idempotent: a subsequent pass sees the
 converged state and makes no duplicate transition or audit record.
@@ -43,6 +47,16 @@ workspace PID liveness, and run/job consistency. It either queues a safe
 reattach, schedules a bounded checkpoint recovery, requests terminal review,
 or records no action. The controller is safe to run repeatedly. Workspace
 ownership cleanup is also included in `WorkspaceManager.reconcile_cleanup()`.
+
+## Classification contract
+
+`classify_execution_recovery()` derives a structured recovery decision solely
+from durable run, job, workspace, contract, checkpoint, and provider-PID facts.
+It returns a classification, factual inputs, evidence references, permitted
+next actions, remaining retry budget, and an explicit statement that routine
+technical recovery never needs Product Owner involvement. Reconciliation
+persists the selected classification and permitted actions with its append-only
+attempt evidence.
 
 ## Operations visibility
 

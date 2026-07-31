@@ -64,6 +64,16 @@ class Command(BaseCommand):
                 heartbeat_job(job, worker_id, lease_seconds)
                 run = execute_claimed_job(job, worker_id, Path(settings.BASE_DIR))
             except ValueError as exc:
+                if str(exc) in {"WORKER_LEASE_NOT_OWNED", "WORKER_FENCING_TOKEN_STALE"}:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"Lease superseded for {job.token}; continuing worker."
+                        )
+                    )
+                    processed_jobs += 1
+                    if once or (max_jobs and processed_jobs >= max_jobs):
+                        return
+                    continue
                 if is_non_retryable_execution_failure(exc):
                     rejected = reject_claimed_job(job, worker_id, exc)
                     self.stdout.write(

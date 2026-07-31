@@ -14,7 +14,11 @@ from projects.execution import (
     reject_claimed_job,
     start_run,
 )
-from projects.execution_recovery import reconcile_execution_jobs, record_checkpoint
+from projects.execution_recovery import (
+    classify_execution_recovery,
+    reconcile_execution_jobs,
+    record_checkpoint,
+)
 from projects.management.commands import reconcile_execution_jobs as reconcile_command
 from projects.models import (
     ExecutionContract,
@@ -178,6 +182,38 @@ def test_finished_provider_is_terminalized_without_inventing_completion(
 
 
 @pytest.mark.django_db
+def test_recovery_classifier_reports_durable_facts_and_safe_actions(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = recovery_consumed_contract
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/test",
+    )
+    job = ExecutionJob.objects.create(run=run, status=ExecutionJob.Status.QUEUED)
+
+    decision = classify_execution_recovery(job)
+
+    assert decision["classification"] == "WORKSPACE_RECOVERABLE"
+    facts = decision["facts"]
+    assert isinstance(facts, dict)
+    assert facts["run_lifecycle"] == ExecutionRun.Lifecycle.RUNNING
+    assert decision["permitted_next_actions"] == [
+        "provision_or_reuse_workspace",
+        "resume_authorized_run",
+    ]
+    assert decision["product_owner_involvement"] == "FORBIDDEN_FOR_TECHNICAL_RECOVERY"
+
+
+@pytest.mark.django_db
 def test_missing_checkpoint_restarts_same_authoritative_run(
     recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,
@@ -205,6 +241,9 @@ def test_missing_checkpoint_restarts_same_authoritative_run(
     job.refresh_from_db()
     run.refresh_from_db()
     assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.RECOVERING
+    latest_evidence = job.reconciliation_evidence[-1]
+    assert isinstance(latest_evidence, dict)
+    assert latest_evidence["recovery_classification"] == "STALE_LEASE"
     assert job.status == ExecutionJob.Status.RECOVERING
     assert job.provider_attempt_metadata["recovery_action"] == "RESTART_FROM_AUTHORITY"
     assert run.lifecycle == ExecutionRun.Lifecycle.STARTING
