@@ -12,9 +12,11 @@ it is not present in this record, terminal output, request body, or source.
 | Authenticated `tools/list` | `200`; 83 governed tools, including `conversation.confirm` | The governed surface is discoverable to a valid client. |
 | Authenticated `factory.get_status` | `200`; `ai-bridge` and `bridge-demo` are `ACTIVE` / `READY` | Project registry is readable through the public MCP surface. |
 | Initial unauthenticated `/health/` | `200`; `status: ok`; `build_sha: ""` | The remote deployment identity was not proven. This failed preflight is retained. |
-| Repaired SHA-bound `/health/` | `200`; `status: ok`; `build_sha: ffd4e1f98cee5c1b99a3481ebe7121ae9c08a22f` | The clean, SHA-bound runtime repair is live. |
+| Repaired SHA-bound `/health/` | `200`; `status: ok`; `build_sha: 89938b662e2bb757110aee0d1cffecfe524c5c23` | The clean, SHA-bound runtime repair is live. |
 | Initial `verify_runtime_deployment` request | `403` from the public edge | The verifier used Python's default user agent, which the edge rejected. This failed attempt is retained. |
 | Verifier repair | Explicit `Accept: application/json` and `User-Agent: ai-bridge-runtime-verifier/1.0`, with unit coverage | The public-runtime verifier now identifies itself deterministically instead of depending on a blocked default client. |
+| Repaired `verify_runtime_deployment` | `PASS`: public health SHA, migrations, dependencies, worker, scheduler | The canonical deployment receipt now passes against the repaired staging runtime. |
+| Post-deploy authenticated MCP `factory.get_status` | JSON-RPC result; two projects; `ai-bridge` `READY` | The governed public MCP registry remains available after deployment. |
 
 ## Provenance limitation
 

@@ -41,17 +41,28 @@
    session. No browser instance was available in this execution environment.
    The workspace-admin UI required by the canonical connection procedure is
    consequently unavailable to this Factory Development Mode process.
+8. Repaired the remote deployment identity by running a clean detached
+   checkout at `89938b662e2bb757110aee0d1cffecfe524c5c23`, applying the three
+   pending `projects` migrations to the local staging database, and starting
+   the runtime with that immutable build SHA. The previous runtime launch
+   initially failed local readiness because the explicit host list omitted
+   `127.0.0.1`; the corrected launch added only that local verification host.
+9. The first canonical public deployment verification received a `403` from
+   the edge because Python's default user agent was rejected. The verifier was
+   repaired with explicit JSON accept and named user-agent headers, covered by
+   a focused test, then all 224 tests and repository gates passed. The repaired
+   verifier subsequently passed health, migration, dependency, worker, and
+   scheduler checks against staging. An authenticated post-deploy MCP
+   `factory.get_status` request also returned the two-project READY registry.
 
 ## Current evidence boundary
 
-The remote endpoint is reachable, fail-closed, authenticated, and exposes the
-governed registry. It does **not** yet prove either mandatory Sprint 6 fact:
+The remote endpoint is reachable, fail-closed, SHA-bound to
+`89938b662e2bb757110aee0d1cffecfe524c5c23`, authenticated, and exposes the
+governed registry. It does **not** yet prove the mandatory Sprint 6 fact:
 
 - that the request originated from the actual configured ChatGPT Business
-  connection; or
-- that the remote runtime is the SHA-bound accepted deployment which may run
-  the requested Factory chain.
+  connection and completed the required governed Factory chain.
 
-Those facts must remain unclaimed until the configured ChatGPT Business app is
-available and its UI request can be observed end-to-end against a runtime whose
-health endpoint reports the immutable deployed SHA.
+That fact must remain unclaimed until the configured ChatGPT Business app is
+available and its UI request can be observed end-to-end against this runtime.
