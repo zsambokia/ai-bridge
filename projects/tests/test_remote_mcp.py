@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from django.test import Client, override_settings
 
-from projects.models import GovernanceApproval, Project, ProjectContext
+from projects.models import ConversationOrchestration, Project, ProjectContext
 
 TOKEN = "test-mcp-token"
 
@@ -179,7 +179,7 @@ def test_streamable_http_initializes_lists_and_calls_real_status() -> None:
 
 
 @pytest.mark.django_db
-def test_storybook_request_flows_from_http_mcp_to_issued_contract(
+def test_storybook_request_flows_from_http_mcp_to_orchestrated_contract(
     tmp_path: Path,
 ) -> None:
     """Acceptance proof: natural-language request never enters execution.prepare."""
@@ -217,100 +217,52 @@ def test_storybook_request_flows_from_http_mcp_to_issued_contract(
         )
         assert proposed["status"] == "SCOPE_PROPOSED"
         scope_identifier = proposed["scope"]["identifier"]
-        _call(client, 12, "scope.validate", {"scope_identifier": scope_identifier})
-
-        approval = GovernanceApproval.objects.create(
-            reference="PO-storybook-acceptance",
-            project=project,
-            approved_action="AUTHORIZE_EXECUTION",
-            approved_by="Product Owner",
-        )
-        approved = _call(
+        review = _call(
             client,
-            13,
-            "scope.approve",
-            {
-                "scope_identifier": scope_identifier,
-                "approval_reference": approval.reference,
-                "idempotency_key": "storybook-approve-001",
-            },
-        )
-        assert approved["status"] == "SCOPE_APPROVED"
-        published = _call(
-            client,
-            14,
-            "scope.publish",
-            {
-                "scope_identifier": scope_identifier,
-                "idempotency_key": "storybook-publish-001",
-            },
-        )
-        assert published["status"] == "SCOPE_PUBLISHED"
+            12,
+            "scope.review",
+            {"project_id": project.project_id, "scope_identifier": scope_identifier},
+        )["proposal_review"]
         ProjectContext.objects.create(
             project=project,
             repository_full_name=project.repository_full_name,
             constitution_path="docs/constitution/BRIDGE_CONSTITUTION.md",
             roadmap_path="docs/roadmap/ROADMAP.md",
-            sprint_path=published["published_path"],
+            sprint_path="docs/sprints/SPRINT_003.md",
             current_state_path="docs/akb/CURRENT_STATE.md",
             validation_status=ProjectContext.ValidationStatus.VALID,
             source_commit_sha=baseline,
         )
-
-        prepared = _call(
+        confirmed = _call(
             client,
-            15,
-            "execution.prepare",
+            13,
+            "conversation.confirm",
             {
                 "project_id": project.project_id,
                 "scope_identifier": scope_identifier,
-                "idempotency_key": "storybook-prepare-001",
+                "confirmation_text": "igen",
             },
         )
-        assert prepared["status"] == "EXECUTION_PREPARED"
-        token = prepared["preparation_token"]
-        assert prepared["next_allowed_action"] == "contract.generate"
-        status = _call(client, 16, "execution.get_status", {"preparation_token": token})
-        handoff = _call(
-            client, 17, "execution.render_handoff", {"preparation_token": token}
-        )
-        assert status["status"] == "PREPARED"
-        assert published["published_path"] in handoff["handoff"]
+        assert confirmed["status"] == "EXECUTION_QUEUED"
+        assert confirmed["proposal_version"] == review["proposal_version"]
+        assert confirmed["proposal_hash"] == review["proposal_hash"]
+        assert confirmed["orki"]["project_id"] == project.project_id
+        assert confirmed["orki"]["context_package_hash"]
+        assert confirmed["handoff_identifier"].startswith("bridge:acceptance-bridge")
 
-        generated = _call(
-            client,
-            18,
-            "contract.generate",
-            {
-                "project_id": project.project_id,
-                "scope_identifier": scope_identifier,
-                "preparation_token": token,
-                "idempotency_key": "storybook-generate-001",
-            },
+        flow = ConversationOrchestration.objects.get(scope__identifier=scope_identifier)
+        assert flow.orchestration_session_id
+        assert flow.contract_id
+        assert flow.run_id
+        assert flow.contract is not None
+        assert flow.run is not None
+        assert flow.orchestration_session is not None
+        assert flow.contract.orchestration_session_id == flow.orchestration_session_id
+        assert flow.run.orchestration_session_id == flow.orchestration_session_id
+        assert (
+            flow.orchestration_session.context_package_hash
+            == confirmed["orki"]["context_package_hash"]
         )
-        assert generated["status"] == "EXECUTION_CONTRACT_GENERATED"
-        contract_id = generated["execution_contract"]["handoff_identifier"]
-        validated = _call(
-            client,
-            19,
-            "contract.validate",
-            {
-                "handoff_identifier": contract_id,
-                "idempotency_key": "storybook-validate-001",
-            },
-        )
-        assert validated["status"] == "EXECUTION_CONTRACT_VALIDATED"
-        issued = _call(
-            client,
-            20,
-            "contract.issue",
-            {
-                "handoff_identifier": contract_id,
-                "approval_reference": approval.reference,
-                "idempotency_key": "storybook-issue-001",
-            },
-        )
-        assert issued["status"] == "EXECUTION_CONTRACT_ISSUED"
 
     assert not (tmp_path / "storybook").exists()
 

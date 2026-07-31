@@ -86,3 +86,17 @@ def test_scope_operations_are_the_authoritative_context_path(tmp_path: Path) -> 
         invoke_operation("generate_execution_context", {}, tmp_path)["status"]
         == "INVALID_OPERATION"
     )
+
+
+@pytest.mark.django_db
+def test_legacy_contract_operation_is_visible_but_fails_closed_without_orki(
+    tmp_path: Path,
+) -> None:
+    project = _ready_project("gated-contract", "example/gated-contract")
+    scope = propose_scope(project, "Normal governed work.", kind="WORK_ITEM")
+
+    assert invoke_operation(
+        "scope.contract.generate",
+        {"scope_identifier": scope.identifier},
+        tmp_path,
+    ) == {"status": "ORCHESTRATION_GATE_REQUIRED"}

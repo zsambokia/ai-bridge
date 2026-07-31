@@ -83,6 +83,11 @@ class OrchestrationSession(models.Model):
     version = models.PositiveIntegerField(default=0)
     context_package_hash = models.CharField(max_length=64, blank=True)
     context_entry_ids = models.JSONField(default=list)
+    actor_identity = models.CharField(max_length=255, blank=True)
+    execution_provider_id = models.CharField(max_length=64, blank=True)
+    runtime_profile_hash = models.CharField(max_length=64, blank=True)
+    decision_hash = models.CharField(max_length=64, blank=True)
+    final_outcome = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -182,7 +187,18 @@ class OwnershipAssessment(models.Model):
     """Deterministic ownership outcome over registered repositories and evidence."""
 
     incident = models.OneToOneField(
-        FailureIncident, on_delete=models.CASCADE, related_name="ownership_assessment"
+        FailureIncident,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="ownership_assessment",
+    )
+    session = models.OneToOneField(
+        OrchestrationSession,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="ownership_assessment",
     )
     selected_project = models.ForeignKey(
         Project,
@@ -379,6 +395,14 @@ class ExecutionContract(models.Model):
         on_delete=models.PROTECT,
         related_name="supersedes",
     )
+    orchestration_session = models.ForeignKey(
+        OrchestrationSession,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="execution_contracts",
+    )
+    orchestration_decision_hash = models.CharField(max_length=64, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -825,6 +849,13 @@ class ExecutionRun(models.Model):
     audit_event = models.ForeignKey(
         McpAuditEvent, null=True, blank=True, on_delete=models.PROTECT
     )
+    orchestration_session = models.ForeignKey(
+        OrchestrationSession,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="execution_runs",
+    )
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1091,6 +1122,13 @@ class ConversationOrchestration(models.Model):
         blank=True,
         on_delete=models.PROTECT,
         related_name="conversation_orchestrations",
+    )
+    orchestration_session = models.OneToOneField(
+        OrchestrationSession,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="conversation_orchestration",
     )
     failure_detail = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

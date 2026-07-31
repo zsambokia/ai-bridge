@@ -86,6 +86,12 @@ from .models import (
     McpIdempotencyRecord,
     Project,
 )
+from .orchestration_gate import (
+    assert_contract_authorized,
+    bind_runtime,
+    open_gate,
+    trace_for_contract,
+)
 from .providers import public_provider
 from .scopes import (
     answer_clarifications,
@@ -97,7 +103,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-31.1"
+TOOL_SURFACE_VERSION = "2026-07-31.2"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -1501,10 +1507,15 @@ def _orchestration_result(flow: ConversationOrchestration) -> dict[str, Any]:
         "scope_identifier": flow.scope.identifier,
         "scope_status": flow.scope.status,
         "proposal_version": flow.proposal_version,
+        "proposal_hash": flow.proposal_hash,
     }
     if flow.contract:
         result["handoff_identifier"] = flow.contract.handoff_identifier
         result["contract_lifecycle"] = flow.contract.lifecycle
+        if flow.contract.orchestration_session_id:
+            result["orki"] = trace_for_contract(flow.contract)
+    elif flow.orchestration_session is not None:
+        result["orchestration_session_token"] = str(flow.orchestration_session.token)
     if flow.run:
         result["execution_token"] = str(flow.run.token)
         result["execution_lifecycle"] = flow.run.lifecycle
@@ -1633,7 +1644,9 @@ def _recover_incomplete_contract_binding(
         ]
     )
     add_event(run, "CONTRACT_SUPERSEDED", reason="missing approved scope content")
-    replacement = generate_scope_execution_contract(flow.scope, root)
+    replacement = generate_scope_execution_contract(
+        flow.scope, root, orchestration_session=flow.orchestration_session
+    )
     supersede_execution_contract(
         contract,
         replacement,
@@ -1689,7 +1702,9 @@ def _recover_pre_execution_baseline_binding(
         ]
     )
     add_event(run, "CONTRACT_SUPERSEDED", reason="target baseline absent")
-    replacement = generate_scope_execution_contract(flow.scope, root)
+    replacement = generate_scope_execution_contract(
+        flow.scope, root, orchestration_session=flow.orchestration_session
+    )
     supersede_execution_contract(
         contract,
         replacement,
@@ -1738,6 +1753,14 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
         if not scope.published_path:
             publish_scope(scope, root)
         _transition(flow, caller, "PREPARATION", "PUBLISHED")
+        if flow.orchestration_session_id is None:
+            flow.orchestration_session = open_gate(flow, caller)
+            flow.save(update_fields=["orchestration_session", "updated_at"])
+        session = flow.orchestration_session
+        if session is None:
+            raise ValueError("ORCHESTRATION_GATE_REQUIRED")
+        if session.decision.policy_decision != "ALLOW":
+            raise ValueError("ORCHESTRATION_AUTHORITY_DENIED")
         _recover_incomplete_contract_binding(flow, root)
         _recover_pre_execution_baseline_binding(flow, root)
         if flow.preparation_id is None:
@@ -1756,7 +1779,10 @@ def _advance_orchestration(flow: ConversationOrchestration, caller: str) -> None
             flow.save(update_fields=["preparation", "updated_at"])
         _transition(flow, caller, "CONTRACT", "EXECUTION_PREPARED")
         if flow.contract_id is None:
-            flow.contract = generate_scope_execution_contract(scope, root)
+            flow.contract = generate_scope_execution_contract(
+                scope, root, orchestration_session=session
+            )
+            bind_runtime(session, flow.contract)
             flow.save(update_fields=["contract", "updated_at"])
             _transition(flow, caller, "CONTRACT_VALIDATION", "CONTRACT_GENERATED")
         contract = flow.contract
@@ -2724,6 +2750,10 @@ def invoke_public_tool(
                 "version": entity_item.version,
                 "next_allowed_action": "engineering.review_candidate",
             }
+        elif name in {"scope.contract.generate", "contract.generate"}:
+            # A bare contract has no actor/request/ownership chain.  The normal
+            # public route is conversation.confirm -> Orki -> contract.
+            raise ValueError("ORCHESTRATION_GATE_REQUIRED")
         elif name == "execution.prepare":
             assert project is not None
             scope = ExecutableScope.objects.get(
@@ -2783,6 +2813,7 @@ def invoke_public_tool(
                 handoff_identifier=arguments["handoff_identifier"],
                 lifecycle=ExecutionContract.Lifecycle.CONSUMED,
             )
+            assert_contract_authorized(contract)
             approval = _approval_for_contract(
                 arguments, contract, "execution.request_start"
             )
@@ -2900,6 +2931,8 @@ def invoke_public_tool(
                 }
             else:
                 result = lifecycle_status_projection(run)
+                if run.contract.orchestration_session_id:
+                    result["orchestration"] = trace_for_contract(run.contract)
         elif name.startswith("scope.") or name in {
             "sprint.propose",
             "work_item.propose",

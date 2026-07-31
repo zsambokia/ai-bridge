@@ -21,6 +21,7 @@ from .models import (
     ExecutableScope,
     ExecutionContract,
     ExecutionRun,
+    OrchestrationSession,
     Project,
 )
 from .scopes import approved_scope, render_scope
@@ -116,7 +117,11 @@ def _assert_scope_publication(scope: ExecutableScope, repository_root: Path) -> 
 
 
 def generate_scope_execution_contract(
-    scope: ExecutableScope, platform_root: Path, *, issuer: str = "AI_BRIDGE"
+    scope: ExecutableScope,
+    platform_root: Path,
+    *,
+    issuer: str = "AI_BRIDGE",
+    orchestration_session: OrchestrationSession | None = None,
 ) -> ExecutionContract:
     """Generate a provider-neutral contract from Bridge-managed scope authority."""
     if issuer != "AI_BRIDGE":
@@ -175,12 +180,24 @@ def generate_scope_execution_contract(
     }
     if "audit" in record:
         payload["execution"]["audit"] = record["audit"]
+    if orchestration_session is not None:
+        if orchestration_session.project_id != scope.project_id:
+            raise ValueError("ORCHESTRATION_CONTEXT_PROJECT_MISMATCH")
+        payload["orchestration"] = {
+            "session_token": str(orchestration_session.token),
+            "context_package_hash": orchestration_session.context_package_hash,
+            "decision_hash": orchestration_session.decision_hash,
+        }
     return ExecutionContract.objects.create(
         project=scope.project,
         handoff_identifier=handoff_identifier,
         approved_sprint_path=authorized["path"],
         payload=payload,
         contract_hash=_normalized_hash(payload),
+        orchestration_session=orchestration_session,
+        orchestration_decision_hash=(
+            orchestration_session.decision_hash if orchestration_session else ""
+        ),
     )
 
 

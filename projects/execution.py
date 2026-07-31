@@ -137,6 +137,10 @@ def enqueue_run(
     from .contracts import validate_issued_execution_contract
 
     validate_issued_execution_contract(contract, platform_root)
+    if "orchestration" in contract.payload:
+        from .orchestration_gate import assert_contract_authorized
+
+        assert_contract_authorized(contract)
     workspace_root = project_repository_root(contract.project, platform_root)
     execution = contract.payload["execution"]
     with transaction.atomic():
@@ -154,6 +158,7 @@ def enqueue_run(
                 "lifecycle": ExecutionRun.Lifecycle.REQUESTED,
                 "current_phase": "QUEUED",
                 "evidence_root": contract.payload["evidence"]["root"],
+                "orchestration_session": contract.orchestration_session,
             },
         )
         if run.contract_id != contract.pk:
@@ -642,6 +647,10 @@ def start_run(
     # Scope authority is published by AI Bridge, while the provider must run in
     # the Project registry's resolved workspace.  Keep those roots distinct.
     validate_issued_execution_contract(contract, platform_root)
+    if "orchestration" in contract.payload:
+        from .orchestration_gate import assert_contract_authorized
+
+        assert_contract_authorized(contract)
     workspace_root = project_repository_root(contract.project, platform_root)
     execution = contract.payload["execution"]
     recoverable_run = (
@@ -716,6 +725,7 @@ def start_run(
             lifecycle=ExecutionRun.Lifecycle.STARTING,
             current_phase="STARTING",
             evidence_root=contract.payload["evidence"]["root"],
+            orchestration_session=contract.orchestration_session,
             started_at=timezone.now(),
         )
         add_event(

@@ -30,7 +30,16 @@ from projects.providers import check_health
 
 @admin.register(OrchestrationSession)
 class OrchestrationSessionAdmin(admin.ModelAdmin):
-    list_display = ("token", "project", "provider_id", "status", "created_at")
+    list_display = (
+        "token",
+        "project",
+        "actor_identity",
+        "provider_id",
+        "execution_provider_id",
+        "status",
+        "final_outcome",
+        "created_at",
+    )
     readonly_fields = tuple(field.name for field in OrchestrationSession._meta.fields)
 
     def has_add_permission(self, request: object) -> bool:
@@ -106,7 +115,13 @@ class FailureIncidentAdmin(admin.ModelAdmin):
 
 @admin.register(OwnershipAssessment)
 class OwnershipAssessmentAdmin(admin.ModelAdmin):
-    list_display = ("incident", "selected_project", "confidence", "policy_decision")
+    list_display = (
+        "session",
+        "incident",
+        "selected_project",
+        "confidence",
+        "policy_decision",
+    )
     readonly_fields = tuple(field.name for field in OwnershipAssessment._meta.fields)
 
     def has_add_permission(self, request: object) -> bool:
@@ -319,6 +334,8 @@ class ExecutionContractAdmin(admin.ModelAdmin):
         "approved_sprint_path",
         "lifecycle",
         "payload",
+        "orchestration_session",
+        "orchestration_decision_hash",
         "contract_hash",
         "validation_errors",
         "created_at",
@@ -367,6 +384,7 @@ class ExecutionRunAdmin(admin.ModelAdmin):
         "contract",
         "lifecycle",
         "current_phase",
+        "orchestration_session",
         "provider_name",
         "recovery_summary",
         "updated_at",
@@ -544,6 +562,7 @@ class ConversationOrchestrationAdmin(admin.ModelAdmin):
     list_display = (
         "token",
         "scope",
+        "orchestration_session",
         "proposal_version",
         "status",
         "current_step",
@@ -567,6 +586,7 @@ class ConversationOrchestrationAdmin(admin.ModelAdmin):
         "preparation",
         "contract",
         "run",
+        "orchestration_session",
         "failure_detail",
         "created_at",
         "updated_at",

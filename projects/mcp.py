@@ -13,7 +13,6 @@ from django.utils import timezone
 from .contracts import (
     complete_execution_contract,
     consume_execution_contract,
-    generate_scope_execution_contract,
     issue_execution_contract,
     render_execution_handoff,
     revoke_execution_contract,
@@ -743,19 +742,11 @@ def scope_answer_clarifications(
 def scope_contract_generate(
     payload: dict[str, Any], repository_root: Path
 ) -> dict[str, Any]:
-    try:
-        contract = generate_scope_execution_contract(
-            _scope(payload),
-            repository_root,
-        )
-        return {
-            "status": "EXECUTION_CONTRACT_GENERATED",
-            "execution_contract": _contract_view(contract),
-        }
-    except ExecutableScope.DoesNotExist:
-        return {"status": "SCOPE_NOT_FOUND"}
-    except ValueError as exc:
-        return {"status": str(exc)}
+    # This legacy low-level operation remains registered for compatibility and
+    # audit visibility, but a normal request may only cross the contract
+    # boundary through conversation.confirm -> Orki -> contract.
+    del payload, repository_root
+    return {"status": "ORCHESTRATION_GATE_REQUIRED"}
 
 
 def _close_scope(

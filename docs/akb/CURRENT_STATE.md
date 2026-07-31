@@ -18,6 +18,19 @@ Sprint 016 is not execution authority.
 
 ## Implemented foundation
 
+## Sprint 2 Orki orchestration knowledge
+
+Normal governed ChatGPT/MCP work is not allowed to create a contract or
+execution directly.  The `conversation.confirm` path creates an idempotent
+`OrchestrationSession`, records ownership and policy, hashes the governed
+context and decision, and binds those values to the contract and run.  Worker
+dispatch re-verifies that binding before it provisions a workspace.  A
+multi-project request is a durable `AMBIGUOUS_OWNERSHIP` escalation; a
+technical request remains an engineering decision; and direct public contract
+generation reports `ORCHESTRATION_GATE_REQUIRED`.  See
+[`ORKI_MANDATORY_ORCHESTRATION_GATE.md`](../architecture/ORKI_MANDATORY_ORCHESTRATION_GATE.md)
+for the canonical trace and intentionally separate recovery/bootstrap paths.
+
 The Django 5.2 foundation contains split settings, SQLite configuration, the
 `core` health endpoint, and the canonical `projects` domain. The latter
 provides one Project Registry model, onboarding readiness (`PENDING`, `READY`,
