@@ -18,10 +18,28 @@ Sprint 016 is not execution authority.
 
 ## Implemented foundation
 
+## Sprint 7 autonomous technical remediation and self-healing proof
+
+Sprint 7 is ready for Product Owner review under Factory Development Mode. An
+unclassified worker exception outside the specialised workspace-provisioning
+recovery path is now a durable technical-remediation incident: Orki records
+ownership, evidence, a bounded child remediation scope, and the original run
+checkpoint. The job is deliberately released from its lease and cannot remain
+quiet in an intermediate lifecycle state. Independent invalidated-gate
+validation is required before the original checkpoint and job can resume.
+Admin and the public read-only MCP execution projection share the same loop,
+validation, incident, and business-escalation records. The evidence package is
+`docs/evidence/sprint-021-autonomous-technical-remediation-self-healing/`.
+
+Sprint 6 remains **BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE** solely for
+the final ChatGPT Business in-app Remote MCP proof. Its existing evidence and
+status are intentionally preserved unchanged; the separate ChatGPT Business
+Platform Certification Epic owns that external certification.
+
 ## Sprint 5 SHA-bound runtime deployment
 
-Sprint 5 is ready for Product Owner review under bounded Factory Development
-Mode. It separates a
+Sprint 5 implementation and operational evidence are **accepted by the Product
+Owner**. It separates a
 repository delivery receipt from runtime activation: a `RuntimeDeployment`
 binds a verified delivery to its immutable artifact SHA, target identity,
 authority, migration/dependency checks, runtime health, worker and scheduler

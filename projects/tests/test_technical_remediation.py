@@ -12,10 +12,13 @@ from projects.models import (
     ExecutionRun,
     ExecutionStartRequest,
     McpAuditEvent,
+    TechnicalRemediationEscalation,
+    TechnicalRemediationValidation,
 )
 from projects.scopes import parse_scope_document
 from projects.technical_remediation import (
     complete_technical_remediation,
+    escalate_business_decision,
     open_technical_remediation,
     repair_published_scope_hash,
 )
@@ -90,8 +93,14 @@ def test_invalid_published_scope_is_repaired_then_parent_resumes(
     run.refresh_from_db()
     assert completed.status == "RESUMED"
     assert run.lifecycle == ExecutionRun.Lifecycle.RUNNING
-    assert run.current_phase == "RESUMED_AFTER_TECHNICAL_REMEDIATION"
+    assert run.current_phase == "PREFLIGHT"
     assert run.gate_rerun_count == 1
+    assert completed.independent_validations.get().outcome == (
+        TechnicalRemediationValidation.Outcome.PASSED
+    )
+    assert completed.incident is not None
+    completed.incident.refresh_from_db()
+    assert completed.incident.status == "CLOSED"
     assert McpAuditEvent.objects.filter(
         tool_name="execution.complete_technical_remediation", outcome="RESUMED"
     ).exists()
@@ -176,3 +185,72 @@ def test_remediation_request_is_idempotent_and_rejects_changed_binding(
             evidence_references=["gate:failed"],
             idempotency_key="idempotent-remediation",
         )
+
+
+@pytest.mark.django_db
+def test_remediation_persists_incident_ownership_and_bounds_repeat_attempts(
+    parent_execution: tuple[
+        Path, ExecutionContract, ExecutionStartRequest, ExecutionRun
+    ],
+) -> None:
+    _root, _contract, _request, run = parent_execution
+    first = open_technical_remediation(
+        parent_run=run,
+        classification="TECHNICAL_REMEDIATION",
+        gate_name="pytest",
+        summary="Repair a deterministic failing test.",
+        policy_basis="In-scope repair.",
+        evidence_references=["gate:pytest:failed"],
+        idempotency_key="bounded-0",
+    )
+    assert first.incident is not None
+    assert first.incident.status == "ASSESSED"
+    assert first.incident.ownership_assessment.policy_decision == "ALLOW"
+    for attempt in range(1, 3):
+        open_technical_remediation(
+            parent_run=run,
+            classification="TECHNICAL_REMEDIATION",
+            gate_name="pytest",
+            summary=f"Repair attempt {attempt}.",
+            policy_basis="In-scope repair.",
+            evidence_references=[f"gate:pytest:failed:{attempt}"],
+            idempotency_key=f"bounded-{attempt}",
+        )
+    with pytest.raises(ValueError, match="TECHNICAL_REMEDIATION_LIMIT_EXCEEDED"):
+        open_technical_remediation(
+            parent_run=run,
+            classification="TECHNICAL_REMEDIATION",
+            gate_name="pytest",
+            summary="Fourth attempt.",
+            policy_basis="In-scope repair.",
+            evidence_references=["gate:pytest:failed:3"],
+            idempotency_key="bounded-3",
+        )
+    assert run.technical_remediations.filter(gate_name="pytest").count() == 3
+    assert McpAuditEvent.objects.filter(
+        tool_name="execution.open_technical_remediation",
+        outcome="AUTONOMOUS_REMEDIATION_LIMIT_EXCEEDED",
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_genuine_business_decision_is_escalated_without_automatic_remediation(
+    parent_execution: tuple[
+        Path, ExecutionContract, ExecutionStartRequest, ExecutionRun
+    ],
+) -> None:
+    _root, _contract, _request, run = parent_execution
+    escalation = escalate_business_decision(
+        parent_run=run,
+        gate_name="deployment_target",
+        summary="Choose whether production deployment is in scope.",
+        evidence_references=["decision:deployment-target-required"],
+        idempotency_key="business-choice",
+    )
+    assert (
+        escalation.status == TechnicalRemediationEscalation.Status.PENDING_PRODUCT_OWNER
+    )
+    assert escalation.incident.ownership_assessment.policy_decision == "ALLOW"
+    run.refresh_from_db()
+    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_BUSINESS_DECISION
+    assert run.current_phase == "BUSINESS_DECISION_ESCALATION"

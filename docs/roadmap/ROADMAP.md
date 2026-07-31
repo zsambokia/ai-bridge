@@ -1,9 +1,27 @@
 # AI Bridge Roadmap
 
-## Factory Readiness Remediation — Sprint 5
+## Factory Readiness Remediation — Sprint 7
 
 **Status:** `READY FOR PRODUCT OWNER REVIEW` (Engineering and Operational
-Acceptance evidence complete under bounded Factory Development Mode).
+Acceptance evidence complete under Factory Development Mode).
+
+Sprint 7 makes routine technical recovery a persisted, bounded and resumable
+factory capability. An unexpected non-provisioning worker fault now becomes an
+incident with evidence, Orki ownership, a bounded child remediation scope and
+an exact run checkpoint; it cannot leave a leased job quiet in an intermediate
+state. Independent invalidated-gate validation is required before the original
+job and checkpoint resume. A real business choice has a separate concise,
+durable escalation. Admin and MCP project the canonical same state. Evidence:
+`docs/evidence/sprint-021-autonomous-technical-remediation-self-healing/`.
+
+Sprint 6 remains externally blocked for the final ChatGPT Business in-app
+Remote MCP proof and is deliberately unchanged. The separate ChatGPT Business
+Platform Certification Epic owns that external dependency.
+
+## Factory Readiness Remediation — Sprint 5
+
+**Status:** `PASS — ACCEPTED` (Product Owner Engineering and Operational
+Acceptance accepted).
 
 Sprint 5 closes the runtime-activation gap left intentionally separate from
 repository delivery. A verified delivery now has a SHA-bound deployment plan

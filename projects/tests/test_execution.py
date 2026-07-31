@@ -53,9 +53,11 @@ from projects.models import (
     ExecutionWorkspace,
     GovernanceApproval,
     Project,
+    TechnicalRemediationLoop,
 )
 from projects.scopes import bind_approval, propose_scope, publish_scope
 from projects.services import bootstrap_project
+from projects.technical_remediation import complete_technical_remediation
 from projects.tests.test_services import write_definition
 from projects.workspace import WorkspaceManager
 
@@ -1108,3 +1110,49 @@ def test_worker_continues_from_rejected_contract_to_next_valid_job(
     assert valid_job.status == ExecutionJob.Status.STARTED
     assert valid_job.run.lifecycle == ExecutionRun.Lifecycle.RUNNING
     assert "Continuing worker" in stdout.getvalue()
+
+
+@pytest.mark.django_db
+def test_worker_unhandled_non_provisioning_failure_requires_repair_then_resumes(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    job = enqueue_run(contract, request, root)
+    monkeypatch.setattr(
+        "projects.management.commands.run_execution_worker.execute_claimed_job",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("interrupted")),
+    )
+
+    call_command(
+        "run_execution_worker",
+        "--once",
+        "--worker-id",
+        "technical-remediation-worker",
+    )
+
+    job.refresh_from_db()
+    job.run.refresh_from_db()
+    loop = TechnicalRemediationLoop.objects.get(parent_run=job.run)
+    assert job.status == ExecutionJob.Status.FAILED
+    assert job.lease_owner == ""
+    assert job.run.lifecycle == ExecutionRun.Lifecycle.REPAIRING
+    assert job.run.current_phase == "TECHNICAL_REMEDIATION"
+    assert job.provider_attempt_metadata["technical_remediation_loop"] == str(loop.pk)
+    assert job.run.events.filter(event_type="TECHNICAL_REMEDIATION_OPENED").exists()
+
+    completed = complete_technical_remediation(
+        loop,
+        repair=lambda: None,
+        rerun_gate=lambda: True,
+        evidence_references=["test:worker-remediation:gate-pass"],
+    )
+    job.refresh_from_db()
+    job.run.refresh_from_db()
+    assert completed.status == TechnicalRemediationLoop.Status.RESUMED
+    assert job.status == ExecutionJob.Status.QUEUED
+    assert job.provider_attempt_metadata["recovery_action"] == (
+        "RESUME_AFTER_TECHNICAL_REMEDIATION"
+    )
+    assert job.run.lifecycle == ExecutionRun.Lifecycle.REQUESTED
+    assert job.run.current_phase == "QUEUED"

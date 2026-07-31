@@ -1263,15 +1263,76 @@ class TechnicalRemediationLoop(models.Model):
     remediation_scope = models.OneToOneField(
         ExecutableScope, on_delete=models.PROTECT, related_name="remediation_parent"
     )
+    incident = models.OneToOneField(
+        FailureIncident,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="technical_remediation_loop",
+    )
     idempotency_key = models.CharField(max_length=128, unique=True)
     classification = models.CharField(max_length=40, choices=Classification.choices)
     gate_name = models.CharField(max_length=128)
     policy_basis = models.CharField(max_length=1000)
     evidence_references = models.JSONField(default=list)
+    resume_checkpoint = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=16, choices=Status.choices)
     timeline = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class TechnicalRemediationEscalation(models.Model):
+    """A concise durable Product Owner decision request, never an auto-repair."""
+
+    class Status(models.TextChoices):
+        PENDING_PRODUCT_OWNER = "PENDING_PRODUCT_OWNER", "Pending Product Owner"
+
+    parent_run = models.ForeignKey(
+        "ExecutionRun", on_delete=models.PROTECT, related_name="technical_escalations"
+    )
+    parent_scope = models.ForeignKey(
+        ExecutableScope, on_delete=models.PROTECT, related_name="technical_escalations"
+    )
+    incident = models.OneToOneField(
+        FailureIncident, on_delete=models.PROTECT, related_name="technical_escalation"
+    )
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    classification = models.CharField(
+        max_length=40, choices=TechnicalRemediationLoop.Classification.choices
+    )
+    gate_name = models.CharField(max_length=128)
+    summary = models.CharField(max_length=1000)
+    evidence_references = models.JSONField(default=list)
+    status = models.CharField(max_length=32, choices=Status.choices)
+    timeline = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class TechnicalRemediationValidation(models.Model):
+    """An independently recorded gate verdict for a technical remediation."""
+
+    class Outcome(models.TextChoices):
+        PASSED = "PASSED", "Passed"
+        FAILED = "FAILED", "Failed"
+
+    remediation = models.ForeignKey(
+        TechnicalRemediationLoop,
+        on_delete=models.PROTECT,
+        related_name="independent_validations",
+    )
+    validator_identity = models.CharField(max_length=255)
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    evidence_references = models.JSONField(default=list)
+    rationale = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -1367,7 +1428,9 @@ class McpConversationBinding(models.Model):
     """The pending proposal's authenticated Remote MCP conversation binding."""
 
     scope = models.ForeignKey(
-        ExecutableScope, on_delete=models.PROTECT, related_name="mcp_conversation_bindings"
+        ExecutableScope,
+        on_delete=models.PROTECT,
+        related_name="mcp_conversation_bindings",
     )
     caller_fingerprint = models.CharField(max_length=64)
     conversation_context = models.CharField(max_length=255)

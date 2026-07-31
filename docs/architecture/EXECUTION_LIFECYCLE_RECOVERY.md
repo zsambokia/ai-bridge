@@ -65,6 +65,32 @@ same path. After three attempts it records
 `WORKSPACE_PROVISIONING_RECOVERY_EXHAUSTED` and the canonical external-review
 state; it never leaves a quiet worker with an unclassified intermediate run.
 
+## Sprint 7 autonomous technical remediation
+
+Provisioning has a specialised recovery path because the provider does not yet
+exist. Every other unexpected worker exception takes a different, durable
+path: it is held as a technical-remediation incident rather than being silently
+reclaimed, abandoned, or reported as a Product Owner decision. The worker
+clears its lease, marks the durable job `FAILED`, and puts its parent run into
+`REPAIRING` with the original lifecycle, phase, and blocker retained as a
+resume checkpoint.
+
+The remediation opening transaction records an incident, evidence references,
+an ownership assessment, a bounded child work scope, and an Orki audit record.
+Only a successful independent validation of the invalidated gate may close the
+incident, publish its reviewable AKB lesson, restore that exact checkpoint, and
+queue the same failed job with `RESUME_AFTER_TECHNICAL_REMEDIATION`. A failed
+validation leaves the repair visible and does not resume work.
+
+The same run and gate may open at most three distinct technical-remediation
+loops. The next attempt is explicitly audited as
+`AUTONOMOUS_REMEDIATION_LIMIT_EXCEEDED`; this is a bounded-loop safeguard, not
+a hidden retry. A genuine business choice follows the separate, concise
+`TechnicalRemediationEscalation` path and moves the run to
+`BLOCKED_BUSINESS_DECISION`; routine implementation questions never use that
+path. Django Admin and `execution.get_run_status` project these same durable
+loop, validation, incident, and escalation records read-only.
+
 ## Controller and recovery procedure
 
 The deployment entry point is:

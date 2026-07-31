@@ -92,6 +92,8 @@ from .models import (
     RoadmapItem,
     RoadmapUpdateCandidate,
     RuntimeDeployment,
+    TechnicalRemediationEscalation,
+    TechnicalRemediationLoop,
 )
 from .orchestration_gate import (
     assert_contract_authorized,
@@ -1725,6 +1727,53 @@ def _execution_run(execution_token: str) -> ExecutionRun:
         raise ValueError("EXECUTION_NOT_FOUND") from exc
 
 
+def _technical_remediation_projection(
+    run: ExecutionRun,
+) -> dict[str, list[dict[str, Any]]]:
+    """Return the same durable remediation state that Admin projects.
+
+    This is deliberately a read-only projection. An MCP caller cannot invent
+    a repair, skip validation, or clear a business escalation by editing a
+    status response.
+    """
+    loops = TechnicalRemediationLoop.objects.filter(parent_run=run).prefetch_related(
+        "independent_validations"
+    )
+    escalations = TechnicalRemediationEscalation.objects.filter(parent_run=run)
+    return {
+        "remediations": [
+            {
+                "remediation_scope": loop.remediation_scope.identifier,
+                "incident": (
+                    str(loop.incident.token)
+                    if loop.incident_id and loop.incident is not None
+                    else None
+                ),
+                "classification": loop.classification,
+                "gate_name": loop.gate_name,
+                "status": loop.status,
+                "validation": [
+                    {
+                        "outcome": validation.outcome,
+                        "validator_identity": validation.validator_identity,
+                    }
+                    for validation in loop.independent_validations.all()
+                ],
+            }
+            for loop in loops
+        ],
+        "business_escalations": [
+            {
+                "incident": str(escalation.incident.token),
+                "gate_name": escalation.gate_name,
+                "status": escalation.status,
+                "summary": escalation.summary,
+            }
+            for escalation in escalations
+        ],
+    }
+
+
 def _conflicting_execution_details(contract: ExecutionContract) -> dict[str, str]:
     """Expose the actionable token for a run that blocks this contract.
 
@@ -3329,6 +3378,7 @@ def invoke_public_tool(
                 }
             else:
                 result = lifecycle_status_projection(run)
+                result["technical_remediation"] = _technical_remediation_projection(run)
                 if run.contract.orchestration_session_id:
                     result["orchestration"] = trace_for_contract(run.contract)
         elif name.startswith("scope.") or name in {

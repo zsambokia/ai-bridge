@@ -21,6 +21,7 @@ from projects.execution import (
     reject_claimed_job,
     requeue_provider_start_failure,
 )
+from projects.technical_remediation import hold_unhandled_job_for_remediation
 from projects.workspace_provisioning_recovery import (
     queue_workspace_provisioning_recovery,
 )
@@ -137,10 +138,23 @@ class Command(BaseCommand):
                     exception_type=type(exc).__name__,
                 )
                 if recovery is None:
-                    raise CommandError(
-                        "Unhandled execution worker exception outside "
-                        "workspace provisioning recovery."
-                    ) from exc
+                    remediation = hold_unhandled_job_for_remediation(
+                        job,
+                        worker_id=worker_id,
+                        exception_type=type(exc).__name__,
+                    )
+                    self.stdout.write(
+                        self.style.WARNING(
+                            "Execution "
+                            f"{job.run.token} held for technical remediation "
+                            f"{remediation.remediation_scope.identifier}; "
+                            "continuing worker."
+                        )
+                    )
+                    processed_jobs += 1
+                    if once or (max_jobs and processed_jobs >= max_jobs):
+                        return
+                    continue
                 self.stdout.write(
                     self.style.WARNING(
                         "Execution "

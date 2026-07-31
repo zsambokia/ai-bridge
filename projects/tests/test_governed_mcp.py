@@ -35,8 +35,13 @@ from projects.models import (
     Project,
     ProjectContext,
     ProjectResolutionContinuation,
+    TechnicalRemediationLoop,
 )
 from projects.scopes import bind_approval, propose_scope
+from projects.technical_remediation import (
+    complete_technical_remediation,
+    open_technical_remediation,
+)
 
 
 @pytest.mark.django_db
@@ -267,6 +272,36 @@ def test_execution_status_exposes_consistent_queue_workspace_and_evidence() -> N
         status=ExecutionWorkspace.Status.IN_USE,
         provider_pid=123,
     )
+    scope = propose_scope(
+        project,
+        "Lifecycle status scope.",
+        kind="SPRINT",
+        title="Lifecycle status",
+        task_type="BUGFIX",
+        work_type="BUGFIX",
+        execution_level="SPRINT",
+    )
+    contract.payload = {
+        "schema_version": "2.0",
+        "approved_scope": {"identifier": scope.identifier},
+        "execution": {"target_branch": "main"},
+    }
+    contract.save(update_fields=["payload"])
+    loop = open_technical_remediation(
+        parent_run=run,
+        classification=TechnicalRemediationLoop.Classification.TECHNICAL_REMEDIATION,
+        gate_name="scope-projection",
+        summary="Repair the canonical scope projection.",
+        policy_basis="Sprint 7 autonomous technical remediation authority.",
+        evidence_references=["docs/evidence/sprint-7/projection.json"],
+        idempotency_key="governed-mcp-remediation-projection",
+    )
+    complete_technical_remediation(
+        loop,
+        repair=lambda: None,
+        rerun_gate=lambda: True,
+        evidence_references=["docs/evidence/sprint-7/projection-rerun.json"],
+    )
 
     status = invoke_public_tool(
         "execution.get_run_status", {"execution_token": str(run.token)}
@@ -289,6 +324,19 @@ def test_execution_status_exposes_consistent_queue_workspace_and_evidence() -> N
         "retention_reason": "",
     }
     assert status["evidence"]["evidence_root"] == "docs/evidence/lifecycle-status"
+    assert status["technical_remediation"]["remediations"] == [
+        {
+            "remediation_scope": loop.remediation_scope.identifier,
+            "incident": str(loop.incident.token) if loop.incident is not None else None,
+            "classification": "TECHNICAL_REMEDIATION",
+            "gate_name": "scope-projection",
+            "status": "RESUMED",
+            "validation": [
+                {"outcome": "PASSED", "validator_identity": "independent-gate-runner"}
+            ],
+        }
+    ]
+    assert status["technical_remediation"]["business_escalations"] == []
 
 
 @pytest.mark.django_db

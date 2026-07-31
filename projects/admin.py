@@ -33,6 +33,9 @@ from projects.models import (
     RoadmapUpdateCandidate,
     RuntimeBootstrapProfile,
     RuntimeDeployment,
+    TechnicalRemediationEscalation,
+    TechnicalRemediationLoop,
+    TechnicalRemediationValidation,
 )
 from projects.providers import check_health
 
@@ -239,6 +242,35 @@ class OwnershipAssessmentAdmin(admin.ModelAdmin):
         self, request: object, obj: OwnershipAssessment | None = None
     ) -> bool:
         return False
+
+
+@admin.register(TechnicalRemediationLoop)
+class TechnicalRemediationLoopAdmin(ReadOnlyAdmin):
+    list_display = ("parent_run", "remediation_scope", "gate_name", "status")
+    list_filter = ("classification", "status")
+    search_fields = ("parent_run__token", "remediation_scope__identifier", "gate_name")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in TechnicalRemediationLoop._meta.fields
+    )
+
+
+@admin.register(TechnicalRemediationEscalation)
+class TechnicalRemediationEscalationAdmin(ReadOnlyAdmin):
+    list_display = ("parent_run", "gate_name", "status", "created_at")
+    list_filter = ("status", "classification")
+    search_fields = ("parent_run__token", "gate_name", "summary")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in TechnicalRemediationEscalation._meta.fields
+    )
+
+
+@admin.register(TechnicalRemediationValidation)
+class TechnicalRemediationValidationAdmin(ReadOnlyAdmin):
+    list_display = ("remediation", "outcome", "validator_identity", "created_at")
+    list_filter = ("outcome",)
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in TechnicalRemediationValidation._meta.fields
+    )
 
 
 class ProviderAdminForm(forms.ModelForm):
