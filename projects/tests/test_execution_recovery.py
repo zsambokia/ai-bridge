@@ -5,18 +5,27 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from django.core.management import call_command
 from django.utils import timezone
 
-from projects.execution import claim_next_job, execute_claimed_job, start_run
+from projects.execution import (
+    claim_next_job,
+    execute_claimed_job,
+    reject_claimed_job,
+    start_run,
+)
 from projects.execution_recovery import reconcile_execution_jobs, record_checkpoint
+from projects.management.commands import reconcile_execution_jobs as reconcile_command
 from projects.models import (
     ExecutionContract,
     ExecutionJob,
     ExecutionRecoveryAttempt,
     ExecutionRun,
     ExecutionStartRequest,
+    ExecutionWorkspace,
 )
 from projects.tests import test_execution
+from projects.workspace import WorkspaceManager
 
 
 @pytest.fixture
@@ -333,3 +342,243 @@ def test_provider_status_interruption_uses_checkpoint_recovery(
     job.refresh_from_db()
     assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.RECOVERING
     assert job.status == ExecutionJob.Status.RECOVERING
+
+
+@pytest.mark.django_db
+def test_terminal_run_job_divergence_is_converged_before_dispatch(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = recovery_consumed_contract
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+        evidence_root="docs/evidence/test",
+    )
+    job = ExecutionJob.objects.create(run=run, status=ExecutionJob.Status.QUEUED)
+
+    decisions = reconcile_execution_jobs(
+        provider_status=lambda _name, _id: "MISSING", now=timezone.now()
+    )
+
+    job.refresh_from_db()
+    assert len(decisions) == 1
+    assert job.status == ExecutionJob.Status.FAILED
+    assert claim_next_job("worker", 60) is None
+    assert run.events.filter(event_type="RUN_JOB_DIVERGENCE_CONVERGED").exists()
+    assert (
+        reconcile_execution_jobs(
+            provider_status=lambda _name, _id: "MISSING", now=timezone.now()
+        )
+        == []
+    )
+
+
+@pytest.mark.django_db
+def test_governed_recovery_e2e_runs_through_management_command(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the deployed reconciliation entry point against durable state."""
+    root, contract, request = recovery_consumed_contract
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        provider_execution_id="lost-provider",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/test",
+    )
+    job = ExecutionJob.objects.create(
+        run=run,
+        status=ExecutionJob.Status.STARTED,
+        lease_expires_at=timezone.now() - timedelta(seconds=1),
+        checkpoint={
+            "completed_steps": ["implementation"],
+            "remaining_steps": ["gates"],
+        },
+    )
+
+    class MissingProvider:
+        @staticmethod
+        def status(_execution_id: str) -> str:
+            return "MISSING"
+
+    monkeypatch.setattr(reconcile_command, "provider", lambda _name: MissingProvider())
+    call_command("reconcile_execution_jobs", "--once")
+
+    job.refresh_from_db()
+    run.refresh_from_db()
+    assert job.status == ExecutionJob.Status.RECOVERING
+    assert run.lifecycle == ExecutionRun.Lifecycle.STARTING
+    assert job.recovery_history.filter(
+        outcome=ExecutionRecoveryAttempt.Outcome.RECOVERING
+    ).exists()
+    job.next_recovery_at = timezone.now() - timedelta(seconds=1)
+    job.save(update_fields=["next_recovery_at"])
+    claimed = claim_next_job("replacement-worker", 60)
+    assert claimed is not None
+    assert claimed.pk == job.pk
+
+
+@pytest.mark.django_db
+def test_active_run_with_terminal_job_fails_closed_idempotently(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = recovery_consumed_contract
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/test",
+    )
+    ExecutionJob.objects.create(run=run, status=ExecutionJob.Status.FAILED)
+
+    decisions = reconcile_execution_jobs(
+        provider_status=lambda _name, _id: "MISSING", now=timezone.now()
+    )
+
+    run.refresh_from_db()
+    assert len(decisions) == 1
+    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    assert run.current_phase == "RUN_JOB_DIVERGENCE"
+    assert run.events.filter(event_type="RUN_JOB_DIVERGENCE_FAIL_CLOSED").exists()
+    assert (
+        reconcile_execution_jobs(
+            provider_status=lambda _name, _id: "MISSING", now=timezone.now()
+        )
+        == []
+    )
+
+
+@pytest.mark.django_db
+def test_worker_refuses_a_preclaimed_job_after_run_terminalization(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = recovery_consumed_contract
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+        evidence_root="docs/evidence/test",
+    )
+    job = ExecutionJob.objects.create(
+        run=run,
+        status=ExecutionJob.Status.LEASED,
+        lease_owner="worker",
+        lease_expires_at=timezone.now() + timedelta(minutes=1),
+    )
+
+    with pytest.raises(ValueError, match="EXECUTION_RUN_NOT_ACTIVE"):
+        execute_claimed_job(job, "worker", root)
+
+    rejected = reject_claimed_job(
+        job, "worker", ValueError("EXECUTION_RUN_NOT_ACTIVE")
+    )
+    run.refresh_from_db()
+    assert rejected.status == ExecutionJob.Status.REJECTED
+    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    assert run.events.filter(
+        event_type="WORKER_RUN_LIFECYCLE_RACE_CONVERGED"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_missing_workspace_provider_pid_enters_bounded_recovery(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = recovery_consumed_contract
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        provider_execution_id="101",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/test",
+    )
+    job = ExecutionJob.objects.create(
+        run=run,
+        status=ExecutionJob.Status.STARTED,
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+        last_heartbeat_at=timezone.now(),
+    )
+    workspace = ExecutionWorkspace.objects.create(
+        run=run,
+        status=ExecutionWorkspace.Status.IN_USE,
+        provider_pid=101,
+    )
+
+    decisions = reconcile_execution_jobs(
+        provider_status=lambda _name, _id: pytest.fail("PID loss must not reattach"),
+        process_is_alive=lambda _pid: False,
+        now=timezone.now(),
+    )
+
+    job.refresh_from_db()
+    workspace.refresh_from_db()
+    assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.RECOVERING
+    assert job.status == ExecutionJob.Status.RECOVERING
+    assert workspace.status == ExecutionWorkspace.Status.READY
+    assert workspace.provider_pid is None
+    assert run.events.filter(event_type="WORKSPACE_PROVIDER_PID_MISSING").exists()
+
+
+@pytest.mark.django_db
+def test_orphan_workspace_is_retained_once_after_terminal_run(
+    recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    root, contract, request = recovery_consumed_contract
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository="example/generic-project",
+        branch="main",
+        baseline_commit="a" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier=str(root),
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+        evidence_root="docs/evidence/test",
+    )
+    workspace = ExecutionWorkspace.objects.create(
+        run=run,
+        status=ExecutionWorkspace.Status.IN_USE,
+        provider_pid=101,
+    )
+
+    reconciled = WorkspaceManager().reconcile_ownership(now=timezone.now())
+
+    workspace.refresh_from_db()
+    assert [item.pk for item in reconciled] == [workspace.pk]
+    assert workspace.status == ExecutionWorkspace.Status.RETAINED
+    assert workspace.provider_pid is None
+    assert run.events.filter(event_type="ORPHAN_WORKSPACE_RETAINED").exists()
+    assert WorkspaceManager().reconcile_ownership(now=timezone.now()) == []

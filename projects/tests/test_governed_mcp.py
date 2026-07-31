@@ -21,9 +21,11 @@ from projects.models import (
     ExecutableScope,
     ExecutionCancellation,
     ExecutionContract,
+    ExecutionJob,
     ExecutionProgressEvent,
     ExecutionRun,
     ExecutionStartRequest,
+    ExecutionWorkspace,
     GovernanceApproval,
     McpAuditEvent,
     McpIdempotencyRecord,
@@ -214,6 +216,74 @@ def test_provider_terminal_activity_event_overrides_a_stale_pid_probe(
     )
 
     assert governed_mcp._provider_has_completed(run) is True
+
+
+@pytest.mark.django_db
+def test_execution_status_exposes_consistent_queue_workspace_and_evidence() -> None:
+    project = Project.objects.create(
+        project_id="lifecycle-status-project",
+        display_name="Lifecycle Status Project",
+        repository_full_name="example/lifecycle-status-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    contract = ExecutionContract.objects.create(
+        project=project,
+        handoff_identifier="lifecycle-status-contract",
+        approved_sprint_path="docs/sprints/lifecycle-status.md",
+        contract_hash="l" * 64,
+        payload={"execution": {"target_branch": "main"}},
+    )
+    approval = GovernanceApproval.objects.create(
+        reference="PO-lifecycle-status",
+        project=project,
+        approved_action="AUTHORIZE_EXECUTION",
+        approved_by="Product Owner",
+    )
+    request = ExecutionStartRequest.objects.create(contract=contract, approval=approval)
+    run = ExecutionRun.objects.create(
+        contract=contract,
+        start_request=request,
+        repository=project.repository_full_name,
+        branch="main",
+        baseline_commit="l" * 40,
+        contract_hash=contract.contract_hash,
+        workspace_identifier="lifecycle-status-workspace",
+        provider_name="codex-cli",
+        lifecycle=ExecutionRun.Lifecycle.RUNNING,
+        evidence_root="docs/evidence/lifecycle-status",
+    )
+    ExecutionJob.objects.create(
+        run=run,
+        status=ExecutionJob.Status.RECOVERING,
+        recovery_attempts=2,
+        provider_attempt_metadata={"recovery_action": "RESUME_FROM_CHECKPOINT"},
+    )
+    ExecutionWorkspace.objects.create(
+        run=run,
+        status=ExecutionWorkspace.Status.IN_USE,
+        provider_pid=123,
+    )
+
+    status = invoke_public_tool(
+        "execution.get_run_status", {"execution_token": str(run.token)}
+    )
+
+    assert status["queue"] == {
+        "status": "RECOVERING",
+        "lease_owner_present": False,
+        "lease_expires_at": None,
+        "last_heartbeat_at": None,
+        "recovery_attempts": 2,
+        "next_recovery_at": None,
+        "recovery_action": "RESUME_FROM_CHECKPOINT",
+    }
+    assert status["workspace"] == {
+        "status": "IN_USE",
+        "provider_pid_present": True,
+        "retention_until": None,
+    }
+    assert status["evidence"]["evidence_root"] == "docs/evidence/lifecycle-status"
 
 
 @pytest.mark.django_db

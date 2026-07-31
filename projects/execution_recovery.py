@@ -7,6 +7,7 @@ records why recovery needs review.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 from typing import Callable
 
@@ -19,6 +20,7 @@ from .models import (
     ExecutionJob,
     ExecutionRecoveryAttempt,
     ExecutionRun,
+    ExecutionWorkspace,
 )
 
 MAX_RECOVERY_ATTEMPTS = 3
@@ -37,6 +39,145 @@ REQUIRED_CHECKPOINT_KEYS = {
 
 def checkpoint_is_resumable(checkpoint: object) -> bool:
     return isinstance(checkpoint, dict) and REQUIRED_CHECKPOINT_KEYS <= set(checkpoint)
+
+
+def provider_pid_is_alive(provider_pid: int | None) -> bool:
+    """Check a locally-owned provider PID without trusting stale workspace data."""
+    if not isinstance(provider_pid, int) or provider_pid <= 0:
+        return False
+    try:
+        os.kill(provider_pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _converge_run_job_integrity(
+    *, observed_at: datetime
+) -> list[ExecutionRecoveryAttempt]:
+    """Converge impossible run/job pairs before a worker can dispatch them.
+
+    The run is the canonical lifecycle record.  A terminal run must never keep
+    dispatchable work, while an active run with a terminal queue decision must
+    fail closed rather than inventing a provider outcome.  Each mutation is
+    recorded once, making repeated reconciliation idempotent.
+    """
+    decisions: list[ExecutionRecoveryAttempt] = []
+    active_job_states = [
+        ExecutionJob.Status.QUEUED,
+        ExecutionJob.Status.LEASED,
+        ExecutionJob.Status.STARTED,
+        ExecutionJob.Status.RECOVERING,
+    ]
+    terminal_job_states = [
+        ExecutionJob.Status.COMPLETED,
+        ExecutionJob.Status.FAILED,
+        ExecutionJob.Status.REJECTED,
+    ]
+    for candidate in ExecutionJob.objects.select_related("run").filter(
+        status__in=active_job_states
+    ).exclude(run__lifecycle__in=ACTIVE_STATES):
+        with transaction.atomic():
+            job = (
+                ExecutionJob.objects.select_for_update()
+                .select_related("run")
+                .get(pk=candidate.pk)
+            )
+            run = job.run
+            if job.status not in active_job_states or run.lifecycle in ACTIVE_STATES:
+                continue
+            evidence = {
+                "observed_at": observed_at.isoformat(),
+                "invariant": "terminal run has a terminal job",
+                "run_lifecycle": run.lifecycle,
+                "previous_job_status": job.status,
+                "governed_transition": "TERMINAL_RUN_JOB_CONVERGED",
+            }
+            job.status = (
+                ExecutionJob.Status.COMPLETED
+                if run.lifecycle == ExecutionRun.Lifecycle.COMPLETED
+                else ExecutionJob.Status.FAILED
+            )
+            job.lease_owner = ""
+            job.lease_expires_at = None
+            job.last_heartbeat_at = None
+            job.next_recovery_at = None
+            job.reconciliation_evidence = [*job.reconciliation_evidence, evidence][-20:]
+            job.save(
+                update_fields=[
+                    "status",
+                    "lease_owner",
+                    "lease_expires_at",
+                    "last_heartbeat_at",
+                    "next_recovery_at",
+                    "reconciliation_evidence",
+                    "updated_at",
+                ]
+            )
+            add_event(run, "RUN_JOB_DIVERGENCE_CONVERGED", **evidence)
+            decisions.append(
+                ExecutionRecoveryAttempt.objects.create(
+                    job=job,
+                    outcome=ExecutionRecoveryAttempt.Outcome.NO_ACTION,
+                    reason="terminal run prevented stale queue dispatch",
+                    evidence=evidence,
+                )
+            )
+
+    for candidate in ExecutionJob.objects.select_related("run").filter(
+        status__in=terminal_job_states,
+        run__lifecycle__in=ACTIVE_STATES,
+    ):
+        with transaction.atomic():
+            job = (
+                ExecutionJob.objects.select_for_update()
+                .select_related("run")
+                .get(pk=candidate.pk)
+            )
+            run = job.run
+            if (
+                job.status not in terminal_job_states
+                or run.lifecycle not in ACTIVE_STATES
+            ):
+                continue
+            evidence = {
+                "observed_at": observed_at.isoformat(),
+                "invariant": "active run cannot have a terminal job",
+                "run_lifecycle": run.lifecycle,
+                "job_status": job.status,
+                "governed_transition": "ACTIVE_RUN_FAIL_CLOSED",
+            }
+            run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+            run.current_phase = "RUN_JOB_DIVERGENCE"
+            run.current_blocker = {
+                "category": "RUN_JOB_DIVERGENCE",
+                "reason": (
+                    "terminal queue state lacks canonical run completion evidence"
+                ),
+                "evidence": evidence,
+            }
+            run.terminal_state = "BLOCKED â€” REQUIRED EXTERNAL INPUT UNAVAILABLE"
+            run.ended_at = observed_at
+            run.save(
+                update_fields=[
+                    "lifecycle",
+                    "current_phase",
+                    "current_blocker",
+                    "terminal_state",
+                    "ended_at",
+                    "updated_at",
+                ]
+            )
+            add_event(run, "RUN_JOB_DIVERGENCE_FAIL_CLOSED", **evidence)
+            decisions.append(
+                ExecutionRecoveryAttempt.objects.create(
+                    job=job,
+                    outcome=ExecutionRecoveryAttempt.Outcome.NO_ACTION,
+                    reason="active run blocked pending missing terminal evidence",
+                    evidence=evidence,
+                )
+            )
+    return decisions
 
 
 def record_checkpoint(
@@ -151,11 +292,12 @@ def _terminalize_finished_provider(
 def reconcile_execution_jobs(
     *,
     provider_status: Callable[[str, str], str],
+    process_is_alive: Callable[[int | None], bool] = provider_pid_is_alive,
     now: datetime | None = None,
 ) -> list[ExecutionRecoveryAttempt]:
     """Inspect stale work and make one durable, bounded recovery decision."""
     observed_at = now if now is not None else timezone.now()
-    decisions: list[ExecutionRecoveryAttempt] = []
+    decisions = _converge_run_job_integrity(observed_at=observed_at)
 
     # Repair pre-existing review-required jobs created before lifecycle
     # terminalization was introduced.  This is deliberately idempotent: once
@@ -198,21 +340,32 @@ def reconcile_execution_jobs(
         run__lifecycle=ExecutionRun.Lifecycle.RUNNING,
     )
     for candidate in candidates:
+        workspace = ExecutionWorkspace.objects.filter(run=candidate.run).first()
+        provider_pid_missing = bool(
+            workspace
+            and workspace.status == ExecutionWorkspace.Status.IN_USE
+            and workspace.provider_pid
+            and not process_is_alive(workspace.provider_pid)
+        )
         stale = (
             candidate.lease_expires_at is None
             or candidate.lease_expires_at <= observed_at
             or candidate.last_heartbeat_at is None
             or candidate.last_heartbeat_at <= observed_at - timedelta(seconds=120)
+            or provider_pid_missing
         )
-        try:
-            provider_state = provider_status(
-                candidate.run.provider_name, candidate.run.provider_execution_id
-            )
-        except (OSError, ValueError):
-            # An unreachable provider is not terminal evidence.  Keep a live
-            # worker untouched, while allowing the existing stale recovery
-            # path to use its checkpointed authority.
+        if provider_pid_missing:
             provider_state = "MISSING"
+        else:
+            try:
+                provider_state = provider_status(
+                    candidate.run.provider_name, candidate.run.provider_execution_id
+                )
+            except (OSError, ValueError):
+                # An unreachable provider is not terminal evidence.  Keep a live
+                # worker untouched, while allowing the existing stale recovery
+                # path to use its checkpointed authority.
+                provider_state = "MISSING"
         if provider_state != "FINISHED" and not stale:
             continue
         with transaction.atomic():
@@ -224,6 +377,25 @@ def reconcile_execution_jobs(
             if job.next_recovery_at and job.next_recovery_at > observed_at:
                 continue
             run = job.run
+            workspace = (
+                ExecutionWorkspace.objects.select_for_update().filter(run=run).first()
+            )
+            if (
+                workspace
+                and workspace.status == ExecutionWorkspace.Status.IN_USE
+                and workspace.provider_pid
+                and not process_is_alive(workspace.provider_pid)
+            ):
+                provider_pid_missing = True
+                provider_state = "MISSING"
+                workspace.status = ExecutionWorkspace.Status.READY
+                workspace.provider_pid = None
+                workspace.save(update_fields=["status", "provider_pid", "updated_at"])
+                add_event(
+                    run,
+                    "WORKSPACE_PROVIDER_PID_MISSING",
+                    workspace_id=str(workspace.token),
+                )
             evidence = {
                 "observed_at": observed_at.isoformat(),
                 "provider_state": provider_state,
@@ -231,6 +403,8 @@ def reconcile_execution_jobs(
                 if job.lease_expires_at
                 else None,
                 "checkpoint_resumable": checkpoint_is_resumable(job.checkpoint),
+                "workspace_status": workspace.status if workspace else None,
+                "provider_pid_missing": provider_pid_missing,
             }
             if provider_state == "RUNNING":
                 job.status = ExecutionJob.Status.QUEUED
@@ -323,6 +497,7 @@ def reconcile_execution_jobs(
                     "status",
                     "lease_owner",
                     "lease_expires_at",
+                    "last_heartbeat_at",
                     "recovery_attempts",
                     "next_recovery_at",
                     "provider_attempt_metadata",

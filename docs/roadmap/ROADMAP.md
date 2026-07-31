@@ -18,13 +18,16 @@ duplicates; preserve worker survival; provide consistent admin/MCP
 observability; and prove recovery through fault injection and real governed
 end-to-end delivery/acceptance evidence.
 
-The implementation-ready proposal is
-[Sprint 016](../sprints/SPRINT_016_CANONICAL_EXECUTION_LIFECYCLE_INTEGRITY_AND_AUTONOMOUS_RECOVERY.md).
-It remains a draft until the governed scope lifecycle grants authority.
+Sprint 016, [Canonical Execution Lifecycle Integrity and Autonomous
+Recovery](../sprints/SPRINT_016_CANONICAL_EXECUTION_LIFECYCLE_INTEGRITY_AND_AUTONOMOUS_RECOVERY.md),
+is implemented under Product Owner Factory Development Mode and is awaiting
+independent audit and Product Owner review. Its recovery invariants are
+documented in [Canonical execution lifecycle recovery](../architecture/EXECUTION_LIFECYCLE_RECOVERY.md).
 
 **Status:** ACTIVE PROJECT ROADMAP  
 **Scope:** AI Bridge project  
-**Execution authority:** roadmap does not authorize implementation; only an approved Sprint may do so  
+**Execution authority:** this roadmap remains directional; the bounded Sprint
+016 Factory Development Mode instruction is the implementation authority
 **Project definition:** `.bridge/project.yaml`
 
 ## 1. Product direction

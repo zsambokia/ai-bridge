@@ -59,6 +59,7 @@ NON_RETRYABLE_EXECUTION_FAILURE_PREFIXES = (
     "CONTRACT_NOT_CONSUMED",
     "CONSUMPTION_RECEIPT_REQUIRED",
     "EXECUTION_REQUEST_CONTRACT_MISMATCH",
+    "EXECUTION_RUN_NOT_ACTIVE",
     "LEGACY_CONTRACT_NOT_EXECUTABLE",
 )
 
@@ -123,6 +124,7 @@ def claim_next_job(worker_id: str, lease_seconds: int) -> ExecutionJob | None:
                     ExecutionJob.Status.RECOVERING,
                 ]
             )
+            .filter(run__lifecycle__in=ACTIVE_STATES)
             .filter(
                 models.Q(status=ExecutionJob.Status.QUEUED)
                 | models.Q(status=ExecutionJob.Status.LEASED, lease_expires_at__lt=now)
@@ -214,9 +216,14 @@ def reject_claimed_job(
         ):
             raise ValueError("WORKER_LEASE_NOT_OWNED")
         run = locked_job.run
+        inactive_run = reason == "EXECUTION_RUN_NOT_ACTIVE"
         evidence = {
             "recorded_at": now.isoformat(),
-            "classification": "NON_RETRYABLE_CONTRACT_OR_GOVERNANCE_FAILURE",
+            "classification": (
+                "RUN_LIFECYCLE_RACE_CONVERGED"
+                if inactive_run
+                else "NON_RETRYABLE_CONTRACT_OR_GOVERNANCE_FAILURE"
+            ),
             "reason": reason,
             "retryable": False,
             "worker": worker_id,
@@ -224,7 +231,11 @@ def reject_claimed_job(
             "contract_hash": run.contract_hash,
             "provider_started": False,
         }
-        locked_job.status = ExecutionJob.Status.REJECTED
+        locked_job.status = (
+            ExecutionJob.Status.COMPLETED
+            if inactive_run and run.lifecycle == ExecutionRun.Lifecycle.COMPLETED
+            else ExecutionJob.Status.REJECTED
+        )
         locked_job.lease_owner = ""
         locked_job.lease_expires_at = None
         locked_job.next_recovery_at = None
@@ -242,6 +253,15 @@ def reject_claimed_job(
                 "updated_at",
             ]
         )
+        if inactive_run:
+            add_event(
+                run,
+                "WORKER_RUN_LIFECYCLE_RACE_CONVERGED",
+                worker=worker_id,
+                lifecycle=run.lifecycle,
+            )
+            return locked_job
+
         run.lifecycle = ExecutionRun.Lifecycle.FAILED_GOVERNANCE
         run.current_phase = "CONTRACT_REJECTED"
         run.current_blocker = {
@@ -848,8 +868,16 @@ def execute_claimed_job(
     job: ExecutionJob, worker_id: str, platform_root: Path
 ) -> ExecutionRun:
     """Run a claimed job from the independent worker process only."""
-    if job.status != ExecutionJob.Status.LEASED or job.lease_owner != worker_id:
-        raise ValueError("WORKER_LEASE_NOT_OWNED")
+    with transaction.atomic():
+        job = (
+            ExecutionJob.objects.select_for_update()
+            .select_related("run", "run__contract")
+            .get(pk=job.pk)
+        )
+        if job.status != ExecutionJob.Status.LEASED or job.lease_owner != worker_id:
+            raise ValueError("WORKER_LEASE_NOT_OWNED")
+        if job.run.lifecycle not in ACTIVE_STATES:
+            raise ValueError("EXECUTION_RUN_NOT_ACTIVE")
     if job.provider_attempt_metadata.get("recovery_action") == "REATTACH":
         job.status = ExecutionJob.Status.STARTED
         job.provider_attempt_metadata = {

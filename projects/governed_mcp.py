@@ -74,11 +74,13 @@ from .models import (
     EngineeringEntity,
     ExecutableScope,
     ExecutionContract,
+    ExecutionJob,
     ExecutionPreparation,
     ExecutionProgressEvent,
     ExecutionProvider,
     ExecutionRun,
     ExecutionStartRequest,
+    ExecutionWorkspace,
     GovernanceApproval,
     KnowledgeEntry,
     McpAuditEvent,
@@ -96,7 +98,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-28.4"
+TOOL_SURFACE_VERSION = "2026-07-31.1"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -2898,6 +2900,8 @@ def invoke_public_tool(
                     "contract_hash": run.contract_hash,
                 }
             else:
+                job = ExecutionJob.objects.filter(run=run).first()
+                workspace = ExecutionWorkspace.objects.filter(run=run).first()
                 result = {
                     "execution_token": str(run.token),
                     "status": run.lifecycle,
@@ -2907,6 +2911,39 @@ def invoke_public_tool(
                     "attempt_count": run.attempt_count,
                     "current_blocker": run.current_blocker,
                     "heartbeat": heartbeat_projection(run),
+                    "queue": {
+                        "status": job.status if job else None,
+                        "lease_owner_present": bool(job and job.lease_owner),
+                        "lease_expires_at": job.lease_expires_at.isoformat()
+                        if job and job.lease_expires_at
+                        else None,
+                        "last_heartbeat_at": job.last_heartbeat_at.isoformat()
+                        if job and job.last_heartbeat_at
+                        else None,
+                        "recovery_attempts": job.recovery_attempts if job else None,
+                        "next_recovery_at": job.next_recovery_at.isoformat()
+                        if job and job.next_recovery_at
+                        else None,
+                        "recovery_action": job.provider_attempt_metadata.get(
+                            "recovery_action"
+                        )
+                        if job
+                        else None,
+                    },
+                    "workspace": {
+                        "status": workspace.status if workspace else None,
+                        "provider_pid_present": bool(
+                            workspace and workspace.provider_pid
+                        ),
+                        "retention_until": workspace.retention_until.isoformat()
+                        if workspace and workspace.retention_until
+                        else None,
+                    },
+                    "evidence": {
+                        "evidence_root": run.evidence_root,
+                        "final_commit_sha": run.final_commit_sha,
+                        "terminal_state": run.terminal_state,
+                    },
                 }
         elif name.startswith("scope.") or name in {
             "sprint.propose",

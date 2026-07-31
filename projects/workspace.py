@@ -201,7 +201,10 @@ class WorkspaceManager:
                     setattr(workspace, "_was_reused", True)
                     if workspace.status == ExecutionWorkspace.Status.RETAINED:
                         workspace.status = ExecutionWorkspace.Status.READY
-                        workspace.save(update_fields=["status", "updated_at"])
+                        workspace.provider_pid = None
+                        workspace.save(
+                            update_fields=["status", "provider_pid", "updated_at"]
+                        )
                     return workspace
                 workspace.status = ExecutionWorkspace.Status.FAILED
                 workspace.failure_code = "WORKSPACE_VERIFICATION_FAILED"
@@ -516,13 +519,58 @@ class WorkspaceManager:
 
     def retain(self, workspace: ExecutionWorkspace, run: ExecutionRun) -> None:
         workspace.status = ExecutionWorkspace.Status.RETAINED
+        workspace.provider_pid = None
         workspace.retention_until = _retention(run)
-        workspace.save(update_fields=["status", "retention_until", "updated_at"])
+        workspace.save(
+            update_fields=["status", "provider_pid", "retention_until", "updated_at"]
+        )
+
+    def reconcile_ownership(
+        self, now: datetime | None = None
+    ) -> list[ExecutionWorkspace]:
+        """Release a dead run's workspace without deleting retained evidence."""
+        from .execution import ACTIVE_STATES, add_event
+
+        observed = now or timezone.now()
+        reconciled: list[ExecutionWorkspace] = []
+        for candidate in ExecutionWorkspace.objects.select_related("run").filter(
+            status=ExecutionWorkspace.Status.IN_USE
+        ):
+            with transaction.atomic():
+                workspace = (
+                    ExecutionWorkspace.objects.select_for_update()
+                    .select_related("run")
+                    .get(pk=candidate.pk)
+                )
+                if workspace.status != ExecutionWorkspace.Status.IN_USE or (
+                    workspace.run.lifecycle in ACTIVE_STATES
+                ):
+                    continue
+                workspace.status = ExecutionWorkspace.Status.RETAINED
+                workspace.provider_pid = None
+                workspace.retention_until = _retention(workspace.run)
+                workspace.save(
+                    update_fields=[
+                        "status",
+                        "provider_pid",
+                        "retention_until",
+                        "updated_at",
+                    ]
+                )
+                add_event(
+                    workspace.run,
+                    "ORPHAN_WORKSPACE_RETAINED",
+                    workspace_id=str(workspace.token),
+                    observed_at=observed.isoformat(),
+                )
+                reconciled.append(workspace)
+        return reconciled
 
     def reconcile_cleanup(
         self, now: datetime | None = None
     ) -> list[ExecutionWorkspace]:
         observed = now or timezone.now()
+        self.reconcile_ownership(observed)
         cleaned: list[ExecutionWorkspace] = []
         for candidate in ExecutionWorkspace.objects.exclude(
             status=ExecutionWorkspace.Status.CLEANED

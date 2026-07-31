@@ -1,5 +1,15 @@
 # Governed engineering memory
 
+## Sprint 016 lifecycle recovery knowledge
+
+The canonical execution lifecycle keeps `ExecutionRun`, `ExecutionJob`, and
+`ExecutionWorkspace` as the sole durable recovery authority. Reconciliation
+records an append-only decision and evidence for every state correction,
+converges run/job disagreement deterministically, and fails closed where a
+new governed execution path would otherwise be required. The operational model
+and evidence boundaries are documented in
+[`EXECUTION_LIFECYCLE_RECOVERY.md`](../architecture/EXECUTION_LIFECYCLE_RECOVERY.md).
+
 Sprint 2 extends the AKB with a normalized, project-isolated engineering
 graph. It is an additive layer: `KnowledgeEntry` remains the generic,
 context-package knowledge store, while `EngineeringEntity` stores the

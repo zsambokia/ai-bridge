@@ -11,6 +11,7 @@ from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
+    ExecutionJob,
     ExecutionProgressEvent,
     ExecutionProvider,
     ExecutionRun,
@@ -368,6 +369,7 @@ class ExecutionRunAdmin(admin.ModelAdmin):
         "lifecycle",
         "current_phase",
         "provider_name",
+        "recovery_summary",
         "updated_at",
     )
     list_filter = ("lifecycle", "current_phase", "provider_name")
@@ -376,10 +378,12 @@ class ExecutionRunAdmin(admin.ModelAdmin):
         "live_activity",
         "provider_output",
         "raw_events",
+        "recovery_summary",
     )
     fieldsets = (
         (None, {"fields": tuple(field.name for field in ExecutionRun._meta.fields)}),
         ("Activity (derived, read-only)", {"fields": ("live_activity",)}),
+        ("Recovery (derived, read-only)", {"fields": ("recovery_summary",)}),
         ("Provider Output (redacted, read-only)", {"fields": ("provider_output",)}),
         ("Raw Events (redacted, read-only)", {"fields": ("raw_events",)}),
     )
@@ -410,6 +414,38 @@ class ExecutionRunAdmin(admin.ModelAdmin):
 
         return format_html("<pre>{}</pre>", json.dumps(activity_summary(obj), indent=2))
 
+    @admin.display(description="Queue, lease and recovery")
+    def recovery_summary(self, obj: ExecutionRun) -> str:
+        import json
+
+        job = ExecutionJob.objects.filter(run=obj).first()
+        workspace = ExecutionWorkspace.objects.filter(run=obj).first()
+        return format_html(
+            "<pre>{}</pre>",
+            json.dumps(
+                {
+                    "job_status": job.status if job else None,
+                    "lease_expires_at": job.lease_expires_at.isoformat()
+                    if job and job.lease_expires_at
+                    else None,
+                    "last_heartbeat_at": job.last_heartbeat_at.isoformat()
+                    if job and job.last_heartbeat_at
+                    else None,
+                    "recovery_attempts": job.recovery_attempts if job else None,
+                    "recovery_action": job.provider_attempt_metadata.get(
+                        "recovery_action"
+                    )
+                    if job
+                    else None,
+                    "workspace_status": workspace.status if workspace else None,
+                    "workspace_provider_pid": workspace.provider_pid
+                    if workspace
+                    else None,
+                },
+                indent=2,
+            ),
+        )
+
     @admin.display(description="Provider Output")
     def provider_output(self, obj: ExecutionRun) -> str:
         import json
@@ -436,6 +472,7 @@ class ExecutionWorkspaceAdmin(admin.ModelAdmin):
         "token",
         "run",
         "status",
+        "provider_pid",
         "base_commit_sha",
         "retention_until",
         "updated_at",
