@@ -483,7 +483,7 @@ or Hungarian Product Owner confirmations while rejecting conditional or
 negative wording. It never trusts client-supplied authority bindings:
 scope/version/hash, caller identity, approval reference, and retry key remain
 derived and checked by the governed service. The repair is live in staging at
-`3b3dec4081e26626fc06f93a46a370ffe6f01334`; the one unperformed ChatGPT
+`30648dc0625fef7e6451b0b7ace9bc6422a5c96d`; the one unperformed ChatGPT
 Business UI request and in-UI approval remains the exclusive missing
 Operational Acceptance fact.
 
@@ -509,6 +509,13 @@ an exit event. The old execution was clean at its baseline and cannot be
 truthfully completed retroactively; it remains evidence for the repair and a
 fresh actual ChatGPT Business request is required for Sprint 6 Operational
 Acceptance.
+
+The staging runtime at that SHA has passed the public health SHA check,
+migration plan, dependency check, worker smoke check, and scheduler smoke
+check. The first verifier attempt exposed a locked-workspace cleanup exception;
+the repair performs the controlled read-only retry and records any persistent
+lock as `RETAINED` with a bounded retry, so the scheduler remains live. This
+preflight does not substitute for the required Business UI-originated request.
 
 ## External governed-execution lifecycle reconciliation
 

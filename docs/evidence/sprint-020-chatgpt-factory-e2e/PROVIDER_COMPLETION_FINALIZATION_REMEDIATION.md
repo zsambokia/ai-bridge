@@ -105,10 +105,16 @@ local scheduler smoke run then both cleaned the formerly read-only historical
 workspace and retained a still-locked workspace with the deterministic retry
 record; the scheduler tick completed normally.
 
+The corrected staging runtime is deployed at
+`30648dc0625fef7e6451b0b7ace9bc6422a5c96d`. Its public `/health/` projection
+reported that exact SHA. `verify_runtime_deployment` then passed health,
+migration-plan, dependency, worker, and scheduler checks. This is a runtime
+deployment preflight; it is not the still-required ChatGPT Business UI proof.
+
 ## Honest operational boundary
 
-The repair must be deployed to the staging runtime before a new actual ChatGPT
-Business UI request is initiated. The historical execution is not reopened and
+The repair is deployed and runtime-verified, so a new actual ChatGPT Business
+UI request can now be initiated. The historical execution is not reopened and
 no database history is edited manually. A static Bearer-token request is not a
 substitute for the required UI-originated Remote MCP proof. Until that fresh
 request reaches canonical delivery, deployment, retrieval, and feedback,

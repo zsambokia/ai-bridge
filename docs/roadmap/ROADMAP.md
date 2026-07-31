@@ -88,7 +88,7 @@ Engineering and isolated-runtime Operational Acceptance are recorded at the
 final implementation revision `4b8f59f19f8f215993811973f88d4f71374e08b7`.
 Sprint 3 remains out of scope until Product Owner review accepts this Sprint.
 
-### Sprint 6 confirmation-binding repair (pending redeployment)
+### Sprint 6 confirmation-binding repair (staging verified; UI proof pending)
 
 The Sprint 6 ChatGPT Business proof remains incomplete, but a real Product
 Owner confirmation exposed a defect in the Remote MCP confirmation predicate:
@@ -97,9 +97,11 @@ be persisted. The repair accepts explicit unconditional English or Hungarian
 approval while preserving server-derived caller, proposal, approval-reference,
 and idempotency bindings. Negative and conditional confirmation text remains
 fail-closed. Local regression evidence is retained in
-`docs/evidence/sprint-020-chatgpt-factory-e2e/`; the repaired tool surface must
-be deployed and verified through the actual ChatGPT Business UI before Sprint 6
-can claim Operational Acceptance.
+`docs/evidence/sprint-020-chatgpt-factory-e2e/`. The complete repair is
+deployed and runtime-verified on staging at
+`30648dc0625fef7e6451b0b7ace9bc6422a5c96d`; the remaining requirement is a
+fresh actual ChatGPT Business UI request and in-UI approval. Only that UI path
+can complete Sprint 6 Operational Acceptance.
 
 **Status:** ACTIVE PROJECT ROADMAP  
 **Scope:** AI Bridge project  
@@ -598,7 +600,7 @@ Codex wrapper and durable handoff proof.
 ## Sprint 6 confirmation-binding repair deployment
 
 The explicit Product Owner confirmation repair is deployed to the staging
-Remote MCP runtime at `3b3dec4081e26626fc06f93a46a370ffe6f01334`. Its public
+Remote MCP runtime at `30648dc0625fef7e6451b0b7ace9bc6422a5c96d`. Its public
 health surface is SHA-bound to that revision. This repairs persistence of an
 explicit unconditional confirmation without weakening server-derived scope,
 proposal, caller, approval-reference, or idempotency bindings. Sprint 6 still
@@ -621,3 +623,10 @@ bounded technical recovery. The legacy execution has no committed change or
 delivery and remains immutable historical evidence; a fresh ChatGPT Business
 UI request is required for the truthful end-to-end proof after staging carries
 this repair.
+
+The subsequent cleanup-recovery repair is also included in that staging
+revision. A runtime verifier first honestly failed when an expired locked
+workspace raised `PermissionError` from the scheduler; the repair records a
+bounded retained retry instead. The rerun passed public SHA, migration plan,
+dependencies, worker, and scheduler checks. This proves the staging runtime is
+ready for, but does not replace, the required ChatGPT Business UI proof.
