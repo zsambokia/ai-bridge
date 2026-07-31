@@ -46,3 +46,27 @@ delivery.
 
 The subsequent forward-deployment, rollback and final-state checks are added
 to this record before Sprint closure.
+
+## Controlled forward deployment and safe rollback
+
+A second isolated runtime worktree was created at the immutable evidence
+revision `0db8c663dbb4eeba2311abaf971a18b89d00f370`. It migrated a fresh
+database, started at `127.0.0.1:8126`, returned that exact SHA from health,
+and passed `verify_runtime_deployment` including migration, dependency, worker
+and scheduler checks.
+
+The forward listener was then stopped. The earlier immutable implementation
+runtime at `127.0.0.1:8125` remained independently running and was verified
+again with its expected SHA `88e94f1a107e38358638da84a090f4a64a6251fd`.
+The canonical deployment record received a verified rollback receipt with
+both revisions. A fresh authenticated HTTP MCP request then reported
+`ROLLED_BACK`, the recovered runtime SHA, the PASS operational acceptance and
+the complete rollback receipt. This is a real local runtime forward/rollback
+exercise, not merely a model unit test.
+
+The rollback target in the seeded projection fixture remains the historical
+Sprint 4 baseline (`c25c91d3b3d2a634a4b1cbf80b624de43d92e874`) because it
+models the pre-Sprint-5 deployment plan. The exercised rollback recovered the
+first SHA-identifiable Sprint 5 implementation after its forward evidence
+revision; the pre-Sprint-5 runtime did not expose a cryptographically bound
+health SHA and is therefore not overclaimed as an exact-revision live rollback.

@@ -20,14 +20,16 @@ Sprint 016 is not execution authority.
 
 ## Sprint 5 SHA-bound runtime deployment
 
-Sprint 5 is in progress under bounded Factory Development Mode. It separates a
+Sprint 5 is ready for Product Owner review under bounded Factory Development
+Mode. It separates a
 repository delivery receipt from runtime activation: a `RuntimeDeployment`
 binds a verified delivery to its immutable artifact SHA, target identity,
 authority, migration/dependency checks, runtime health, worker and scheduler
 supervision, Operational Acceptance and rollback receipt. The deployment
 projection is read-only and common to Django Admin and MCP. The verification
 command checks the live health/build SHA and canonical supervision services but
-does not create a deployment claim. See
+does not create a deployment claim. Isolated live-runtime evidence includes a
+controlled SHA mismatch, forward deployment and verified rollback. See
 [`RUNTIME_DEPLOYMENT_OPERATIONAL_ACCEPTANCE.md`](../architecture/RUNTIME_DEPLOYMENT_OPERATIONAL_ACCEPTANCE.md).
 
 ## Sprint 2 Orki orchestration knowledge

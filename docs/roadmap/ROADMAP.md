@@ -2,15 +2,18 @@
 
 ## Factory Readiness Remediation — Sprint 5
 
-**Status:** `IN PROGRESS` (bounded Factory Development Mode Sprint).
+**Status:** `READY FOR PRODUCT OWNER REVIEW` (Engineering and Operational
+Acceptance evidence complete under bounded Factory Development Mode).
 
 Sprint 5 closes the runtime-activation gap left intentionally separate from
 repository delivery. A verified delivery now has a SHA-bound deployment plan
 and receipt, including target identity, authority, migrations, dependencies,
 runtime health, worker/scheduler supervision, remediation history and a safe
 rollback target. Admin and MCP read the same deployment projection; no
-verification command can manufacture a deployment claim. Evidence is being
-recorded in `docs/evidence/sprint-019-runtime-deployment-operational-acceptance/`.
+verification command can manufacture a deployment claim. The release gates,
+isolated live runtime verification, controlled mismatch repair and safe
+forward/rollback exercise are recorded in
+`docs/evidence/sprint-019-runtime-deployment-operational-acceptance/`.
 
 Sprint 4 has Product Owner acceptance and is the prerequisite delivery
 boundary for this Sprint.

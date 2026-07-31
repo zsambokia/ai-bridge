@@ -22,8 +22,17 @@
    `ExecutionContract.Lifecycle.CONSUMED`; the fixture was corrected. This was
    a test-fixture defect, not a runtime failure. The failed attempt is retained
    in `REMEDIATION_LOG.md`.
-4. Remaining implementation, release-gate results, live-runtime proof and
-   final commit binding are appended to this evidence directory before closure.
+4. Ran all resolved repository gates on the implementation revision
+   `88e94f1a107e38358638da84a090f4a64a6251fd`: model-drift, migration-plan,
+   Django, scope, Ruff, MyPy, full tests (223 passed) and whitespace/diff.
+5. Built isolated runtime worktrees with independently migrated SQLite
+   databases. The implementation runtime exposed its configured immutable SHA;
+   a second evidence revision completed the same verification before a safe
+   rollback restored the original live runtime.
+6. Preserved the first health configuration failure and the deliberate SHA
+   mismatch failure in `REMEDIATION_LOG.md`. Neither is removed from evidence.
+7. Updated roadmap and AKB state to ready-for-review. The remaining action is
+   final release-gate binding and Product Owner review; Sprint 6 is excluded.
 
 ## Pre-existing work deliberately excluded
 
