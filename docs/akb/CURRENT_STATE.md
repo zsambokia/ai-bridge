@@ -18,6 +18,18 @@ Sprint 016 is not execution authority.
 
 ## Implemented foundation
 
+## Sprint 5 SHA-bound runtime deployment
+
+Sprint 5 is in progress under bounded Factory Development Mode. It separates a
+repository delivery receipt from runtime activation: a `RuntimeDeployment`
+binds a verified delivery to its immutable artifact SHA, target identity,
+authority, migration/dependency checks, runtime health, worker and scheduler
+supervision, Operational Acceptance and rollback receipt. The deployment
+projection is read-only and common to Django Admin and MCP. The verification
+command checks the live health/build SHA and canonical supervision services but
+does not create a deployment claim. See
+[`RUNTIME_DEPLOYMENT_OPERATIONAL_ACCEPTANCE.md`](../architecture/RUNTIME_DEPLOYMENT_OPERATIONAL_ACCEPTANCE.md).
+
 ## Sprint 2 Orki orchestration knowledge
 
 Normal governed ChatGPT/MCP work is not allowed to create a contract or
@@ -37,8 +49,8 @@ governed workspace-only request; the honest operational transcript is
 
 ## Sprint 4 autonomous repository delivery
 
-Sprint 4 implementation and operational evidence are **ready for Product Owner
-review**. It adds a fail-closed, contract-bound delivery verifier: exact scoped
+Sprint 4 implementation and operational evidence are **accepted by the Product
+Owner**. It adds a fail-closed, contract-bound delivery verifier: exact scoped
 local HEAD, clean workspace, required gates, SHA-bearing evidence, non-force
 push and remote-SHA readback are mandatory before a run can become completed.
 Remote movement requires reconciliation, and the execution provider cannot
@@ -49,12 +61,14 @@ and `docs/evidence/sprint-018-autonomous-repository-delivery/`.
 
 At Epic closure, create the requested Factory Readiness Dossier: the complete
 Sprint acceptance timeline, material remediation cycles, before/after maturity
-assessment, and known limitations/next areas.
+assessment, known limitations/next areas, and a per-Sprint compliance matrix
+linking objective, delivered capability, Engineering and Operational evidence,
+and Product Owner acceptance date/status.
 
 ## Sprint 3 durable AKB and roadmap feedback loop
 
-Sprint 3 implementation is complete and is **ready for Product Owner review**;
-it is not recorded as accepted until that review occurs. It persists every
+Sprint 3 implementation and operational acceptance are **accepted by the
+Product Owner**. It persists every
 retrieved Orki context package and its consumers (session, decision, contract,
 and run), including query/intent, selected IDs, source versions, stale and
 conflict warnings, and a deterministic package hash. Its `RoadmapItem` and

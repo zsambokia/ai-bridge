@@ -32,6 +32,7 @@ from projects.models import (
     RoadmapItem,
     RoadmapUpdateCandidate,
     RuntimeBootstrapProfile,
+    RuntimeDeployment,
 )
 from projects.providers import check_health
 
@@ -606,6 +607,22 @@ class ExecutionDeliveryAdmin(ReadOnlyAdmin):
     list_filter = ("status",)
     search_fields = ("run__token", "final_commit_sha", "remote_commit_sha")
     readonly_fields = tuple(field.name for field in ExecutionDelivery._meta.fields)
+
+
+@admin.register(RuntimeDeployment)
+class RuntimeDeploymentAdmin(ReadOnlyAdmin):
+    list_display = (
+        "delivery",
+        "status",
+        "target_identity",
+        "artifact_sha",
+        "runtime_build_sha",
+        "operational_acceptance",
+        "updated_at",
+    )
+    list_filter = ("status", "operational_acceptance")
+    search_fields = ("artifact_sha", "runtime_build_sha", "target_identity")
+    readonly_fields = tuple(field.name for field in RuntimeDeployment._meta.fields)
 
 
 @admin.register(RuntimeBootstrapProfile)

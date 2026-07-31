@@ -88,6 +88,7 @@ from .models import (
     Project,
     RoadmapItem,
     RoadmapUpdateCandidate,
+    RuntimeDeployment,
 )
 from .orchestration_gate import (
     assert_contract_authorized,
@@ -99,6 +100,7 @@ from .providers import public_provider
 from .roadmap import create_item as create_roadmap_item
 from .roadmap import propose_update as propose_roadmap_update
 from .roadmap import review_update as review_roadmap_update
+from .runtime_deployment import deployment_projection
 from .scopes import (
     answer_clarifications,
     approved_scope,
@@ -109,7 +111,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-31.2"
+TOOL_SURFACE_VERSION = "2026-07-31.3"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -241,6 +243,13 @@ _TOOLS = [
         "factory.list_capabilities",
         "List the versioned governed MCP capabilities available to this caller.",
         READ_ONLY,
+    ),
+    _tool(
+        "deployment.get_status",
+        "Read the canonical SHA-bound runtime deployment receipt for a delivery.",
+        READ_ONLY,
+        {"delivery_id": {"type": "integer", "minimum": 1}},
+        ["delivery_id"],
     ),
     _tool(
         "provider.list",
@@ -2447,6 +2456,12 @@ def invoke_public_tool(
                     for t in _TOOLS
                 ],
             }
+        elif name == "deployment.get_status":
+            result = deployment_projection(
+                RuntimeDeployment.objects.select_related("delivery").get(
+                    delivery_id=arguments["delivery_id"]
+                )
+            )
         elif name == "project.list":
             visible_projects = Project.objects.filter(
                 lifecycle="ACTIVE", onboarding_status="READY"

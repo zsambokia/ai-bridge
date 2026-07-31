@@ -1107,6 +1107,59 @@ class ExecutionDelivery(models.Model):
         ordering = ["-created_at"]
 
 
+class RuntimeDeployment(models.Model):
+    """The canonical post-delivery deployment receipt for a verified delivery.
+
+    Repository publication and runtime activation are deliberately separate:
+    a verified remote commit is necessary but cannot claim that a target
+    runtime has applied it.  This record binds the latter to the former.
+    """
+
+    class Status(models.TextChoices):
+        PLANNED = "PLANNED", "Planned"
+        DEPLOYING = "DEPLOYING", "Deploying"
+        DEPLOYED = "DEPLOYED", "Deployed"
+        FAILED = "FAILED", "Failed"
+        ROLLED_BACK = "ROLLED_BACK", "Rolled back"
+
+    class OperationalAcceptance(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PASS = "PASS", "Pass"
+        FAIL = "FAIL", "Fail"
+
+    delivery = models.OneToOneField(
+        ExecutionDelivery, on_delete=models.PROTECT, related_name="runtime_deployment"
+    )
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.PLANNED
+    )
+    target_identity = models.CharField(max_length=255)
+    authority_reference = models.CharField(max_length=255)
+    artifact_sha = models.CharField(max_length=64)
+    runtime_build_sha = models.CharField(max_length=64, blank=True)
+    rollback_target_sha = models.CharField(max_length=64)
+    plan = models.JSONField(default=dict)
+    migration_result = models.JSONField(default=dict)
+    dependency_result = models.JSONField(default=dict)
+    service_health = models.JSONField(default=dict)
+    smoke_result = models.JSONField(default=dict)
+    receipt = models.JSONField(default=dict)
+    failure_history = models.JSONField(default=list)
+    rollback_receipt = models.JSONField(default=dict)
+    operational_acceptance = models.CharField(
+        max_length=16,
+        choices=OperationalAcceptance.choices,
+        default=OperationalAcceptance.PENDING,
+    )
+    deployed_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class ExecutionJob(models.Model):
     """Durable, lease-owned queue entry for one authorized execution run.
 

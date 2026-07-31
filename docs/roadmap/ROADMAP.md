@@ -1,9 +1,24 @@
 # AI Bridge Roadmap
 
+## Factory Readiness Remediation — Sprint 5
+
+**Status:** `IN PROGRESS` (bounded Factory Development Mode Sprint).
+
+Sprint 5 closes the runtime-activation gap left intentionally separate from
+repository delivery. A verified delivery now has a SHA-bound deployment plan
+and receipt, including target identity, authority, migrations, dependencies,
+runtime health, worker/scheduler supervision, remediation history and a safe
+rollback target. Admin and MCP read the same deployment projection; no
+verification command can manufacture a deployment claim. Evidence is being
+recorded in `docs/evidence/sprint-019-runtime-deployment-operational-acceptance/`.
+
+Sprint 4 has Product Owner acceptance and is the prerequisite delivery
+boundary for this Sprint.
+
 ## Factory Readiness Remediation — Sprint 4
 
-**Status:** `PASS — READY FOR PRODUCT OWNER REVIEW` (implementation and
-operational evidence complete; Product Owner acceptance remains pending).
+**Status:** `PASS — ACCEPTED` (Product Owner Operational and Engineering
+Acceptance accepted).
 
 Sprint 4 closes the autonomous repository-delivery gap. Contract-bound policy
 now verifies a clean scoped workspace, passing gates and SHA-bound evidence,
@@ -17,8 +32,8 @@ roadmap lifecycle remain the prerequisite for Sprint 4 delivery policy.
 
 ## Factory Readiness Remediation — Sprint 3
 
-**Status:** `PASS — READY FOR PRODUCT OWNER REVIEW` (implementation and
-operational evidence complete; Product Owner acceptance remains pending).
+**Status:** `PASS — ACCEPTED` (Product Owner Operational and Engineering
+Acceptance accepted).
 
 Sprint 3 closes the durable AKB/roadmap feedback-loop gap. Governed retrieval
 now has a persisted context package and consumption chain through Orki,
