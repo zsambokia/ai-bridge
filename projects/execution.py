@@ -711,11 +711,10 @@ def _is_provider_terminal_event(event: ExecutionProgressEvent) -> bool:
 def _terminalize_provider_event_if_needed(
     run: ExecutionRun, event: ExecutionProgressEvent
 ) -> None:
-    """Close an exited provider's canonical state exactly once.
+    """Queue finalization for an exited provider exactly once.
 
-    A provider terminal event is evidence that execution can no longer own an
-    active lease.  It is not completion evidence, so ordinary runs become a
-    truthful external-input block; a confirmed cancellation becomes cancelled.
+    A terminal provider event is not canonical completion evidence. It hands
+    the run to worker-owned finalization while retaining contract authority.
     """
     if not _is_provider_terminal_event(event):
         return
@@ -738,63 +737,90 @@ def _terminalize_provider_event_if_needed(
             _complete_cancellation_locked(
                 locked, cancellation, job=job, acknowledged=True, now=now
             )
-            outcome = "CANCELLED"
+        elif (
+            locked.lifecycle == ExecutionRun.Lifecycle.VALIDATING
+            and locked.current_phase == "PROVIDER_COMPLETION_FINALIZATION_PENDING"
+        ):
+            # The provider may repeat its terminal notification.  The first
+            # notification already owns the queued finalization job, so a
+            # duplicate must not manufacture a second recovery/delivery path.
+            return
         elif locked.lifecycle in ACTIVE_STATES:
-            locked.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
-            locked.current_phase = "PROVIDER_TERMINALIZED"
-            locked.current_blocker = {
-                "category": "PROVIDER_TERMINAL_EVENT",
-                "reason": (
-                    "provider reported terminal activity before canonical "
-                    "completion evidence"
-                ),
-                "event_type": event.event_type,
-                "event_sequence": event.sequence,
-            }
-            locked.terminal_state = "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
-            locked.ended_at = now
-            locked.save(
-                update_fields=[
-                    "lifecycle",
-                    "current_phase",
-                    "current_blocker",
-                    "terminal_state",
-                    "ended_at",
-                    "updated_at",
-                ]
+            _queue_provider_completion_finalization_locked(
+                locked,
+                job,
+                source_event=event.event_type,
+                source_sequence=event.sequence,
+                observed_at=now,
             )
-            if job is not None:
-                job.status = ExecutionJob.Status.FAILED
-                job.lease_owner = ""
-                job.lease_expires_at = None
-                job.next_recovery_at = None
-                job.save(
-                    update_fields=[
-                        "status",
-                        "lease_owner",
-                        "lease_expires_at",
-                        "next_recovery_at",
-                        "updated_at",
-                    ]
-                )
-            contract = locked.contract
-            if contract.lifecycle == ExecutionContract.Lifecycle.RUNNING:
-                contract.lifecycle = ExecutionContract.Lifecycle.CANCELLED
-                contract.closure_state = locked.terminal_state
-                contract.completed_at = now
-                contract.save(
-                    update_fields=["lifecycle", "closure_state", "completed_at"]
-                )
-            outcome = "BLOCKED_EXTERNAL_INPUT"
+            add_event(
+                run,
+                "PROVIDER_COMPLETION_FINALIZATION_QUEUED",
+                outcome="FINALIZATION_QUEUED",
+                source_event=event.event_type,
+                source_sequence=event.sequence,
+            )
+            return
         else:
             return
-    add_event(
-        run,
-        "PROVIDER_TERMINAL_LIFECYCLE_TERMINALIZED",
-        outcome=outcome,
-        source_event=event.event_type,
-        source_sequence=event.sequence,
+
+
+def _queue_provider_completion_finalization_locked(
+    run: ExecutionRun,
+    job: ExecutionJob | None,
+    *,
+    source_event: str,
+    source_sequence: int | None,
+    observed_at: datetime,
+) -> None:
+    """Persist a worker-owned finalization step without cancelling authority."""
+    run.lifecycle = ExecutionRun.Lifecycle.VALIDATING
+    run.current_phase = "PROVIDER_COMPLETION_FINALIZATION_PENDING"
+    run.current_blocker = {
+        "category": "PROVIDER_COMPLETION_FINALIZATION",
+        "reason": "provider exited before canonical completion was recorded",
+        "source_event": source_event,
+        "source_sequence": source_sequence,
+    }
+    run.terminal_state = ""
+    run.ended_at = None
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "terminal_state",
+            "ended_at",
+            "updated_at",
+        ]
     )
+    workspace = ExecutionWorkspace.objects.select_for_update().filter(run=run).first()
+    if workspace is not None:
+        workspace.status = ExecutionWorkspace.Status.VALIDATING
+        workspace.provider_pid = None
+        workspace.save(update_fields=["status", "provider_pid", "updated_at"])
+    if job is not None:
+        job.status = ExecutionJob.Status.QUEUED
+        job.lease_owner = ""
+        job.lease_expires_at = None
+        job.next_recovery_at = None
+        job.provider_attempt_metadata = {
+            **job.provider_attempt_metadata,
+            "recovery_action": "FINALIZE_PROVIDER_COMPLETION",
+            "provider_terminal_event": source_event,
+            "provider_terminal_sequence": source_sequence,
+            "provider_terminal_observed_at": observed_at.isoformat(),
+        }
+        job.save(
+            update_fields=[
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "next_recovery_at",
+                "provider_attempt_metadata",
+                "updated_at",
+            ]
+        )
 
 
 def _prompt(contract: ExecutionContract) -> str:
@@ -860,6 +886,16 @@ def start_run(
                 lifecycle=ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
                 provider_execution_id="",
                 attempt_count__lt=MAX_PROVIDER_START_ATTEMPTS,
+            )
+            .order_by("id")
+            .first()
+        )
+    if recoverable_run is None:
+        recoverable_run = (
+            ExecutionRun.objects.filter(
+                contract=contract,
+                lifecycle=ExecutionRun.Lifecycle.REPAIRING,
+                provider_execution_id="",
             )
             .order_by("id")
             .first()
@@ -1156,7 +1192,10 @@ def execute_claimed_job(
             raise ValueError("WORKER_LEASE_NOT_OWNED")
         if job.run.lifecycle not in ACTIVE_STATES:
             raise ValueError("EXECUTION_RUN_NOT_ACTIVE")
-    if job.provider_attempt_metadata.get("recovery_action") == "REATTACH":
+    action = job.provider_attempt_metadata.get("recovery_action")
+    if action == "FINALIZE_PROVIDER_COMPLETION":
+        return finalize_provider_completion(job, worker_id)
+    if action == "REATTACH":
         job.status = ExecutionJob.Status.STARTED
         job.provider_attempt_metadata = {
             **job.provider_attempt_metadata,
@@ -1185,6 +1224,171 @@ def execute_claimed_job(
     }
     job.save(update_fields=["status", "provider_attempt_metadata", "updated_at"])
     add_event(run, "WORKER_DISPATCH_COMPLETED", worker=worker_id)
+    return run
+
+
+def finalize_provider_completion(job: ExecutionJob, worker_id: str) -> ExecutionRun:
+    """Inspect an exited provider workspace and queue authoritative recovery.
+
+    This deliberately does not infer delivery, deployment, or scope completion
+    from an exit code.  A provider that omitted canonical completion evidence
+    is resumed from the same accepted contract after its repository facts have
+    been durably recorded.
+    """
+    expected_fencing_token = job.lease_fencing_token
+    with transaction.atomic():
+        locked = (
+            ExecutionJob.objects.select_for_update()
+            .select_related("run", "run__contract")
+            .get(pk=job.pk)
+        )
+        if locked.lease_fencing_token != expected_fencing_token:
+            raise ValueError("WORKER_FENCING_TOKEN_STALE")
+        if (
+            locked.status != ExecutionJob.Status.LEASED
+            or locked.lease_owner != worker_id
+        ):
+            raise ValueError("WORKER_LEASE_NOT_OWNED")
+        run = locked.run
+        if run.lifecycle != ExecutionRun.Lifecycle.VALIDATING:
+            raise ValueError("PROVIDER_FINALIZATION_NOT_PENDING")
+        workspace = (
+            ExecutionWorkspace.objects.select_for_update().filter(run=run).first()
+        )
+        facts: dict[str, object] = {"workspace_present": workspace is not None}
+        if workspace is not None and Path(workspace.repository_path).is_dir():
+            repository = Path(workspace.repository_path)
+            try:
+                head = subprocess.run(
+                    ["git", "-C", str(repository), "rev-parse", "HEAD"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    shell=False,
+                ).stdout.strip()
+                changed = subprocess.run(
+                    ["git", "-C", str(repository), "status", "--porcelain"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    shell=False,
+                ).stdout.splitlines()
+                facts.update(
+                    {
+                        "repository_inspected": True,
+                        "head": head,
+                        "dirty_entry_count": len(changed),
+                        # A provider terminal notification does not prove a
+                        # delivery.  Preserve the distinct no-change result
+                        # so recovery never invents a commit or receipt.
+                        "provider_outcome": (
+                            "NO_CHANGE"
+                            if head == run.baseline_commit and not changed
+                            else "CANONICAL_COMPLETION_MISSING"
+                        ),
+                    }
+                )
+            except (OSError, subprocess.SubprocessError):
+                facts.update(
+                    {
+                        "repository_inspected": False,
+                        "inspection_error": "GIT_INSPECTION_FAILED",
+                    }
+                )
+        else:
+            facts.update(
+                {
+                    "repository_inspected": False,
+                    "inspection_error": "WORKSPACE_REPOSITORY_UNAVAILABLE",
+                }
+            )
+        if workspace is not None:
+            workspace.status = ExecutionWorkspace.Status.RETAINED
+            workspace.provider_pid = None
+            workspace.retention_until = None
+            workspace.retention_reason = "PROVIDER_COMPLETION_RECOVERY"
+            workspace.save(
+                update_fields=[
+                    "status",
+                    "provider_pid",
+                    "retention_until",
+                    "retention_reason",
+                    "updated_at",
+                ]
+            )
+        locked.status = ExecutionJob.Status.RECOVERING
+        locked.lease_owner = ""
+        locked.lease_expires_at = None
+        locked.recovery_attempts += 1
+        locked.next_recovery_at = timezone.now() + timedelta(
+            seconds=PROVIDER_START_RECOVERY_DELAY_SECONDS
+        )
+        locked.provider_attempt_metadata = {
+            **locked.provider_attempt_metadata,
+            "recovery_action": "RESTART_FROM_AUTHORITY",
+            "finalization_facts": facts,
+        }
+        locked.save(
+            update_fields=[
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "recovery_attempts",
+                "next_recovery_at",
+                "provider_attempt_metadata",
+                "updated_at",
+            ]
+        )
+        run.lifecycle = ExecutionRun.Lifecycle.REPAIRING
+        provider_outcome = facts.get("provider_outcome")
+        run.current_phase = (
+            "PROVIDER_COMPLETION_NO_CHANGE_RECOVERY_REQUIRED"
+            if provider_outcome == "NO_CHANGE"
+            else "PROVIDER_COMPLETION_RECOVERY_REQUIRED"
+        )
+        run.current_blocker = {
+            "category": (
+                "PROVIDER_NO_CHANGE_RESULT"
+                if provider_outcome == "NO_CHANGE"
+                else "PROVIDER_COMPLETION_EVIDENCE_MISSING"
+            ),
+            "reason": (
+                "provider exited with an explicit no-change repository result; "
+                "canonical completion, delivery, and deployment remain absent"
+                if provider_outcome == "NO_CHANGE"
+                else "provider exited without canonical completion, delivery, or "
+                "deployment evidence"
+            ),
+            "repository_facts": facts,
+            "retry_at": locked.next_recovery_at.isoformat(),
+        }
+        run.provider_execution_id = ""
+        run.ended_at = None
+        run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "provider_execution_id",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+    add_event(run, "PROVIDER_FINALIZATION_REPOSITORY_INSPECTED", **facts)
+    if facts.get("provider_outcome") == "NO_CHANGE":
+        add_event(
+            run,
+            "PROVIDER_COMPLETED_NO_CHANGE",
+            outcome="NO_CHANGE",
+            baseline_commit=run.baseline_commit,
+        )
+    add_event(
+        run,
+        "PROVIDER_COMPLETION_RECOVERY_QUEUED",
+        retry_at=locked.next_recovery_at.isoformat(),
+    )
     return run
 
 

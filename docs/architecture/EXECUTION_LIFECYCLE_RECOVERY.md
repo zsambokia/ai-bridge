@@ -31,6 +31,24 @@ store or a parallel queue.
    present the token it was issued before it may heartbeat, start, reject, or
    fail work. An expired worker cannot write after a replacement claim.
 
+## Provider-completion finalization
+
+`PROVIDER_COMPLETED` is provider activity evidence, not canonical completion
+evidence. A terminal provider event therefore cannot directly cancel the
+contract or classify a live run as `BLOCKED_EXTERNAL_INPUT`. The event handler
+atomically moves the run and workspace to `VALIDATING`, clears the live PID
+projection, and queues the same job with the
+`FINALIZE_PROVIDER_COMPLETION` recovery action.
+
+The finalization worker inspects the isolated repository (`HEAD` and porcelain
+status) before it determines the next safe action. It records either a
+distinct `NO_CHANGE` outcome or `CANONICAL_COMPLETION_MISSING` facts, retains
+the workspace with a policy reason, and schedules bounded recovery from the
+same accepted contract. It never invents a final SHA, delivery receipt,
+deployment verification, or scope completion from a successful provider exit.
+A duplicate terminal event observes the already-pending finalization and
+creates neither a second recovery path nor a duplicate delivery path.
+
 All reconciliation decisions are idempotent: a subsequent pass sees the
 converged state and makes no duplicate transition or audit record.
 

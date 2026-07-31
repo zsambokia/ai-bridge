@@ -73,8 +73,10 @@ def queue_workspace_provisioning_recovery(
     """
     observed_at = now or timezone.now()
     with transaction.atomic():
-        locked = ExecutionJob.objects.select_for_update().select_related("run").get(
-            pk=job.pk
+        locked = (
+            ExecutionJob.objects.select_for_update()
+            .select_related("run")
+            .get(pk=job.pk)
         )
         run = locked.run
         if (

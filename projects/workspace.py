@@ -524,7 +524,8 @@ class WorkspaceManager:
 
     def mark_validating(self, workspace: ExecutionWorkspace) -> None:
         workspace.status = ExecutionWorkspace.Status.VALIDATING
-        workspace.save(update_fields=["status", "updated_at"])
+        workspace.provider_pid = None
+        workspace.save(update_fields=["status", "provider_pid", "updated_at"])
 
     def retain(self, workspace: ExecutionWorkspace, run: ExecutionRun) -> None:
         workspace.status = ExecutionWorkspace.Status.RETAINED

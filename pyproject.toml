@@ -24,6 +24,15 @@ testpaths = ["core/tests", "projects/tests", "storybook"]
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+extend-exclude = [
+    ".sprint2-operational-runtime",
+    ".sprint3-operational-runtime",
+    ".sprint4-operational-runtime",
+    ".sprint5-forward-runtime",
+    ".sprint5-operational-runtime",
+    ".sprint6-runtime-repair",
+    ".sprint6-sha-bound-runtime",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

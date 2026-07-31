@@ -611,3 +611,13 @@ than remaining quiet. The repaired execution `218cb756-807c-46d5-8e82-dc19ac210f
 reached checkout, venv, database, bootstrap, and provider start on retry.
 This is a local runtime recovery proof, not the outstanding ChatGPT Business
 UI-to-Remote-MCP Operational Acceptance proof.
+
+The same historical execution then exposed a distinct provider-completion
+finalization defect: a `PROVIDER_COMPLETED` event was previously treated as an
+external-input block before workspace inspection. Sprint 6 now queues an
+idempotent worker-owned finalization step, clears the PID, records repository
+facts and an explicit no-change or missing-completion outcome, then uses
+bounded technical recovery. The legacy execution has no committed change or
+delivery and remains immutable historical evidence; a fresh ChatGPT Business
+UI request is required for the truthful end-to-end proof after staging carries
+this repair.

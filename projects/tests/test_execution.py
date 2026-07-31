@@ -29,6 +29,7 @@ from projects.execution import (
     defer_claimed_job_for_active_branch,
     enqueue_run,
     execute_claimed_job,
+    finalize_provider_completion,
     heartbeat_job,
     is_non_retryable_execution_failure,
     record_gate_rerun,
@@ -233,7 +234,7 @@ def test_provider_starts_only_after_consumption(
 
 
 @pytest.mark.django_db
-def test_provider_terminal_event_closes_the_canonical_lifecycle(
+def test_provider_terminal_event_queues_canonical_finalization(
     consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -249,15 +250,179 @@ def test_provider_terminal_event_closes_the_canonical_lifecycle(
     run.refresh_from_db()
     job.refresh_from_db()
     contract.refresh_from_db()
-    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
-    assert run.current_phase == "PROVIDER_TERMINALIZED"
-    assert run.terminal_state == "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
-    assert job.status == ExecutionJob.Status.FAILED
-    assert contract.lifecycle == ExecutionContract.Lifecycle.CANCELLED
-    assert contract.closure_state == run.terminal_state
+    workspace = ExecutionWorkspace.objects.get(run=run)
+    assert run.lifecycle == ExecutionRun.Lifecycle.VALIDATING
+    assert run.current_phase == "PROVIDER_COMPLETION_FINALIZATION_PENDING"
+    assert run.terminal_state == ""
+    assert job.status == ExecutionJob.Status.QUEUED
+    assert (
+        job.provider_attempt_metadata["recovery_action"]
+        == "FINALIZE_PROVIDER_COMPLETION"
+    )
+    assert contract.lifecycle == ExecutionContract.Lifecycle.RUNNING
+    assert workspace.status == ExecutionWorkspace.Status.VALIDATING
+    assert workspace.provider_pid is None
     assert run.events.filter(
-        event_type="PROVIDER_TERMINAL_LIFECYCLE_TERMINALIZED"
+        event_type="PROVIDER_COMPLETION_FINALIZATION_QUEUED"
     ).exists()
+
+
+@pytest.mark.django_db
+def test_duplicate_terminal_event_does_not_queue_duplicate_finalization(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    ExecutionJob.objects.create(run=run, status=ExecutionJob.Status.STARTED)
+
+    add_event(run, "PROVIDER_COMPLETED", provider_event_id="terminal-1")
+    queued_events = run.events.filter(
+        event_type="PROVIDER_COMPLETION_FINALIZATION_QUEUED"
+    ).count()
+    add_event(run, "PROVIDER_COMPLETED", provider_event_id="terminal-1")
+
+    run.refresh_from_db()
+    assert run.lifecycle == ExecutionRun.Lifecycle.VALIDATING
+    assert (
+        run.events.filter(event_type="PROVIDER_COMPLETION_FINALIZATION_QUEUED").count()
+        == queued_events
+    )
+
+
+@pytest.mark.django_db
+def test_finalization_inspects_workspace_clears_pid_and_queues_recovery(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    workspace = ExecutionWorkspace.objects.get(run=run)
+    workspace.status = ExecutionWorkspace.Status.VALIDATING
+    workspace.provider_pid = 22000
+    workspace.save(update_fields=["status", "provider_pid", "updated_at"])
+    run.lifecycle = ExecutionRun.Lifecycle.VALIDATING
+    run.current_phase = "PROVIDER_COMPLETION_FINALIZATION_PENDING"
+    run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+    job = ExecutionJob.objects.create(
+        run=run,
+        status=ExecutionJob.Status.QUEUED,
+        provider_attempt_metadata={"recovery_action": "FINALIZE_PROVIDER_COMPLETION"},
+    )
+
+    claimed = claim_next_job("finalizer", 60)
+
+    assert claimed is not None
+    finalized = finalize_provider_completion(claimed, "finalizer")
+    finalized.refresh_from_db()
+    job.refresh_from_db()
+    workspace.refresh_from_db()
+    assert finalized.lifecycle == ExecutionRun.Lifecycle.REPAIRING
+    assert finalized.current_phase == "PROVIDER_COMPLETION_RECOVERY_REQUIRED"
+    assert finalized.provider_execution_id == ""
+    assert job.status == ExecutionJob.Status.RECOVERING
+    assert job.provider_attempt_metadata["recovery_action"] == "RESTART_FROM_AUTHORITY"
+    assert workspace.status == ExecutionWorkspace.Status.RETAINED
+    assert workspace.provider_pid is None
+    assert finalized.events.filter(
+        event_type="PROVIDER_FINALIZATION_REPOSITORY_INSPECTED"
+    ).exists()
+    assert finalized.events.filter(
+        event_type="PROVIDER_COMPLETION_RECOVERY_QUEUED"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_finalization_recovery_is_claimable_and_restarts_the_same_run(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    run.lifecycle = ExecutionRun.Lifecycle.VALIDATING
+    run.current_phase = "PROVIDER_COMPLETION_FINALIZATION_PENDING"
+    run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+    job = ExecutionJob.objects.create(
+        run=run,
+        status=ExecutionJob.Status.QUEUED,
+        provider_attempt_metadata={"recovery_action": "FINALIZE_PROVIDER_COMPLETION"},
+    )
+
+    claimed = claim_next_job("finalizer", 60)
+    assert claimed is not None
+    finalize_provider_completion(claimed, "finalizer")
+    job.refresh_from_db()
+    job.next_recovery_at = timezone.now() - timedelta(seconds=1)
+    job.save(update_fields=["next_recovery_at"])
+
+    reclaimed = claim_next_job("recovery-worker", 60)
+    assert reclaimed is not None
+    restarted = execute_claimed_job(reclaimed, "recovery-worker", root)
+    restarted.refresh_from_db()
+    job.refresh_from_db()
+    assert restarted.pk == run.pk
+    assert restarted.lifecycle == ExecutionRun.Lifecycle.RUNNING
+    assert job.status == ExecutionJob.Status.STARTED
+    assert restarted.events.filter(event_type="WORKER_DISPATCH_COMPLETED").exists()
+
+
+@pytest.mark.django_db
+def test_finalization_records_no_change_without_inventing_delivery(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    run = start_run(contract, request, root)
+    monkeypatch.setattr(
+        "projects.execution.subprocess.run",
+        lambda arguments, **_: SimpleNamespace(
+            stdout=run.baseline_commit
+            if arguments[-2:] == ["rev-parse", "HEAD"]
+            else ""
+        ),
+    )
+    workspace = ExecutionWorkspace.objects.get(run=run)
+    workspace.status = ExecutionWorkspace.Status.VALIDATING
+    workspace.provider_pid = 22000
+    workspace.save(update_fields=["status", "provider_pid", "updated_at"])
+    run.lifecycle = ExecutionRun.Lifecycle.VALIDATING
+    run.current_phase = "PROVIDER_COMPLETION_FINALIZATION_PENDING"
+    run.save(update_fields=["lifecycle", "current_phase", "updated_at"])
+    job = ExecutionJob.objects.create(
+        run=run,
+        status=ExecutionJob.Status.QUEUED,
+        provider_attempt_metadata={"recovery_action": "FINALIZE_PROVIDER_COMPLETION"},
+    )
+
+    claimed = claim_next_job("finalizer", 60)
+    assert claimed is not None
+    finalized = finalize_provider_completion(claimed, "finalizer")
+
+    finalized.refresh_from_db()
+    job.refresh_from_db()
+    workspace.refresh_from_db()
+    assert finalized.lifecycle == ExecutionRun.Lifecycle.REPAIRING
+    assert finalized.current_phase == "PROVIDER_COMPLETION_NO_CHANGE_RECOVERY_REQUIRED"
+    assert finalized.current_blocker["category"] == "PROVIDER_NO_CHANGE_RESULT"
+    assert (
+        job.provider_attempt_metadata["finalization_facts"]["provider_outcome"]
+        == "NO_CHANGE"
+    )
+    assert workspace.provider_pid is None
+    assert not hasattr(finalized, "delivery")
+    assert finalized.events.filter(event_type="PROVIDER_COMPLETED_NO_CHANGE").exists()
 
 
 @pytest.mark.django_db

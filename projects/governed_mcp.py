@@ -1329,9 +1329,7 @@ def _derived_conversation_confirmation(
     of the authenticated MCP connection and exact current proposal produces all
     durable values before the ordinary canonical orchestration is entered.
     """
-    if not _is_explicit_product_owner_confirmation(
-        arguments["confirmation_text"]
-    ):
+    if not _is_explicit_product_owner_confirmation(arguments["confirmation_text"]):
         raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
     project = _project(arguments)
     scope = ExecutableScope.objects.get(
@@ -1385,9 +1383,7 @@ def _derived_recovery_confirmation(
     resuming an already-approved scope.  The caller must instead echo the
     exact version and hash obtained from ``scope.resume``.
     """
-    if not _is_explicit_product_owner_confirmation(
-        arguments["confirmation_text"]
-    ):
+    if not _is_explicit_product_owner_confirmation(arguments["confirmation_text"]):
         raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
     caller_fingerprint = hashlib.sha256(caller.encode("utf-8")).hexdigest()
     product_owner_identity = f"authenticated-mcp-caller:{caller_fingerprint}"
@@ -2064,9 +2060,7 @@ def _resume_confirm_and_execute(
     fresh session.  We reuse the existing durable approval/orchestration record
     whenever one already exists; a retry never creates another contract or run.
     """
-    if not _is_explicit_product_owner_confirmation(
-        arguments["confirmation_text"]
-    ):
+    if not _is_explicit_product_owner_confirmation(arguments["confirmation_text"]):
         raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
     scope = ExecutableScope.objects.select_for_update().get(
         project=project, identifier=arguments["scope_identifier"]
@@ -2184,9 +2178,7 @@ def _confirm_conversation(
     arguments: dict[str, Any], project: Project, caller: str
 ) -> dict[str, Any]:
     """Map an accepted Product Owner phrase to the exact displayed proposal."""
-    if not _is_explicit_product_owner_confirmation(
-        arguments["confirmation_text"]
-    ):
+    if not _is_explicit_product_owner_confirmation(arguments["confirmation_text"]):
         raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
     scope = ExecutableScope.objects.get(
         project=project, identifier=arguments["scope_identifier"]

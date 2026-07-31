@@ -160,9 +160,7 @@ def test_mcp_and_canonical_projection_share_runtime_deployment_state(
         smoke_result=_pass_result(),
         receipt={},
     )
-    deployment = record_rollback(
-        deployment, {"status": "PASS", "target_sha": "b" * 40}
-    )
+    deployment = record_rollback(deployment, {"status": "PASS", "target_sha": "b" * 40})
     result = invoke_public_tool(
         "deployment.get_status", {"delivery_id": verified_delivery.pk}
     )

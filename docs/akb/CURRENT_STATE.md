@@ -495,6 +495,21 @@ with an idempotent provider event identity per run. The read-only execution
 surface exposes Activity, Provider Output, and Raw Events views; Raw Events
 remain redacted structured payloads, not credential-bearing raw transcripts.
 
+### Sprint 6 provider-completion finalization repair
+
+The historical ChatGPT-originated execution
+`218cb756-807c-46d5-8e82-dc19ac210f08` reached a terminal provider event but
+had no canonical completion, repository delivery, or deployment receipt. The
+provider event now queues deterministic finalization instead of cancelling the
+contract as an external-input block. Finalization clears the live PID,
+transitions the workspace to `VALIDATING`, inspects the isolated Git state,
+records `NO_CHANGE` or missing-completion facts, and schedules bounded
+technical recovery. It never manufactures a SHA, delivery, or deployment from
+an exit event. The old execution was clean at its baseline and cannot be
+truthfully completed retroactively; it remains evidence for the repair and a
+fresh actual ChatGPT Business request is required for Sprint 6 Operational
+Acceptance.
+
 ## External governed-execution lifecycle reconciliation
 
 Evidence-backed external or Factory Development Mode work can be admitted into

@@ -16,9 +16,12 @@ from typing import Callable
 from django.db import transaction
 from django.utils import timezone
 
-from .execution import ACTIVE_STATES, add_event
+from .execution import (
+    ACTIVE_STATES,
+    _queue_provider_completion_finalization_locked,
+    add_event,
+)
 from .models import (
-    ExecutionContract,
     ExecutionJob,
     ExecutionRecoveryAttempt,
     ExecutionRun,
@@ -396,41 +399,19 @@ def _terminalize_finished_provider(
     evidence: dict[str, object],
     observed_at: datetime,
 ) -> None:
-    """Reconcile a verified provider exit without inventing completion evidence."""
-    run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
-    run.current_phase = "PROVIDER_TERMINALIZED"
-    run.current_blocker = {
-        "category": "PROVIDER_TERMINAL_EVENT",
-        "reason": "provider was verified FINISHED before canonical completion",
-        "evidence": evidence,
-    }
-    run.terminal_state = "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
-    run.ended_at = observed_at
-    run.save(
-        update_fields=[
-            "lifecycle",
-            "current_phase",
-            "current_blocker",
-            "terminal_state",
-            "ended_at",
-            "updated_at",
-        ]
+    """Queue finalization for a verified provider exit without inventing completion."""
+    _queue_provider_completion_finalization_locked(
+        run,
+        job,
+        source_event="PROVIDER_FINISHED_RECONCILIATION",
+        source_sequence=None,
+        observed_at=observed_at,
     )
-    job.status = ExecutionJob.Status.FAILED
-    job.lease_owner = ""
-    job.lease_expires_at = None
-    job.next_recovery_at = None
-    contract = ExecutionContract.objects.select_for_update().get(pk=run.contract_id)
-    if contract.lifecycle == ExecutionContract.Lifecycle.RUNNING:
-        contract.lifecycle = ExecutionContract.Lifecycle.CANCELLED
-        contract.closure_state = run.terminal_state
-        contract.completed_at = observed_at
-        contract.save(update_fields=["lifecycle", "closure_state", "completed_at"])
     add_event(
         run,
-        "PROVIDER_TERMINAL_RECONCILED",
+        "PROVIDER_COMPLETION_FINALIZATION_QUEUED",
         **evidence,
-        terminal_state=run.terminal_state,
+        source_event="PROVIDER_FINISHED_RECONCILIATION",
     )
 
 
@@ -575,8 +556,8 @@ def reconcile_execution_jobs(
                     evidence=evidence,
                     observed_at=observed_at,
                 )
-                outcome = ExecutionRecoveryAttempt.Outcome.REVIEW_REQUIRED
-                reason = "provider finished without canonical completion evidence"
+                outcome = ExecutionRecoveryAttempt.Outcome.RECOVERING
+                reason = "provider completion finalization queued"
             elif job.recovery_attempts < MAX_RECOVERY_ATTEMPTS:
                 job.status = ExecutionJob.Status.RECOVERING
                 job.recovery_attempts += 1

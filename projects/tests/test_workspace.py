@@ -12,9 +12,12 @@ from projects.models import ExecutionRun
 
 
 def test_command_label_does_not_include_command_arguments() -> None:
-    assert workspace._command_label(
-        ["git", "clone", "https://token@example.invalid/private.git"]
-    ) == "git:clone"
+    assert (
+        workspace._command_label(
+            ["git", "clone", "https://token@example.invalid/private.git"]
+        )
+        == "git:clone"
+    )
     assert workspace._command_label(["git", "-C", "workspace", "checkout"]) == (
         "git:checkout"
     )
@@ -33,9 +36,7 @@ def test_target_repository_url_uses_registered_project_root(
         repository="zsambokia/bridge-demo",
     )
     observed_command: list[str] = []
-    monkeypatch.setattr(
-        workspace, "project_repository_root", lambda *_: target_root
-    )
+    monkeypatch.setattr(workspace, "project_repository_root", lambda *_: target_root)
     monkeypatch.setattr(
         workspace, "_repository_identity", lambda _: "zsambokia/bridge-demo"
     )

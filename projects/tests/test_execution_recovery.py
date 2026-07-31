@@ -138,7 +138,7 @@ def test_stale_alive_provider_is_queued_for_worker_reattach(
 
 
 @pytest.mark.django_db
-def test_finished_provider_is_terminalized_without_inventing_completion(
+def test_finished_provider_queues_finalization_without_inventing_completion(
     recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
 ) -> None:
     root, contract, request = recovery_consumed_contract
@@ -171,14 +171,19 @@ def test_finished_provider_is_terminalized_without_inventing_completion(
     run.refresh_from_db()
     job.refresh_from_db()
     contract.refresh_from_db()
-    assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.REVIEW_REQUIRED
-    assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
-    assert run.current_phase == "PROVIDER_TERMINALIZED"
-    assert run.terminal_state == "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE"
-    assert job.status == ExecutionJob.Status.FAILED
-    assert contract.lifecycle == ExecutionContract.Lifecycle.CANCELLED
-    assert contract.closure_state == run.terminal_state
-    assert run.events.filter(event_type="PROVIDER_TERMINAL_RECONCILED").exists()
+    assert decisions[0].outcome == ExecutionRecoveryAttempt.Outcome.RECOVERING
+    assert run.lifecycle == ExecutionRun.Lifecycle.VALIDATING
+    assert run.current_phase == "PROVIDER_COMPLETION_FINALIZATION_PENDING"
+    assert run.terminal_state == ""
+    assert job.status == ExecutionJob.Status.QUEUED
+    assert (
+        job.provider_attempt_metadata["recovery_action"]
+        == "FINALIZE_PROVIDER_COMPLETION"
+    )
+    assert contract.lifecycle == ExecutionContract.Lifecycle.RUNNING
+    assert run.events.filter(
+        event_type="PROVIDER_COMPLETION_FINALIZATION_QUEUED"
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -534,15 +539,11 @@ def test_worker_refuses_a_preclaimed_job_after_run_terminalization(
     with pytest.raises(ValueError, match="EXECUTION_RUN_NOT_ACTIVE"):
         execute_claimed_job(job, "worker", root)
 
-    rejected = reject_claimed_job(
-        job, "worker", ValueError("EXECUTION_RUN_NOT_ACTIVE")
-    )
+    rejected = reject_claimed_job(job, "worker", ValueError("EXECUTION_RUN_NOT_ACTIVE"))
     run.refresh_from_db()
     assert rejected.status == ExecutionJob.Status.REJECTED
     assert run.lifecycle == ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
-    assert run.events.filter(
-        event_type="WORKER_RUN_LIFECYCLE_RACE_CONVERGED"
-    ).exists()
+    assert run.events.filter(event_type="WORKER_RUN_LIFECYCLE_RACE_CONVERGED").exists()
 
 
 @pytest.mark.django_db
