@@ -590,6 +590,13 @@ def test_missing_workspace_provider_pid_enters_bounded_recovery(
     assert run.events.filter(event_type="WORKSPACE_PROVIDER_PID_MISSING").exists()
 
 
+def test_provider_pid_liveness_rejects_nonexistent_process() -> None:
+    """A dead local provider PID must not be mistaken for a live process."""
+    from projects.execution_recovery import provider_pid_is_alive
+
+    assert provider_pid_is_alive(2_147_483_647) is False
+
+
 @pytest.mark.django_db
 def test_orphan_workspace_is_retained_once_after_terminal_run(
     recovery_consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],

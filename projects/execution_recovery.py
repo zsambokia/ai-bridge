@@ -7,7 +7,9 @@ records why recovery needs review.
 
 from __future__ import annotations
 
+import ctypes
 import os
+from ctypes import wintypes
 from datetime import datetime, timedelta
 from typing import Callable
 
@@ -164,6 +166,28 @@ def provider_pid_is_alive(provider_pid: int | None) -> bool:
     """Check a locally-owned provider PID without trusting stale workspace data."""
     if not isinstance(provider_pid, int) or provider_pid <= 0:
         return False
+    if os.name == "nt":
+        # ``os.kill(pid, 0)`` does not reliably distinguish a terminated PID on
+        # Windows.  Query the process handle instead, so dead provider PIDs
+        # enter the bounded recovery path rather than terminalising a live run.
+        process_query_limited_information = 0x1000
+        synchronize = 0x00100000
+        still_active = 259
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(
+            process_query_limited_information | synchronize,
+            False,
+            provider_pid,
+        )
+        if not handle:
+            return False
+        try:
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == still_active
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(provider_pid, 0)
     except OSError:
