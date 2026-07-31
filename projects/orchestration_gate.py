@@ -13,10 +13,15 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
-from .knowledge import context_package
+from .knowledge import (
+    build_and_record_context_package,
+    context_package,
+    record_context_use,
+)
 from .models import (
     ConversationOrchestration,
     ExecutionContract,
+    KnowledgeContextUse,
     OrchestrationDecision,
     OrchestrationSession,
     OwnershipAssessment,
@@ -121,7 +126,13 @@ def open_gate(flow: ConversationOrchestration, caller: str) -> OrchestrationSess
             )
         except IntegrityError:
             return OrchestrationSession.objects.get(idempotency_key=key)
-        package = context_package(project, f"conversation:{flow.token}", "ENGINEERING")
+        package = build_and_record_context_package(
+            project,
+            f"conversation:{flow.token}",
+            "ENGINEERING",
+            retrieval_intent="conversation-confirmation",
+            retrieval_query=session.request_summary,
+        )
         selected, confidence, reason, candidates, risks = _ownership(
             project, session.request_summary
         )
@@ -176,6 +187,7 @@ def open_gate(flow: ConversationOrchestration, caller: str) -> OrchestrationSess
                 else ""
             ),
         )
+        record_context_use(package["package_id"], session=session, decision=decision)
         assessment.policy_decision = policy.decision
         assessment.save(update_fields=["policy_decision", "updated_at"])
         decision_hash = _hash(
@@ -222,6 +234,14 @@ def bind_runtime(session: OrchestrationSession, contract: ExecutionContract) -> 
     session.save(
         update_fields=["execution_provider_id", "runtime_profile_hash", "updated_at"]
     )
+    if isinstance(contract, ExecutionContract):
+        try:
+            context_use = session.knowledge_context_use
+        except KnowledgeContextUse.DoesNotExist:
+            # A Sprint 2 session predates durable Context Package use.
+            return
+        context_use.execution_contract = contract
+        context_use.save(update_fields=["execution_contract"])
 
 
 def assert_contract_authorized(contract: ExecutionContract) -> OrchestrationSession:
@@ -239,7 +259,11 @@ def assert_contract_authorized(contract: ExecutionContract) -> OrchestrationSess
         raise ValueError("ORCHESTRATION_DECISION_INVALID")
     binding = contract.payload.get("orchestration", {})
     expected_context = context_package(
-        session.project, session.correlation_id, "ENGINEERING"
+        session.project,
+        session.correlation_id,
+        "ENGINEERING",
+        retrieval_intent="conversation-confirmation",
+        retrieval_query=session.request_summary,
     )["hash"]
     if (
         binding.get("session_token") != str(session.token)
@@ -277,6 +301,10 @@ def trace_for_contract(contract: ExecutionContract) -> dict[str, Any]:
     session = assert_contract_authorized(contract)
     decision = session.decision
     assessment = session.ownership_assessment
+    try:
+        context_use = session.knowledge_context_use
+    except KnowledgeContextUse.DoesNotExist:
+        context_use = None
     return {
         "session_token": str(session.token),
         "actor_identity": session.actor_identity,
@@ -287,6 +315,16 @@ def trace_for_contract(contract: ExecutionContract) -> dict[str, Any]:
         "authority_classification": decision.authority_classification,
         "policy_decision": decision.policy_decision,
         "context_package_hash": session.context_package_hash,
+        "context_package_id": context_use.package_id if context_use else None,
+        "context_source_versions": (
+            context_use.package.source_versions if context_use else {}
+        ),
+        "context_stale_warnings": (
+            context_use.package.stale_warnings if context_use else []
+        ),
+        "context_conflict_warnings": (
+            context_use.package.conflict_warnings if context_use else []
+        ),
         "decision_hash": session.decision_hash,
         "provider": session.execution_provider_id,
         "runtime_profile_hash": session.runtime_profile_hash,

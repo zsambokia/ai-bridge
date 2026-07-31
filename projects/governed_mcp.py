@@ -59,7 +59,7 @@ from .execution import (
 )
 from .execution_activity import activity_summary, events_for_view
 from .knowledge import (
-    context_package as akb_context_package,
+    build_and_record_context_package as akb_context_package,
 )
 from .knowledge import (
     create_or_upsert_candidate,
@@ -81,10 +81,13 @@ from .models import (
     ExecutionRun,
     ExecutionStartRequest,
     GovernanceApproval,
+    KnowledgeContextPackage,
     KnowledgeEntry,
     McpAuditEvent,
     McpIdempotencyRecord,
     Project,
+    RoadmapItem,
+    RoadmapUpdateCandidate,
 )
 from .orchestration_gate import (
     assert_contract_authorized,
@@ -93,6 +96,9 @@ from .orchestration_gate import (
     trace_for_contract,
 )
 from .providers import public_provider
+from .roadmap import create_item as create_roadmap_item
+from .roadmap import propose_update as propose_roadmap_update
+from .roadmap import review_update as review_roadmap_update
 from .scopes import (
     answer_clarifications,
     approved_scope,
@@ -182,6 +188,9 @@ _AKB_ENTRY = {
     "freshness_status": {"type": "string", "maxLength": 32},
     "knowledge_owner_role": {"type": "string", "maxLength": 64},
     "is_must_know": {"type": "boolean"},
+    "source_version": {"type": "string", "maxLength": 128},
+    "conflict_key": {"type": "string", "maxLength": 160},
+    "precedence": {"type": "integer", "minimum": 0, "maximum": 65535},
 }
 _ENGINEERING_ENTITY = {
     "entity_key": {"type": "string", "minLength": 1, "maxLength": 160},
@@ -346,14 +355,95 @@ _TOOLS = [
     ),
     _tool(
         "akb.get_context_package",
-        "Build the deterministic, auditable Orki AKB Context Package.",
+        "Build and persist the deterministic, auditable Orki AKB Context Package.",
         READ_ONLY,
         {
             **_PROJECT,
             "work_context_id": {"type": "string", "minLength": 1, "maxLength": 255},
             "role_context_id": {"type": "string", "maxLength": 64},
+            "retrieval_intent": {"type": "string", "maxLength": 128},
+            "retrieval_query": {"type": "string", "maxLength": 1000},
         },
         ["project_id", "work_context_id"],
+    ),
+    _tool(
+        "akb.get_context_usage",
+        "Read the persisted Context Package and its canonical consumption bindings.",
+        READ_ONLY,
+        {
+            **_PROJECT,
+            "package_hash": {"type": "string", "minLength": 64, "maxLength": 64},
+        },
+        ["project_id", "package_hash"],
+    ),
+    _tool(
+        "roadmap.create_item",
+        "Register a proposed project roadmap item; progression remains governed.",
+        PREPARATORY_STATE,
+        {
+            **_PROJECT,
+            "item_key": {"type": "string", "minLength": 1, "maxLength": 160},
+            "title": {"type": "string", "minLength": 1, "maxLength": 255},
+            "epic_reference": {"type": "string", "maxLength": 255},
+            "sprint_reference": {"type": "string", "maxLength": 255},
+            "dependencies": {
+                "type": "array",
+                "items": {"type": "string", "maxLength": 160},
+            },
+            **_IDEMPOTENCY,
+        },
+        ["project_id", "item_key", "title", "idempotency_key"],
+    ),
+    _tool(
+        "roadmap.propose_update",
+        "Record delivery evidence as a reviewable roadmap progress candidate.",
+        PREPARATORY_STATE,
+        {
+            **_PROJECT,
+            "item_key": {"type": "string", "minLength": 1, "maxLength": 160},
+            "proposed_state": {
+                "type": "string",
+                "enum": list(RoadmapItem.State.values),
+            },
+            "engineering_status": {"type": "string", "maxLength": 16},
+            "operational_status": {"type": "string", "maxLength": 16},
+            "evidence_references": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "maxLength": 255},
+            },
+            "final_commit_sha": {"type": "string", "maxLength": 40},
+            "source_reference": {"type": "string", "minLength": 1, "maxLength": 255},
+            **_IDEMPOTENCY,
+        },
+        [
+            "project_id",
+            "item_key",
+            "proposed_state",
+            "evidence_references",
+            "source_reference",
+            "idempotency_key",
+        ],
+    ),
+    _tool(
+        "roadmap.review_update",
+        "Approve or reject a roadmap progress candidate using a durable approval.",
+        APPROVAL_REQUIRED,
+        {
+            **_PROJECT,
+            "candidate_id": {"type": "integer", "minimum": 1},
+            "decision": {"type": "string", "enum": ["APPROVE", "REJECT"]},
+            **_APPROVAL,
+            **_IDEMPOTENCY,
+        },
+        ["project_id", "candidate_id", "decision", "idempotency_key"],
+    ),
+    _tool(
+        "roadmap.list",
+        "Read canonical project-scoped roadmap items and governed update candidates.",
+        READ_ONLY,
+        _PROJECT,
+        ["project_id"],
     ),
     _tool(
         "akb.create_candidate",
@@ -2536,7 +2626,97 @@ def invoke_public_tool(
                 project,
                 arguments["work_context_id"],
                 arguments.get("role_context_id", ""),
+                retrieval_intent=arguments.get(
+                    "retrieval_intent", "mcp-context-request"
+                ),
+                retrieval_query=arguments.get("retrieval_query", ""),
             )
+        elif name == "akb.get_context_usage":
+            assert project is not None
+            package = KnowledgeContextPackage.objects.get(
+                project=project, package_hash=arguments["package_hash"]
+            )
+            result = {
+                "package_id": package.pk,
+                "package_hash": package.package_hash,
+                "entry_ids": package.entry_ids,
+                "source_versions": package.source_versions,
+                "stale_warnings": package.stale_warnings,
+                "conflict_warnings": package.conflict_warnings,
+                "uses": [
+                    {
+                        "session_token": str(use.session.token)
+                        if use.session
+                        else None,
+                        "decision_id": use.decision_id,
+                        "contract_id": use.execution_contract_id,
+                        "run_id": use.execution_run_id,
+                    }
+                    for use in package.uses.select_related("session").all()
+                ],
+            }
+        elif name == "roadmap.create_item":
+            assert project is not None
+            roadmap_item = create_roadmap_item(project, arguments)
+            result = {
+                "item_id": roadmap_item.pk,
+                "item_key": roadmap_item.item_key,
+                "state": roadmap_item.state,
+            }
+        elif name == "roadmap.propose_update":
+            assert project is not None
+            candidate = propose_roadmap_update(
+                project, arguments["item_key"], arguments
+            )
+            result = {
+                "candidate_id": candidate.pk,
+                "status": candidate.status,
+                "item_key": candidate.item.item_key,
+            }
+        elif name == "roadmap.review_update":
+            assert project is not None
+            candidate = review_roadmap_update(
+                project,
+                arguments["candidate_id"],
+                arguments["decision"],
+                caller,
+                arguments.get("approval_reference", ""),
+            )
+            result = {
+                "candidate_id": candidate.pk,
+                "status": candidate.status,
+                "item_key": candidate.item.item_key,
+            }
+        elif name == "roadmap.list":
+            assert project is not None
+            result = {
+                "items": [
+                    {
+                        "item_key": item.item_key,
+                        "title": item.title,
+                        "state": item.state,
+                        "engineering_status": item.engineering_status,
+                        "operational_status": item.operational_status,
+                        "final_commit_sha": item.final_commit_sha,
+                        "evidence_references": item.evidence_references,
+                    }
+                    for item in RoadmapItem.objects.filter(project=project).order_by(
+                        "item_key"
+                    )
+                ],
+                "update_candidates": [
+                    {
+                        "candidate_id": item.pk,
+                        "item_key": item.item.item_key,
+                        "status": item.status,
+                    }
+                    for item in RoadmapUpdateCandidate.objects.filter(
+                        item__project=project
+                    )
+                    .select_related("item")
+                    .order_by("pk")
+                ],
+            }
         elif name in {"akb.create_candidate", "akb.upsert_candidate"}:
             assert project is not None
             entry = create_or_upsert_candidate(

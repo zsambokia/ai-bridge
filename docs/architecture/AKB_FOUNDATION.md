@@ -4,6 +4,31 @@ Sprint 1 establishes the first durable, governed AKB layer for AI Bridge. It
 does not introduce vector search, autonomous learning, deployment knowledge,
 or a replacement governance lifecycle.
 
+## Sprint 3 durable feedback loop
+
+Sprint 3 makes a retrieved AKB package a durable, attributable runtime object,
+rather than an ephemeral result. `KnowledgeContextPackage` persists its
+deterministic hash, selected entry IDs, source versions, query and intent,
+stale-source warnings, conflict warnings, and safe payload. `KnowledgeContextUse`
+then binds that exact package to the Orki session and decision and, when one is
+issued, to the execution contract and run. This distinguishes knowledge that
+exists from knowledge actually retrieved and included in a concrete execution.
+
+Retrieval remains project-scoped. Conflicts are selected deterministically by
+explicit precedence, then source version, then entry key; non-winning entries
+remain visible through conflict warnings. A source revision can mark prior
+knowledge stale without erasing its audit trail. The MCP context-package tool
+uses the same persistence and returns its durable ID and hash, and Django Admin
+exposes read-only package and use projections.
+
+Accepted delivery facts do not silently overwrite active knowledge or roadmap
+state. The feedback-loop services create `RoadmapUpdateCandidate` records first;
+only a project-bound governance approval can activate a candidate and update the
+canonical `RoadmapItem`. Completion additionally requires both engineering and
+operational PASS plus a full commit SHA. The resulting AKB fact is itself a
+candidate, preserving governed review and an honest distinction between evidence
+arrival and accepted project knowledge.
+
 ## Data and lifecycle
 
 `KnowledgeEntry` is a Platform or Project scoped knowledge object. It carries

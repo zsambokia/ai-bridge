@@ -35,6 +35,24 @@ provider-loss reconciliation, bounded provider-start retry, and a completed
 governed workspace-only request; the honest operational transcript is
 [`OPERATIONAL_ACCEPTANCE.md`](../evidence/sprint-017-orki-mandatory-orchestration-gate/OPERATIONAL_ACCEPTANCE.md).
 
+## Sprint 3 durable AKB and roadmap feedback loop
+
+Sprint 3 implementation is complete and is **ready for Product Owner review**;
+it is not recorded as accepted until that review occurs. It persists every
+retrieved Orki context package and its consumers (session, decision, contract,
+and run), including query/intent, selected IDs, source versions, stale and
+conflict warnings, and a deterministic package hash. Its `RoadmapItem` and
+`RoadmapUpdateCandidate` lifecycle is project-isolated and approval-gated:
+delivery evidence creates a candidate, while canonical progress changes only
+after review. A `COMPLETED` transition requires engineering PASS, operational
+PASS, evidence references, and a 40-character commit SHA.
+
+The local operational runtime proved a fresh governed HTTP MCP conversation,
+cross-project isolation, persisted Orki-to-run context consumption, approved
+roadmap transition, and read-only Admin/MCP projections. The complete evidence,
+including rejected fixture and request-shape attempts, is under
+`docs/evidence/factory-readiness-remediation-sprint-3-20260731/`.
+
 The Django 5.2 foundation contains split settings, SQLite configuration, the
 `core` health endpoint, and the canonical `projects` domain. The latter
 provides one Project Registry model, onboarding readiness (`PENDING`, `READY`,

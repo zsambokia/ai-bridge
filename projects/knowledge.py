@@ -9,7 +9,16 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
-from .models import GovernanceApproval, KnowledgeEntry, KnowledgeRevision, Project
+from .models import (
+    GovernanceApproval,
+    KnowledgeContextPackage,
+    KnowledgeContextUse,
+    KnowledgeEntry,
+    KnowledgeRevision,
+    OrchestrationDecision,
+    OrchestrationSession,
+    Project,
+)
 from .orchestration_context import PLATFORM_CONTEXT_ID, bind
 
 PROTECTED_TYPES = {"CONSTITUTION", "ROADMAP", "UI_PLAN", "SYSTEM_DESIGN"}
@@ -18,6 +27,7 @@ ALLOWED_TYPES = PROTECTED_TYPES | {
     "RUNBOOK",
     "POLICY",
     "ARCHITECTURE_DECISION",
+    "PRODUCT_DECISION",
     "GENERAL",
 }
 
@@ -44,6 +54,9 @@ def _metadata(entry: KnowledgeEntry) -> dict[str, Any]:
         "work_context_id": entry.work_context_id,
         "role_context": entry.role_context,
         "is_must_know": entry.is_must_know,
+        "source_version": entry.source_version,
+        "conflict_key": entry.conflict_key,
+        "precedence": entry.precedence,
     }
 
 
@@ -135,6 +148,9 @@ def create_or_upsert_candidate(
                 "freshness_status",
                 "knowledge_owner_role",
                 "is_must_know",
+                "source_version",
+                "conflict_key",
+                "precedence",
                 "evidence_references",
                 "role_context",
             ):
@@ -166,6 +182,9 @@ def create_or_upsert_candidate(
                 freshness_status=data.get("freshness_status", "CURRENT"),
                 knowledge_owner_role=data.get("knowledge_owner_role", "ENGINEERING"),
                 is_must_know=bool(data.get("is_must_know", False)),
+                source_version=data.get("source_version", ""),
+                conflict_key=data.get("conflict_key", ""),
+                precedence=data.get("precedence", 100),
                 status=KnowledgeEntry.Status.CANDIDATE,
             )
             previous, reason = 0, "CREATE_CANDIDATE"
@@ -296,7 +315,12 @@ def search(
 
 
 def context_package(
-    project: Project, work_context_id: str, role_context_id: str
+    project: Project,
+    work_context_id: str,
+    role_context_id: str,
+    *,
+    retrieval_intent: str = "context",
+    retrieval_query: str = "",
 ) -> dict[str, Any]:
     context = _context(project, work_context_id)
     entries = list(
@@ -320,9 +344,39 @@ def context_package(
         for entry in entries
         if role_context_id and role_context_id in entry.role_context
     ]
+    query_matches = [
+        entry
+        for entry in entries
+        if retrieval_query
+        and retrieval_query.lower() in (entry.title + "\n" + entry.content).lower()
+    ]
     selected = {
-        entry.pk: entry for entry in [*platform, *project_entries, *task, *role]
+        entry.pk: entry
+        for entry in [*platform, *project_entries, *task, *role, *query_matches]
     }
+    conflicts: list[dict[str, Any]] = []
+    by_conflict: dict[str, list[KnowledgeEntry]] = {}
+    for entry in selected.values():
+        if entry.conflict_key:
+            by_conflict.setdefault(entry.conflict_key, []).append(entry)
+    for key, candidates in sorted(by_conflict.items()):
+        if len(candidates) > 1:
+            winner = sorted(
+                candidates,
+                key=lambda item: (item.precedence, -item.version, item.entry_key),
+            )[0]
+            conflicts.append(
+                {
+                    "conflict_key": key,
+                    "winner_entry_id": winner.pk,
+                    "excluded_entry_ids": sorted(
+                        item.pk for item in candidates if item.pk != winner.pk
+                    ),
+                }
+            )
+            for item in candidates:
+                if item.pk != winner.pk:
+                    selected.pop(item.pk, None)
     ordered = [selected[key] for key in sorted(selected)]
     sources = [
         _metadata(entry)
@@ -332,7 +386,14 @@ def context_package(
         }
         for entry in ordered
     ]
-    stable = {**context, "role_context_id": role_context_id, "source_entries": sources}
+    stable = {
+        **context,
+        "role_context_id": role_context_id,
+        "retrieval_intent": retrieval_intent,
+        "retrieval_query": retrieval_query,
+        "source_entries": sources,
+        "conflict_warnings": conflicts,
+    }
     package_hash = hashlib.sha256(
         json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -343,5 +404,89 @@ def context_package(
         "task_entries": [entry.pk for entry in task],
         "role_entries": [entry.pk for entry in role],
         "entry_ids": [entry.pk for entry in ordered],
+        "source_versions": {
+            str(entry.pk): entry.source_version or str(entry.version)
+            for entry in ordered
+        },
+        "stale_warnings": [
+            entry.pk for entry in ordered if freshness(entry) == "STALE"
+        ],
+        "conflict_warnings": conflicts,
         "hash": package_hash,
     }
+
+
+def build_and_record_context_package(
+    project: Project,
+    work_context_id: str,
+    role_context_id: str,
+    *,
+    retrieval_intent: str,
+    retrieval_query: str = "",
+) -> dict[str, Any]:
+    """Persist exactly what Orki retrieved; retrying identical input is idempotent."""
+    package = context_package(
+        project,
+        work_context_id,
+        role_context_id,
+        retrieval_intent=retrieval_intent,
+        retrieval_query=retrieval_query,
+    )
+    record, _ = KnowledgeContextPackage.objects.get_or_create(
+        package_hash=package["hash"],
+        defaults={
+            "project": project,
+            "work_context_id": work_context_id,
+            "role_context_id": role_context_id,
+            "retrieval_intent": retrieval_intent,
+            "retrieval_query": retrieval_query,
+            "entry_ids": package["entry_ids"],
+            "source_versions": package["source_versions"],
+            "stale_warnings": package["stale_warnings"],
+            "conflict_warnings": package["conflict_warnings"],
+            "payload": package,
+        },
+    )
+    if record.project_id != project.pk:
+        raise ValueError("AKB_CONTEXT_PACKAGE_PROJECT_CONFLICT")
+    return {**package, "package_id": record.pk}
+
+
+def record_context_use(
+    package_id: int,
+    *,
+    session: OrchestrationSession | None = None,
+    decision: OrchestrationDecision | None = None,
+) -> KnowledgeContextUse:
+    package = KnowledgeContextPackage.objects.get(pk=package_id)
+    use, _ = KnowledgeContextUse.objects.get_or_create(
+        session=session,
+        defaults={"package": package, "decision": decision},
+    )
+    if use.package_id != package.pk or (decision and use.decision_id != decision.pk):
+        raise ValueError("AKB_CONTEXT_USE_BINDING_CONFLICT")
+    return use
+
+
+def mark_stale_for_source_revision(
+    entry: KnowledgeEntry, observed_source_version: str, actor: str
+) -> KnowledgeEntry:
+    """Mark machine-detected source drift stale without requiring a business choice."""
+    if not observed_source_version or entry.source_version == observed_source_version:
+        return entry
+    previous = entry.version
+    entry.freshness_status = "STALE"
+    entry.version += 1
+    entry.save(update_fields=["freshness_status", "version", "updated_at"])
+    KnowledgeRevision.objects.create(
+        entry=entry,
+        actor=actor,
+        previous_version=previous,
+        new_version=entry.version,
+        source_reference=entry.source_reference,
+        linked_work=entry.work_context_id,
+        reason="MACHINE_STALE_SOURCE_REVISION",
+        content_snapshot=entry.content,
+        metadata_snapshot=_metadata(entry),
+    )
+    return entry

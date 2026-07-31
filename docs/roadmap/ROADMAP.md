@@ -1,5 +1,19 @@
 # AI Bridge Roadmap
 
+## Factory Readiness Remediation — Sprint 3
+
+**Status:** `PASS — READY FOR PRODUCT OWNER REVIEW` (implementation and
+operational evidence complete; Product Owner acceptance remains pending).
+
+Sprint 3 closes the durable AKB/roadmap feedback-loop gap. Governed retrieval
+now has a persisted context package and consumption chain through Orki,
+contracts, and queued runs. Retrieval is deterministic and project-isolated,
+with explicit source-version, stale, and conflict data. Canonical roadmap
+changes are review-controlled candidates, not side effects of evidence arrival;
+only an approved candidate can update a project roadmap item. Completion is
+guarded by engineering and operational PASS, evidence references, and an exact
+commit SHA.
+
 ## Maturity baseline — 2026-07-31
 
 The independent [Factory Readiness Audit](../evidence/factory-readiness-audit-20260731/FACTORY_READINESS_AUDIT.md)

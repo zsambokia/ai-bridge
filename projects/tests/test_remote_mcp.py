@@ -13,7 +13,12 @@ from typing import Any
 import pytest
 from django.test import Client, override_settings
 
-from projects.models import ConversationOrchestration, Project, ProjectContext
+from projects.models import (
+    ConversationOrchestration,
+    KnowledgeContextUse,
+    Project,
+    ProjectContext,
+)
 
 TOKEN = "test-mcp-token"
 
@@ -259,6 +264,12 @@ def test_storybook_request_flows_from_http_mcp_to_orchestrated_contract(
         assert flow.orchestration_session is not None
         assert flow.contract.orchestration_session_id == flow.orchestration_session_id
         assert flow.run.orchestration_session_id == flow.orchestration_session_id
+        context_use = KnowledgeContextUse.objects.get(
+            session=flow.orchestration_session
+        )
+        assert context_use.decision_id == flow.orchestration_session.decision.pk
+        assert context_use.execution_contract_id == flow.contract_id
+        assert context_use.execution_run_id == flow.run_id
         assert (
             flow.orchestration_session.context_package_hash
             == confirmed["orki"]["context_package_hash"]

@@ -14,7 +14,7 @@ from typing import Any, Protocol
 
 from django.db import IntegrityError, transaction
 
-from .knowledge import context_package
+from .knowledge import build_and_record_context_package, record_context_use
 from .models import OrchestrationDecision, OrchestrationSession, Project
 from .orchestration_context import bind, for_session
 
@@ -182,7 +182,13 @@ def build_context(
 ) -> dict[str, Any]:
     """Bounded normalized context; repository content, logs and secrets are excluded."""
     context = bind(project, f"orchestration:{orchestration_id}")
-    package = context_package(project, context.work_context_id, "ENGINEERING")
+    package = build_and_record_context_package(
+        project,
+        context.work_context_id,
+        "ENGINEERING",
+        retrieval_intent="provider-assessment",
+        retrieval_query=summary,
+    )
     return {
         **context.as_dict(),
         "project_id": project.project_id,
@@ -248,7 +254,7 @@ def assess(
                 for ref in item["evidence_references"]
             }
         )[:20]
-        OrchestrationDecision.objects.create(
+        decision = OrchestrationDecision.objects.create(
             session=session,
             schema_version="1.0",
             authority_classification=payload["authority_classification"],
@@ -259,6 +265,11 @@ def assess(
             risk_flags=payload["risk_flags"][:20],
             policy_rule_ids=policy.rule_ids,
             product_owner_question=str(payload.get("product_owner_question", ""))[:500],
+        )
+        record_context_use(
+            context["knowledge_context_package"]["package_id"],
+            session=session,
+            decision=decision,
         )
         session.status = OrchestrationSession.Status.COMPLETED
     except (ValueError, RuntimeError) as error:

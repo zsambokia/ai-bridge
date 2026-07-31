@@ -641,6 +641,9 @@ class KnowledgeEntry(models.Model):
     verified_at = models.DateTimeField(null=True, blank=True)
     review_due_at = models.DateTimeField(null=True, blank=True)
     approval_reference = models.CharField(max_length=128, blank=True)
+    source_version = models.CharField(max_length=128, blank=True)
+    conflict_key = models.CharField(max_length=160, blank=True)
+    precedence = models.PositiveSmallIntegerField(default=100)
 
     class Meta:
         constraints = [
@@ -675,6 +678,129 @@ class KnowledgeRevision(models.Model):
                 fields=["entry", "new_version"], name="unique_akb_revision_version"
             )
         ]
+
+
+class KnowledgeContextPackage(models.Model):
+    """Immutable, persisted Orki context assembled from active knowledge."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="knowledge_context_packages"
+    )
+    package_hash = models.CharField(max_length=64, unique=True)
+    work_context_id = models.CharField(max_length=255)
+    role_context_id = models.CharField(max_length=64, blank=True)
+    retrieval_intent = models.CharField(max_length=128)
+    retrieval_query = models.CharField(max_length=500, blank=True)
+    entry_ids = models.JSONField(default=list)
+    source_versions = models.JSONField(default=dict)
+    stale_warnings = models.JSONField(default=list)
+    conflict_warnings = models.JSONField(default=list)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class KnowledgeContextUse(models.Model):
+    """Records which durable Orki decision/execution consumed a package."""
+
+    package = models.ForeignKey(
+        KnowledgeContextPackage, on_delete=models.PROTECT, related_name="uses"
+    )
+    session = models.OneToOneField(
+        OrchestrationSession,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="knowledge_context_use",
+    )
+    decision = models.OneToOneField(
+        OrchestrationDecision,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="knowledge_context_use",
+    )
+    execution_contract = models.OneToOneField(
+        "ExecutionContract",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="knowledge_context_use",
+    )
+    execution_run = models.OneToOneField(
+        "ExecutionRun",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="knowledge_context_use",
+    )
+    consumed_at = models.DateTimeField(auto_now_add=True)
+
+
+class RoadmapItem(models.Model):
+    """Canonical project-scoped roadmap state, separate from its Markdown view."""
+
+    class State(models.TextChoices):
+        PROPOSED = "PROPOSED", "Proposed"
+        APPROVED = "APPROVED", "Approved"
+        ACTIVE = "ACTIVE", "Active"
+        COMPLETED = "COMPLETED", "Completed"
+        BLOCKED = "BLOCKED", "Blocked"
+        SUPERSEDED = "SUPERSEDED", "Superseded"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="roadmap_items"
+    )
+    item_key = models.CharField(max_length=160)
+    title = models.CharField(max_length=255)
+    state = models.CharField(
+        max_length=16, choices=State.choices, default=State.PROPOSED
+    )
+    epic_reference = models.CharField(max_length=255, blank=True)
+    sprint_reference = models.CharField(max_length=255, blank=True)
+    dependencies = models.JSONField(default=list)
+    evidence_references = models.JSONField(default=list)
+    final_commit_sha = models.CharField(max_length=64, blank=True)
+    engineering_status = models.CharField(max_length=16, default="PENDING")
+    operational_status = models.CharField(max_length=16, default="PENDING")
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "item_key"], name="unique_roadmap_item_key"
+            )
+        ]
+        ordering = ["item_key"]
+
+
+class RoadmapUpdateCandidate(models.Model):
+    """A governed, evidence-bearing proposed roadmap progression."""
+
+    class Status(models.TextChoices):
+        CANDIDATE = "CANDIDATE", "Candidate"
+        ACTIVE = "ACTIVE", "Active"
+        REJECTED = "REJECTED", "Rejected"
+
+    item = models.ForeignKey(
+        RoadmapItem, on_delete=models.PROTECT, related_name="update_candidates"
+    )
+    idempotency_key = models.CharField(max_length=160, unique=True)
+    proposed_state = models.CharField(max_length=16, choices=RoadmapItem.State.choices)
+    engineering_status = models.CharField(max_length=16)
+    operational_status = models.CharField(max_length=16)
+    evidence_references = models.JSONField(default=list)
+    final_commit_sha = models.CharField(max_length=64, blank=True)
+    source_reference = models.CharField(max_length=255)
+    approval_reference = models.CharField(max_length=128, blank=True)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.CANDIDATE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class EngineeringEntity(models.Model):

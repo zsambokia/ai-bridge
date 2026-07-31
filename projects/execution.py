@@ -23,6 +23,7 @@ from .models import (
     ExecutionRun,
     ExecutionStartRequest,
     ExecutionWorkspace,
+    KnowledgeContextUse,
 )
 from .models import ExecutionProvider as ExecutionProviderRecord
 from .provider_events import redact_value
@@ -165,6 +166,15 @@ def enqueue_run(
         if run.contract_id != contract.pk:
             raise ValueError("EXECUTION_REQUEST_CONTRACT_MISMATCH")
         job, job_created = ExecutionJob.objects.get_or_create(run=run)
+        try:
+            context_use = contract.knowledge_context_use
+        except KnowledgeContextUse.DoesNotExist:
+            # Contracts issued before Sprint 3 do not have a durable context binding.
+            pass
+        else:
+            if context_use.execution_run_id != run.id:
+                context_use.execution_run = run
+                context_use.save(update_fields=["execution_run"])
     if created or job_created:
         add_event(run, "EXECUTION_ENQUEUED", job_token=str(job.token))
     return job
@@ -931,6 +941,16 @@ def start_run(
         add_event(
             run, "START_RECOVERED", reason="resuming persisted queued or blocked run"
         )
+
+    try:
+        context_use = contract.knowledge_context_use
+    except KnowledgeContextUse.DoesNotExist:
+        # Contracts issued before Sprint 3 do not have a durable context binding.
+        pass
+    else:
+        if context_use.execution_run_id != run.id:
+            context_use.execution_run = run
+            context_use.save(update_fields=["execution_run"])
 
     manager = WorkspaceManager()
     try:

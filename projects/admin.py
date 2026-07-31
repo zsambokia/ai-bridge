@@ -1,5 +1,7 @@
 """Read-only operational visibility for canonical Project runtime records."""
 
+from typing import ClassVar
+
 from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
@@ -17,15 +19,114 @@ from projects.models import (
     ExecutionWorkspace,
     FailureIncident,
     IncidentEvidence,
+    KnowledgeContextPackage,
+    KnowledgeContextUse,
+    KnowledgeEntry,
     OrchestrationDecision,
     OrchestrationSession,
     OwnershipAssessment,
     Project,
     ProjectContext,
     ProviderAuditEvent,
+    RoadmapItem,
+    RoadmapUpdateCandidate,
     RuntimeBootstrapProfile,
 )
 from projects.providers import check_health
+
+
+class ReadOnlyAdmin(admin.ModelAdmin):
+    """Canonical projections remain inspectable without manual state bypasses."""
+
+    readonly_fields: ClassVar[tuple[str, ...]] = ()
+
+    def has_add_permission(self, request: object) -> bool:
+        return False
+
+    def has_change_permission(self, request: object, obj: object | None = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: object, obj: object | None = None) -> bool:
+        return False
+
+
+@admin.register(KnowledgeEntry)
+class KnowledgeEntryAdmin(ReadOnlyAdmin):
+    list_display = (
+        "entry_key",
+        "project",
+        "knowledge_type",
+        "status",
+        "version",
+        "freshness_status",
+    )
+    list_filter = ("scope", "knowledge_type", "status", "freshness_status")
+    search_fields = ("entry_key", "title", "project__project_id")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in KnowledgeEntry._meta.fields
+    )
+
+
+@admin.register(KnowledgeContextPackage)
+class KnowledgeContextPackageAdmin(ReadOnlyAdmin):
+    list_display = (
+        "package_hash",
+        "project",
+        "retrieval_intent",
+        "work_context_id",
+        "created_at",
+    )
+    search_fields = ("package_hash", "project__project_id", "work_context_id")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in KnowledgeContextPackage._meta.fields
+    )
+
+
+@admin.register(KnowledgeContextUse)
+class KnowledgeContextUseAdmin(ReadOnlyAdmin):
+    list_display = (
+        "package",
+        "session",
+        "decision",
+        "execution_contract",
+        "execution_run",
+        "consumed_at",
+    )
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in KnowledgeContextUse._meta.fields
+    )
+
+
+@admin.register(RoadmapItem)
+class RoadmapItemAdmin(ReadOnlyAdmin):
+    list_display = (
+        "item_key",
+        "project",
+        "state",
+        "engineering_status",
+        "operational_status",
+        "updated_at",
+    )
+    list_filter = ("state", "engineering_status", "operational_status")
+    search_fields = ("item_key", "title", "project__project_id")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in RoadmapItem._meta.fields
+    )
+
+
+@admin.register(RoadmapUpdateCandidate)
+class RoadmapUpdateCandidateAdmin(ReadOnlyAdmin):
+    list_display = (
+        "item",
+        "proposed_state",
+        "status",
+        "approval_reference",
+        "updated_at",
+    )
+    list_filter = ("status", "proposed_state")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in RoadmapUpdateCandidate._meta.fields
+    )
 
 
 @admin.register(OrchestrationSession)

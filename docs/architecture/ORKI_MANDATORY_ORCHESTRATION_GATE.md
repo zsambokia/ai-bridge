@@ -15,6 +15,30 @@ conversation.confirm
 -> Workspace / provider activity / evidence
 ```
 
+## Sprint 3 durable context consumption
+
+The context portion of this trace is now a first-class durable chain:
+
+```text
+active AKB entries
+-> deterministic KnowledgeContextPackage
+-> OrchestrationSession / OrchestrationDecision
+-> ExecutionContract
+-> ExecutionRun
+```
+
+The package records the retrieval intent and query, entry IDs, source versions,
+stale and conflict warnings, and its SHA-256 hash. Orki records the package on
+the session before assessment and binds the same package to the resulting
+decision. Contract issuance and run queueing persist the subsequent bindings.
+Dispatch continues to recompute and verify the expected package; it must reject
+a context, project, decision, provider, or hash mismatch before work begins.
+
+This is deliberately not hidden model memory. Session B can consume Session A's
+approved project knowledge without re-asking for that decision, while a second
+project cannot retrieve it. The read-only MCP and Admin projections expose the
+same package identity and consumer bindings for operational audit.
+
 The session stores an actor binding, selected project and repository, context
 package hash, runtime-profile hash, provider identity, decision hash and final
 outcome.  It stores concise policy rationale, never hidden reasoning.
