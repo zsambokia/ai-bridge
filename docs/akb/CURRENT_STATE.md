@@ -30,6 +30,10 @@ technical request remains an engineering decision; and direct public contract
 generation reports `ORCHESTRATION_GATE_REQUIRED`.  See
 [`ORKI_MANDATORY_ORCHESTRATION_GATE.md`](../architecture/ORKI_MANDATORY_ORCHESTRATION_GATE.md)
 for the canonical trace and intentionally separate recovery/bootstrap paths.
+The isolated Factory runtime has also proven the trace through a real worker,
+provider-loss reconciliation, bounded provider-start retry, and a completed
+governed workspace-only request; the honest operational transcript is
+[`OPERATIONAL_ACCEPTANCE.md`](../evidence/sprint-017-orki-mandatory-orchestration-gate/OPERATIONAL_ACCEPTANCE.md).
 
 The Django 5.2 foundation contains split settings, SQLite configuration, the
 `core` health endpoint, and the canonical `projects` domain. The latter

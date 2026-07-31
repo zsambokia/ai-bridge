@@ -364,7 +364,9 @@ def test_provider_start_failure_is_requeued_for_a_repaired_runtime(
     assert run.events.filter(event_type="PROVIDER_START_RECOVERY_QUEUED").exists()
     recovered.next_recovery_at = timezone.now() - timedelta(seconds=1)
     recovered.save(update_fields=["next_recovery_at"])
-    assert claim_next_job("repaired-worker", 60).pk == recovered.pk
+    reclaimed = claim_next_job("repaired-worker", 60)
+    assert reclaimed is not None
+    assert reclaimed.pk == recovered.pk
 
 
 @pytest.mark.django_db

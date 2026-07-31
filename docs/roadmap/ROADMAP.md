@@ -28,7 +28,7 @@ Its recovery invariants are documented in [Canonical execution lifecycle recover
 
 ### Sprint 2 â€” Orki as the Mandatory Orchestration Gate
 
-Sprint 2 is the next bounded Factory Readiness remediation.  It makes the
+Sprint 2 is the completed bounded Factory Readiness remediation.  It makes the
 normal ChatGPT-facing MCP confirmation path durable and fail-closed through an
 `OrchestrationSession`, ownership assessment, governed context package and
 decision binding before a contract or run exists.  It deliberately preserves
@@ -36,6 +36,10 @@ separate recovery/bootstrap classifications rather than treating them as
 normal-request evidence.  The design and final acceptance evidence are in
 [Orki mandatory orchestration gate](../architecture/ORKI_MANDATORY_ORCHESTRATION_GATE.md)
 and `docs/evidence/sprint-017-orki-mandatory-orchestration-gate/`.
+
+Engineering and isolated-runtime Operational Acceptance are recorded at the
+final implementation revision `4b8f59f19f8f215993811973f88d4f71374e08b7`.
+Sprint 3 remains out of scope until Product Owner review accepts this Sprint.
 
 **Status:** ACTIVE PROJECT ROADMAP  
 **Scope:** AI Bridge project  
