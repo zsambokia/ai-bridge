@@ -7,10 +7,23 @@ import subprocess
 import sys
 from argparse import ArgumentParser
 from typing import Any
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
+
+RUNTIME_VERIFIER_USER_AGENT = "ai-bridge-runtime-verifier/1.0"
+
+
+def _health_request(url: str) -> Request:
+    """Build an explicit non-browser request accepted by public edge proxies."""
+    return Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": RUNTIME_VERIFIER_USER_AGENT,
+        },
+    )
 
 
 def _status(callable_: Any) -> dict[str, str]:
@@ -42,7 +55,9 @@ class Command(BaseCommand):
 
         def check_health() -> None:
             nonlocal health
-            with urlopen(url, timeout=10) as response:  # noqa: S310 - caller-owned target
+            with urlopen(  # noqa: S310 - caller-owned target
+                _health_request(url), timeout=10
+            ) as response:
                 health = json.loads(response.read().decode("utf-8"))
             if health.get("status") != "ok":
                 raise RuntimeError("HEALTH_STATUS_NOT_OK")

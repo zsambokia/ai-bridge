@@ -5,6 +5,10 @@ from __future__ import annotations
 import pytest
 
 from projects.governed_mcp import invoke_public_tool
+from projects.management.commands.verify_runtime_deployment import (
+    RUNTIME_VERIFIER_USER_AGENT,
+    _health_request,
+)
 from projects.models import ExecutionDelivery
 from projects.runtime_deployment import (
     RuntimeDeploymentError,
@@ -73,6 +77,14 @@ def verified_delivery(db: None) -> ExecutionDelivery:
 
 def _pass_result() -> dict[str, str]:
     return {"status": "PASS"}
+
+
+def test_runtime_verifier_health_request_has_explicit_edge_compatible_headers() -> None:
+    request = _health_request("https://stage.example.test/health/")
+
+    assert request.full_url == "https://stage.example.test/health/"
+    assert request.get_header("Accept") == "application/json"
+    assert request.get_header("User-agent") == RUNTIME_VERIFIER_USER_AGENT
 
 
 @pytest.mark.django_db
