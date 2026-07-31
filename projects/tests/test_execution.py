@@ -461,6 +461,51 @@ def test_workspace_cleanup_is_token_scoped_and_idempotent(
 
 
 @pytest.mark.django_db
+def test_workspace_cleanup_lock_is_retained_and_does_not_abort_scheduler(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A locked expired workspace is a durable retry, never a scheduler crash."""
+    root, contract, request = consumed_contract
+    monkeypatch.setattr(
+        "projects.execution.provider", lambda identity=None: StubProvider()
+    )
+    workspace_root = tmp_path / "managed-workspaces"
+    monkeypatch.setattr(settings, "BRIDGE_WORKSPACE_ROOT", workspace_root)
+    monkeypatch.setattr(settings, "BRIDGE_REPOSITORY_CACHE_ROOT", tmp_path / "cache")
+    run = start_run(contract, request, root)
+    workspace = run.workspace
+    path = workspace_root / str(workspace.token)
+    path.mkdir(parents=True)
+    workspace.root_path = str(path)
+    workspace.status = ExecutionWorkspace.Status.RETAINED
+    workspace.retention_until = timezone.now() - timedelta(seconds=1)
+    workspace.save(
+        update_fields=["root_path", "status", "retention_until", "updated_at"]
+    )
+
+    def locked_tree(*args: object, **kwargs: object) -> None:
+        raise PermissionError("provider still holds workspace")
+
+    monkeypatch.setattr("projects.workspace.shutil.rmtree", locked_tree)
+
+    assert WorkspaceManager().reconcile_cleanup() == []
+    workspace.refresh_from_db()
+    assert workspace.status == ExecutionWorkspace.Status.RETAINED
+    assert workspace.failure_code == "WORKSPACE_CLEANUP_FAILED"
+    assert workspace.failure_details == {
+        "operation": "rmtree",
+        "error_type": "PermissionError",
+    }
+    assert workspace.retention_reason == "WORKSPACE_CLEANUP_RETRY_PENDING"
+    assert workspace.retention_until is not None
+    assert workspace.retention_until > timezone.now()
+    assert run.events.filter(event_type="WORKSPACE_CLEANUP_DEFERRED").exists()
+    assert not run.events.filter(event_type="WORKSPACE_CLEANED").exists()
+
+
+@pytest.mark.django_db
 def test_workspace_failure_can_be_requeued_without_provider_execution(
     consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
 ) -> None:

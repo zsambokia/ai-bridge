@@ -84,10 +84,26 @@ git diff --check
 
 The first full formatting run revealed that transient, untracked prior Sprint
 runtime workspaces were being traversed.  The Release Gate was not suppressed:
-the formatter's configured exclusion list now names only those six generated
+the formatter's configured exclusion list now names only those seven generated
 runtime directories, and the six tracked baseline files it reported were
 formatted.  The full gate was then rerun and passed.  No runtime workspace,
 evidence, or unrelated user change was deleted or rewritten.
+
+## Runtime cleanup verification and repair
+
+The first staging deployment verification of this remediation exposed a second
+real recovery defect: `run_execution_scheduler --once` propagated a Windows
+`PermissionError` while deleting an expired retained workspace, making the
+runtime verifier fail.  This was not recorded as a passing deployment.
+
+Cleanup now uses the existing read-only deletion retry and, when a filesystem
+lock remains, records `WORKSPACE_CLEANUP_FAILED` with the non-sensitive error
+type, returns the workspace to `RETAINED`, schedules a five-minute retry, and
+emits `WORKSPACE_CLEANUP_DEFERRED`.  Thus one locked workspace cannot silence
+or terminate the scheduler.  A focused regression test proves this path.  A
+local scheduler smoke run then both cleaned the formerly read-only historical
+workspace and retained a still-locked workspace with the deterministic retry
+record; the scheduler tick completed normally.
 
 ## Honest operational boundary
 

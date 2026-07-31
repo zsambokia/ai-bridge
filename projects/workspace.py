@@ -659,7 +659,40 @@ class WorkspaceManager:
                     "cleaned_at": observed.isoformat(),
                 }
                 if path.exists():
-                    shutil.rmtree(path)
+                    try:
+                        # Workspace files can be read-only or briefly held by a
+                        # just-exited provider on Windows.  The callback repairs
+                        # the former; the recovery branch below makes the latter
+                        # durable instead of letting one stale workspace abort the
+                        # whole scheduler tick.
+                        shutil.rmtree(path, onexc=_retry_readonly_delete)
+                    except OSError as exc:
+                        workspace.status = ExecutionWorkspace.Status.RETAINED
+                        workspace.failure_code = "WORKSPACE_CLEANUP_FAILED"
+                        workspace.failure_details = {
+                            "operation": "rmtree",
+                            "error_type": type(exc).__name__,
+                        }
+                        workspace.retention_reason = "WORKSPACE_CLEANUP_RETRY_PENDING"
+                        workspace.retention_until = observed + timedelta(minutes=5)
+                        workspace.save(
+                            update_fields=[
+                                "status",
+                                "failure_code",
+                                "failure_details",
+                                "retention_reason",
+                                "retention_until",
+                                "updated_at",
+                            ]
+                        )
+                        add_event(
+                            workspace.run,
+                            "WORKSPACE_CLEANUP_DEFERRED",
+                            workspace_id=str(workspace.token),
+                            failure_code=workspace.failure_code,
+                            retry_at=workspace.retention_until.isoformat(),
+                        )
+                        continue
                 workspace.status = ExecutionWorkspace.Status.CLEANED
                 workspace.cleaned_at = observed
                 workspace.cleanup_manifest = manifest
