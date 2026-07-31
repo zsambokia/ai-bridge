@@ -1,7 +1,7 @@
 # Sprint 6 remote MCP preflight
 
-**Time:** 2026-07-31  
-**Target:** `https://stage.artificial-software-factory.com/mcp/`  
+**Time:** 2026-07-31
+**Target:** `https://stage.artificial-software-factory.com/mcp/`
 **Credential handling:** the configured credential was used only in process;
 it is not present in this record, terminal output, request body, or source.
 
