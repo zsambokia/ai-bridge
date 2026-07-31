@@ -26,6 +26,7 @@ from projects.execution import (
     add_event,
     claim_next_job,
     complete_run,
+    defer_claimed_job_for_active_branch,
     enqueue_run,
     execute_claimed_job,
     heartbeat_job,
@@ -364,6 +365,31 @@ def test_provider_start_failure_is_requeued_for_a_repaired_runtime(
     recovered.next_recovery_at = timezone.now() - timedelta(seconds=1)
     recovered.save(update_fields=["next_recovery_at"])
     assert claim_next_job("repaired-worker", 60).pk == recovered.pk
+
+
+@pytest.mark.django_db
+def test_active_branch_conflict_releases_worker_lease_for_retry(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    """A transient branch owner cannot strand a one-shot worker lease."""
+    root, contract, request = consumed_contract
+    enqueue_run(contract, request, root)
+    claimed = claim_next_job("conflicted-worker", 60)
+    assert claimed is not None
+
+    deferred = defer_claimed_job_for_active_branch(claimed, "conflicted-worker")
+
+    deferred.refresh_from_db()
+    run = deferred.run
+    run.refresh_from_db()
+    assert deferred.status == ExecutionJob.Status.RECOVERING
+    assert deferred.lease_owner == ""
+    assert deferred.provider_attempt_metadata["recovery_action"] == (
+        "WAIT_FOR_ACTIVE_BRANCH"
+    )
+    assert run.lifecycle == ExecutionRun.Lifecycle.STARTING
+    assert run.current_phase == "WAITING_FOR_BRANCH"
+    assert run.events.filter(event_type="EXECUTION_BRANCH_CONFLICT_DEFERRED").exists()
 
 
 @pytest.mark.django_db

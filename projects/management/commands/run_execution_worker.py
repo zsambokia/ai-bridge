@@ -13,6 +13,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from projects.execution import (
     claim_next_job,
+    defer_claimed_job_for_active_branch,
     execute_claimed_job,
     fail_claimed_job,
     heartbeat_job,
@@ -107,6 +108,19 @@ class Command(BaseCommand):
                         else "queued for bounded recovery; continuing worker."
                     )
                     self.stdout.write(self.style.WARNING(message))
+                    processed_jobs += 1
+                    if once or (max_jobs and processed_jobs >= max_jobs):
+                        return
+                    continue
+                if str(exc) == "CONFLICTING_ACTIVE_EXECUTION":
+                    deferred = defer_claimed_job_for_active_branch(job, worker_id)
+                    self.stdout.write(
+                        self.style.WARNING(
+                            "Execution "
+                            f"{deferred.run.token} deferred until the active branch "
+                            "execution releases its authority; continuing worker."
+                        )
+                    )
                     processed_jobs += 1
                     if once or (max_jobs and processed_jobs >= max_jobs):
                         return

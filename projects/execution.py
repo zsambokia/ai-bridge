@@ -506,6 +506,76 @@ def requeue_provider_start_failure(job: ExecutionJob, worker_id: str) -> Executi
     return locked
 
 
+def defer_claimed_job_for_active_branch(
+    job: ExecutionJob, worker_id: str
+) -> ExecutionJob:
+    """Release a lease when another governed run still owns the target branch.
+
+    A branch conflict is a transient scheduling condition, not invalid
+    authority and not a provider-start failure.  Leaving the job leased makes
+    the recovery depend on lease expiry and can terminate a one-shot worker;
+    instead persist a bounded-delay retry with explicit lifecycle evidence.
+    """
+    expected_fencing_token = job.lease_fencing_token
+    now = timezone.now()
+    with transaction.atomic():
+        locked = (
+            ExecutionJob.objects.select_for_update()
+            .select_related("run")
+            .get(pk=job.pk)
+        )
+        if locked.lease_fencing_token != expected_fencing_token:
+            raise ValueError("WORKER_FENCING_TOKEN_STALE")
+        if (
+            locked.status != ExecutionJob.Status.LEASED
+            or locked.lease_owner != worker_id
+        ):
+            raise ValueError("WORKER_LEASE_NOT_OWNED")
+        locked.status = ExecutionJob.Status.RECOVERING
+        locked.lease_owner = ""
+        locked.lease_expires_at = None
+        locked.next_recovery_at = now + timedelta(
+            seconds=PROVIDER_START_RECOVERY_DELAY_SECONDS
+        )
+        locked.provider_attempt_metadata = {
+            **locked.provider_attempt_metadata,
+            "recovery_action": "WAIT_FOR_ACTIVE_BRANCH",
+        }
+        locked.save(
+            update_fields=[
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "next_recovery_at",
+                "provider_attempt_metadata",
+                "updated_at",
+            ]
+        )
+        run = locked.run
+        run.lifecycle = ExecutionRun.Lifecycle.STARTING
+        run.current_phase = "WAITING_FOR_BRANCH"
+        run.current_blocker = {
+            "category": "active branch execution",
+            "retry_at": locked.next_recovery_at.isoformat(),
+        }
+        run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "updated_at",
+            ]
+        )
+    add_event(
+        run,
+        "EXECUTION_BRANCH_CONFLICT_DEFERRED",
+        retry_at=locked.next_recovery_at.isoformat()
+        if locked.next_recovery_at
+        else None,
+    )
+    return locked
+
+
 def requeue_workspace_provisioning_failure(run: ExecutionRun) -> ExecutionJob:
     """Return one provider-free workspace failure to the durable worker queue."""
     with transaction.atomic():
