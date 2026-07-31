@@ -88,6 +88,19 @@ Engineering and isolated-runtime Operational Acceptance are recorded at the
 final implementation revision `4b8f59f19f8f215993811973f88d4f71374e08b7`.
 Sprint 3 remains out of scope until Product Owner review accepts this Sprint.
 
+### Sprint 6 confirmation-binding repair (pending redeployment)
+
+The Sprint 6 ChatGPT Business proof remains incomplete, but a real Product
+Owner confirmation exposed a defect in the Remote MCP confirmation predicate:
+it rejected an unconditional English approval before a canonical approval could
+be persisted. The repair accepts explicit unconditional English or Hungarian
+approval while preserving server-derived caller, proposal, approval-reference,
+and idempotency bindings. Negative and conditional confirmation text remains
+fail-closed. Local regression evidence is retained in
+`docs/evidence/sprint-020-chatgpt-factory-e2e/`; the repaired tool surface must
+be deployed and verified through the actual ChatGPT Business UI before Sprint 6
+can claim Operational Acceptance.
+
 **Status:** ACTIVE PROJECT ROADMAP  
 **Scope:** AI Bridge project  
 **Execution authority:** this roadmap remains directional; the bounded Sprint

@@ -111,7 +111,7 @@ from .scopes import (
 )
 from .services import _head_sha, project_repository_root
 
-TOOL_SURFACE_VERSION = "2026-07-31.3"
+TOOL_SURFACE_VERSION = "2026-07-31.4"
 READ_ONLY = "READ_ONLY"
 PREPARATORY_STATE = "PREPARATORY_STATE"
 APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
@@ -129,6 +129,29 @@ _PRODUCT_OWNER_CONFIRMATIONS = {
     "jo lesz igy",
     "mehet",
     "rendben csinald meg",
+}
+_PRODUCT_OWNER_CONFIRMATION_PREFIXES = (
+    "i approve",
+    "i confirm",
+    "i accept",
+    "approve",
+    "confirm",
+    "accept",
+    "jovahagyom",
+    "megerositem",
+    "elfogadom",
+)
+_PRODUCT_OWNER_CONFIRMATION_DISQUALIFIERS = {
+    "cannot",
+    "dont",
+    "ha",
+    "if",
+    "kiveve",
+    "nem",
+    "never",
+    "no",
+    "not",
+    "unless",
 }
 
 
@@ -997,7 +1020,9 @@ _TOOLS.extend(
                 "Confirm the exact pending proposal from an authenticated Product "
                 "Owner reply. Supply only the displayed scope and affirmative "
                 "reply; identity, confirmation reference, proposal binding, and "
-                "retry key are derived by the governed service."
+                "retry key are derived by the governed service. Use an explicit "
+                "unconditional confirmation, for example 'I approve the exact "
+                "displayed proposal.'"
             ),
             EXECUTION_BOUNDARY,
             {
@@ -1304,8 +1329,8 @@ def _derived_conversation_confirmation(
     of the authenticated MCP connection and exact current proposal produces all
     durable values before the ordinary canonical orchestration is entered.
     """
-    if _normalise_confirmation(arguments["confirmation_text"]) not in (
-        _PRODUCT_OWNER_CONFIRMATIONS
+    if not _is_explicit_product_owner_confirmation(
+        arguments["confirmation_text"]
     ):
         raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
     project = _project(arguments)
@@ -1360,8 +1385,8 @@ def _derived_recovery_confirmation(
     resuming an already-approved scope.  The caller must instead echo the
     exact version and hash obtained from ``scope.resume``.
     """
-    if _normalise_confirmation(arguments["confirmation_text"]) not in (
-        _PRODUCT_OWNER_CONFIRMATIONS
+    if not _is_explicit_product_owner_confirmation(
+        arguments["confirmation_text"]
     ):
         raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
     caller_fingerprint = hashlib.sha256(caller.encode("utf-8")).hexdigest()
@@ -2039,8 +2064,8 @@ def _resume_confirm_and_execute(
     fresh session.  We reuse the existing durable approval/orchestration record
     whenever one already exists; a retry never creates another contract or run.
     """
-    if _normalise_confirmation(arguments["confirmation_text"]) not in (
-        _PRODUCT_OWNER_CONFIRMATIONS
+    if not _is_explicit_product_owner_confirmation(
+        arguments["confirmation_text"]
     ):
         raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
     scope = ExecutableScope.objects.select_for_update().get(
@@ -2101,12 +2126,40 @@ def _resume_confirm_and_execute(
 
 
 def _normalise_confirmation(value: str) -> str:
-    """Compare conversational confirmation without weakening its vocabulary."""
+    """Normalize a confirmation without retaining caller-controlled formatting."""
     decomposed = unicodedata.normalize("NFKD", value)
     without_accents = "".join(
         character for character in decomposed if not unicodedata.combining(character)
     )
     return re.sub(r"[^a-z0-9]+", " ", without_accents.casefold()).strip()
+
+
+def _is_explicit_product_owner_confirmation(value: str) -> bool:
+    """Accept an explicit, unconditional approval without guessing user intent.
+
+    ChatGPT may faithfully forward a Product Owner's natural-language approval
+    with its displayed scope, version, and hash.  The former exact-phrase
+    allowlist rejected those confirmations before their caller-bound approval
+    reference could be persisted.  The governed fields, not prose copied by a
+    model, remain the authoritative scope binding; this predicate only decides
+    whether the reply expresses an unambiguous affirmative intent.
+    """
+    # Check common English contractions before punctuation normalisation splits
+    # them into separate harmless-looking words (for example, ``don't`` into
+    # ``don t``).  A qualified or negative reply must never authorize work.
+    folded = value.casefold()
+    if re.search(r"\b(?:don't|dont|can't|cannot|won't|will not|do not)\b", folded):
+        return False
+    normalized = _normalise_confirmation(value)
+    if normalized in _PRODUCT_OWNER_CONFIRMATIONS:
+        return True
+    words = set(normalized.split())
+    if words.intersection(_PRODUCT_OWNER_CONFIRMATION_DISQUALIFIERS):
+        return False
+    return any(
+        normalized == prefix or normalized.startswith(f"{prefix} ")
+        for prefix in _PRODUCT_OWNER_CONFIRMATION_PREFIXES
+    )
 
 
 def _cancellation_requester(caller: str) -> str:
@@ -2131,8 +2184,8 @@ def _confirm_conversation(
     arguments: dict[str, Any], project: Project, caller: str
 ) -> dict[str, Any]:
     """Map an accepted Product Owner phrase to the exact displayed proposal."""
-    if _normalise_confirmation(arguments["confirmation_text"]) not in (
-        _PRODUCT_OWNER_CONFIRMATIONS
+    if not _is_explicit_product_owner_confirmation(
+        arguments["confirmation_text"]
     ):
         raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
     scope = ExecutableScope.objects.get(
@@ -3064,9 +3117,8 @@ def invoke_public_tool(
                     "next_tool": "execution.confirm_cancel",
                 }
             elif name == "execution.confirm_cancel":
-                if (
-                    _normalise_confirmation(arguments["confirmation_text"])
-                    not in _PRODUCT_OWNER_CONFIRMATIONS
+                if not _is_explicit_product_owner_confirmation(
+                    arguments["confirmation_text"]
                 ):
                     raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
                 requester = _cancellation_requester(caller)

@@ -313,6 +313,20 @@ The one-time external bootstrap authority applies only to Sprint 011 itself. The
 Storybook Work Item followed its own exact proposal-hash confirmation and the
 ordinary approval, publication, contract, provider, evidence, and completion flow.
 
+### Confirmation predicate repair (Sprint 6)
+
+A real ChatGPT Business confirmation surfaced an input-interpretation defect:
+the canonical confirmation routes reached their binding logic but accepted only
+a small exact Hungarian phrase list. An explicit unconditional English Product
+Owner approval was therefore rejected before durable approval persistence. The
+governed predicate now accepts explicit unconditional English and Hungarian
+approval, rejects negative or conditional wording, and continues to derive the
+caller binding, proposal binding, approval reference, and retry key on the
+server. The repair does not relax scope/version/hash validation or create a
+second authorization lifecycle. Source-level and authenticated HTTP regression
+evidence lives in `docs/evidence/sprint-020-chatgpt-factory-e2e/`; a deployed
+ChatGPT Business UI retry is still required for Sprint 6 Operational Acceptance.
+
 ## Sprint 012 conversational routing assessment and repair
 
 Sprint 012 assessed the existing `conversation.confirm` and

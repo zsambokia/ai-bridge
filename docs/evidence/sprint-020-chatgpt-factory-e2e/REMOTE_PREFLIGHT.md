@@ -37,3 +37,16 @@ retrieval can then be captured without recreating the request through a
 synthetic HTTP client. Before that observation, this record remains a
 preflight only; the repaired runtime proof does not claim a ChatGPT Business
 request occurred.
+
+## Confirmation-binding remediation pending deployment
+
+On 2026-07-31, a real ChatGPT Business confirmation attempt was rejected before
+approval persistence even though it identified the exact proposed scope,
+version, and hash. The failure is retained in the Factory Development record.
+The cause was a server-side exact phrase allowlist, not an absent Product Owner
+approval. The repaired source accepts an explicit unconditional statement such
+as `I approve the exact displayed proposal.` and continues to derive all
+durable authority bindings server-side. Local authenticated HTTP and recovery
+regression coverage passes; this preflight must be repeated only after the
+repaired `2026-07-31.4` tool surface is deployed. A static Bearer retry remains
+insufficient evidence for Sprint 6 Operational Acceptance.

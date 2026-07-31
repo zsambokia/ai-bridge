@@ -67,6 +67,48 @@ governed registry. It does **not** yet prove the mandatory Sprint 6 fact:
 That fact must remain unclaimed until the configured ChatGPT Business app is
 available and its UI request can be observed end-to-end against this runtime.
 
+## 2026-07-31 confirmation-binding incident and repair
+
+The Product Owner supplied a failed real confirmation attempt for scope
+`bridge:ai-bridge:sprint:5f8e22d1-6fe3-4ccc-865a-38d3db26aede`, proposal
+version `1`, hash
+`0697bf790b81887f1d4338a79ff9359543fde740d732795febe6b65253699dbd`.
+The scope remained `PROPOSED`, confirmation eligibility remained `true`, and
+no approval reference or execution was created. Both `conversation.confirm`
+and `scope.resume_confirm_and_execute` returned
+`PRODUCT_OWNER_CONFIRMATION_REQUIRED` / `INVALID_ARGUMENT`.
+
+Diagnosis: this was not missing Product Owner input. The governed service had
+already reached the confirmation-binding path, but it accepted only a five-item
+Hungarian phrase allowlist before deriving and persisting the approval binding.
+An authenticated, unconditional English confirmation that faithfully included
+the displayed scope/version/hash was rejected before persistence.
+
+Repair: the confirmation predicate now accepts explicit unconditional English
+or Hungarian approval intents, while retaining the original phrases and
+rejecting negative or conditional wording. Scope/version/hash, caller identity,
+approval reference, and idempotency key remain server-derived and are still
+validated by the canonical orchestration path. The Remote MCP description now
+states a safe example: `I approve the exact displayed proposal.` The tool
+surface version is `2026-07-31.4`.
+
+Regression evidence (local, 2026-07-31):
+
+- `pytest projects/tests/test_governed_mcp.py projects/tests/test_remote_mcp.py -q`
+  â†’ `35 passed`.
+- The authenticated HTTP MCP test persists the approval and contract after an
+  English scope/version/hash-bound confirmation.
+- The conversational and recovery routes both accept that form; retries remain
+  idempotent.
+- `Maybe later`, `I approve if the provider is available.`, `I do not approve
+  the displayed proposal.`, and `I approve, but don't start execution yet.`
+  remain rejected with
+  `PRODUCT_OWNER_CONFIRMATION_REQUIRED`.
+
+The live staging runtime has not been changed by this diagnostic record. A
+fresh deployment and an actual ChatGPT Business UI retry are still required;
+no static-Bearer request is substituted for that operational proof.
+
 ## Product Owner waiting-state decision
 
 The Product Owner classified this state as:

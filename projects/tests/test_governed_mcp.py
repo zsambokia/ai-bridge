@@ -683,7 +683,11 @@ def test_conversational_confirmation_binds_the_current_exact_review(
         {
             "project_id": project.project_id,
             "scope_identifier": scope.identifier,
-            "confirmation_text": "igen",
+            "confirmation_text": (
+                "I approve the exact displayed proposal for scope "
+                f"{scope.identifier}, proposal version {review['proposal_version']}, "
+                f"hash {review['proposal_hash']}."
+            ),
         },
         caller="chatgpt-connector-principal",
     )
@@ -718,15 +722,21 @@ def test_conversational_confirmation_binds_the_current_exact_review(
         )["idempotent_replay"]
         is True
     )
-    with pytest.raises(ValueError, match="PRODUCT_OWNER_CONFIRMATION_REQUIRED"):
-        invoke_public_tool(
-            "conversation.confirm",
-            {
-                "project_id": project.project_id,
-                "scope_identifier": scope.identifier,
-                "confirmation_text": "Maybe later",
-            },
-        )
+    for confirmation_text in (
+        "Maybe later",
+        "I approve if the provider is available.",
+        "I do not approve the displayed proposal.",
+        "I approve, but don't start execution yet.",
+    ):
+        with pytest.raises(ValueError, match="PRODUCT_OWNER_CONFIRMATION_REQUIRED"):
+            invoke_public_tool(
+                "conversation.confirm",
+                {
+                    "project_id": project.project_id,
+                    "scope_identifier": scope.identifier,
+                    "confirmation_text": confirmation_text,
+                },
+            )
 
 
 @pytest.mark.django_db
@@ -863,7 +873,11 @@ def test_scope_resume_recovers_an_approved_scope_from_a_new_session(
         "scope_identifier": scope.identifier,
         "proposal_version": recovery["scope"]["version"],
         "proposal_hash": recovery["scope"]["hash"],
-        "confirmation_text": "igen",
+        "confirmation_text": (
+            "I confirm the exact displayed proposal for scope "
+            f"{scope.identifier}, proposal version {recovery['scope']['version']}, "
+            f"hash {recovery['scope']['hash']}."
+        ),
     }
     result = invoke_public_tool(
         "scope.resume_confirm_and_execute", arguments, caller="new-chatgpt-session"

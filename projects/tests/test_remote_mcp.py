@@ -245,7 +245,12 @@ def test_storybook_request_flows_from_http_mcp_to_orchestrated_contract(
             {
                 "project_id": project.project_id,
                 "scope_identifier": scope_identifier,
-                "confirmation_text": "igen",
+                "confirmation_text": (
+                    "I approve the exact displayed proposal for scope "
+                    f"{scope_identifier}, proposal version "
+                    f"{review['proposal_version']}, "
+                    f"hash {review['proposal_hash']}."
+                ),
             },
         )
         assert confirmed["status"] == "EXECUTION_QUEUED"
