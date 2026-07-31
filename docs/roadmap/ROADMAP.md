@@ -1,5 +1,27 @@
 # AI Bridge Roadmap
 
+## Maturity baseline — 2026-07-31
+
+The independent [Factory Readiness Audit](../evidence/factory-readiness-audit-20260731/FACTORY_READINESS_AUDIT.md)
+records **NOT READY** at **40/100** maturity, with an estimated **55%**
+non-governance human-intervention dependency and **4.3/10** AKB maturity. This
+is a corrective baseline, not a claim of operational readiness and not an
+execution authorization.
+
+### EPIC — Canonical Execution Lifecycle Integrity and Autonomous Recovery
+
+**Purpose:** make the canonical lifecycle deterministically reconcile, recover,
+retry, and terminalize without routine Product Owner/operator intervention. It
+must resolve stale jobs, expired leases, dead provider PIDs, orphaned
+workspaces, missing checkpoints, and state divergence; protect against
+duplicates; preserve worker survival; provide consistent admin/MCP
+observability; and prove recovery through fault injection and real governed
+end-to-end delivery/acceptance evidence.
+
+The implementation-ready proposal is
+[Sprint 016](../sprints/SPRINT_016_CANONICAL_EXECUTION_LIFECYCLE_INTEGRITY_AND_AUTONOMOUS_RECOVERY.md).
+It remains a draft until the governed scope lifecycle grants authority.
+
 **Status:** ACTIVE PROJECT ROADMAP  
 **Scope:** AI Bridge project  
 **Execution authority:** roadmap does not authorize implementation; only an approved Sprint may do so  

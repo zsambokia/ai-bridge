@@ -1,5 +1,15 @@
 # AI Bridge – Current State
 
+## Factory readiness maturity baseline — 2026-07-31
+
+The independent factory-readiness baseline is **NOT READY**: 40/100 maturity,
+an estimated 55% non-governance human-intervention dependency, and AKB maturity
+4.3/10. It is recorded in
+[`FACTORY_READINESS_MATURITY_BASELINE_2026-07-31.md`](FACTORY_READINESS_MATURITY_BASELINE_2026-07-31.md)
+with canonical [audit evidence](../evidence/factory-readiness-audit-20260731/FACTORY_READINESS_AUDIT.md).
+The linked `KnowledgeEntry` is a non-active `CANDIDATE` only; the proposed
+Sprint 016 is not execution authority.
+
 ## Repository
 
 - Repository: `zsambokia/ai-bridge`

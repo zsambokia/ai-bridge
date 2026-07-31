@@ -1,0 +1,19 @@
+{
+  "assessment": {
+    "status": "NOT READY",
+    "score_out_of_100": 40,
+    "estimated_non_governance_human_intervention_percent": 55,
+    "knowledge_maturity_out_of_10": 4.3
+  },
+  "scope": "Factory Development Mode documentation, audit baseline, roadmap, AKB candidate, and non-executable Sprint proposal only",
+  "validation": {
+    "django_check": "pass",
+    "migration_drift_check": "pass",
+    "scope_validation": "pass",
+    "pytest": "pass (188 passed)",
+    "ruff_check": "pass",
+    "mypy": "pass (139 source files)",
+    "release_gate_supplemental_format_check": "pre-existing failure outside authorized scope"
+  },
+  "proposed_sprint_execution_authority": false
+}
