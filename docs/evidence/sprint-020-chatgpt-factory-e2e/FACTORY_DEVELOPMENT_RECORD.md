@@ -66,3 +66,22 @@ governed registry. It does **not** yet prove the mandatory Sprint 6 fact:
 
 That fact must remain unclaimed until the configured ChatGPT Business app is
 available and its UI request can be observed end-to-end against this runtime.
+
+## Product Owner waiting-state decision
+
+The Product Owner classified this state as:
+
+```text
+ENGINEERING READINESS: PASS
+OPERATIONAL PREFLIGHT: PASS
+SPRINT 6: BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE
+```
+
+This is an external-access wait, not a Sprint failure and not a technical
+blocker. When the ChatGPT Business workspace administrator makes the `AI
+Bridge staging` Remote MCP app available, the authorized continuation is to
+record one actual ChatGPT Business request, the Product Owner proposal approval
+in that UI, the resulting remote MCP/Orki/provider/delivery/deployment chain,
+and later retrieval and feedback evidence. `MCP_TEST_API_TOKEN` may be used
+only during testing and must never be emitted in source, commits, terminal
+output, or evidence.
