@@ -255,7 +255,12 @@ class CodexCliAdapter:
         }
 
     def _related_connection_is_resolved(self) -> bool:
-        """Check the declared dependency without copying its secret to Codex."""
+        """Validate the declared OpenAI relationship without borrowing its secret.
+
+        Codex CLI authenticates through its own local login.  The related OpenAI
+        provider is retained as an auditable product relationship, not a second
+        credential prerequisite for an already authenticated Codex process.
+        """
         if self.entry is None or self.entry.related_provider_id is None:
             return False
         related = self.entry.related_provider
@@ -263,8 +268,6 @@ class CodexCliAdapter:
             related
             and related.kind == ExecutionProvider.Kind.OPENAI
             and related.status == ExecutionProvider.Status.ACTIVE
-            and related.credential_binding
-            and os.environ.get(related.credential_binding)
         )
 
     @staticmethod

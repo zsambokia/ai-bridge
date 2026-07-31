@@ -292,6 +292,34 @@ def test_codex_health_accepts_authenticated_runtime(
     assert check_health(entry)["status"] == "HEALTHY"
 
 
+@pytest.mark.django_db
+def test_codex_health_uses_its_login_not_an_openai_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = ExecutionProvider.objects.get(adapter_key="codex-cli")
+    related = ExecutionProvider.objects.get(provider_id="openai")
+    related.status = ExecutionProvider.Status.ACTIVE
+    related.credential_binding = "OPENAI_API_KEY"
+    related.save(update_fields=["status", "credential_binding"])
+    entry.related_provider = related
+    entry.configuration = {"runtime_executable_environment": "BRIDGE_CODEX_EXECUTABLE"}
+    entry.save(update_fields=["related_provider", "configuration"])
+    monkeypatch.setenv("BRIDGE_CODEX_EXECUTABLE", "codex")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("projects.providers.shutil.which", lambda value: value)
+    monkeypatch.setattr(
+        CodexCliAdapter,
+        "is_authenticated",
+        staticmethod(lambda value, environment: True),
+    )
+    monkeypatch.setattr(
+        "projects.providers.subprocess.run",
+        lambda *args, **kwargs: CompletedProcess(args, 0),
+    )
+
+    assert check_health(entry)["status"] == "HEALTHY"
+
+
 def test_codex_start_refuses_an_unauthenticated_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
