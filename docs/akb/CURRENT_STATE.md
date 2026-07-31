@@ -101,6 +101,12 @@ The operating invariants are in
 Sprint acceptance remains subject to the recorded Release Gates and audit
 evidence.
 
+Operational Acceptance is a separate mandatory Sprint closure stage. The
+Sprint 016 record documents a real-worker reattach, controlled dead-provider
+recovery, canonical completion, and Admin/application API/MCP projection parity
+at repaired revision `546bde6a66eaf645ddc0f3e047b5ed5c238f4847`; it does not
+make an unsupported claim about the revision of the shared stage runtime.
+
 Sprint 014 adds a provider-neutral `ExecutionProvider` registry and append-only
 provider audit history. Codex CLI is seeded as the active execution agent;
 OpenAI, Claude, GitHub, and BigQuery are explicit provider kinds/roles that

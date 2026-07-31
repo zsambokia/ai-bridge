@@ -242,10 +242,21 @@ The report must include:
 - exact validation and Release Gate commands executed;
 - results of each command;
 - acceptance scenario results;
+- Operational Acceptance result and evidence path;
 - failures encountered and repairs applied;
 - documentation and AKB updates;
 - known limitations or unresolved blockers;
 - final terminal state.
+
+Every Sprint closure must also include a separate, repository-versioned
+Operational Acceptance record. It is mandatory even when all Engineering
+Release Gates pass. The record must identify the intended runtime and accepted
+revision, prove migrations/dependencies and required workers/recovery services,
+and contain a real runtime smoke appropriate to the Sprint's risk. It must
+also distinguish the verified runtime from every environment whose revision or
+behaviour could not be observed. Engineering Acceptance and Operational
+Acceptance must be reported as separate results; neither may be inferred from
+the other.
 
 Where command logs are too large for the report, store them in the same evidence directory and reference their paths.
 

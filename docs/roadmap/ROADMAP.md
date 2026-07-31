@@ -21,8 +21,10 @@ end-to-end delivery/acceptance evidence.
 Sprint 016, [Canonical Execution Lifecycle Integrity and Autonomous
 Recovery](../sprints/SPRINT_016_CANONICAL_EXECUTION_LIFECYCLE_INTEGRITY_AND_AUTONOMOUS_RECOVERY.md),
 is implemented under Product Owner Factory Development Mode, independently
-repository-audited, and ready for Product Owner review. Its recovery invariants are
-documented in [Canonical execution lifecycle recovery](../architecture/EXECUTION_LIFECYCLE_RECOVERY.md).
+repository-audited, and has isolated-runtime Operational Acceptance evidence at
+the repaired revision `546bde6a66eaf645ddc0f3e047b5ed5c238f4847`; see
+[Operational Acceptance](../evidence/sprint-016-canonical-execution-lifecycle-integrity-and-autonomous-recovery/OPERATIONAL_ACCEPTANCE_2026-07-31.md).
+Its recovery invariants are documented in [Canonical execution lifecycle recovery](../architecture/EXECUTION_LIFECYCLE_RECOVERY.md).
 
 **Status:** ACTIVE PROJECT ROADMAP  
 **Scope:** AI Bridge project  

@@ -3,6 +3,9 @@
 **Sprint:** Canonical Execution Lifecycle Integrity and Autonomous Recovery
 **Execution profile:** Product Owner Factory Development Mode
 **Baseline:** `ff3cf82dee9f580da83c215fb25f7636b2b5fa22` on `main`
+**Engineering Acceptance:** PASS
+**Operational Acceptance:** see [Operational Acceptance — 2026-07-31](OPERATIONAL_ACCEPTANCE_2026-07-31.md).
+**Repaired runtime revision:** `546bde6a66eaf645ddc0f3e047b5ed5c238f4847`
 **Result:** PASS â€” READY FOR PRODUCT OWNER REVIEW
 
 ## Acceptance mapping
@@ -29,6 +32,13 @@
 | `python manage.py reconcile_execution_jobs --once` | PASS — `Reconciled 0 execution job(s).` |
 
 ## Evidence boundaries
+
+The original report established Engineering Acceptance only. The separate
+[Operational Acceptance record](OPERATIONAL_ACCEPTANCE_2026-07-31.md) is the
+authoritative runtime evidence. It records the negative result for `5bd60c4`,
+the in-scope Windows repair, the exact repaired revision, a real worker
+reattach, controlled dead-provider fault injection, Admin/application API/MCP
+projection parity, and canonical completion.
 
 The E2E test uses the real durable contract, run, job, recovery-attempt, and
 management-command boundaries. It uses a deterministic missing-provider test
