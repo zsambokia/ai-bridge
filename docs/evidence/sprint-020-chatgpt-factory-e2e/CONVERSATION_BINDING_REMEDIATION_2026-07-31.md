@@ -82,5 +82,42 @@ verify the resulting approval, contract, run, provider, delivery, deployment,
 retrieval, and feedback chain. Failed attempts and this retained observation
 remain part of the Sprint 6 evidence trail.
 
-**Status:** Engineering remediation PASS; Operational Acceptance not yet
+## Staging deployment receipt
+
+On 2026-07-31 the remediation implementation commit
+`d593b9dcef7e007f5f4e9459262b7262be3c233a` was deployed to the isolated
+staging runtime. The deployment applied
+`projects.0040_conversationorchestration_caller_fingerprint_and_more` and
+started the HTTP MCP service, execution worker, and scheduler from that
+revision.
+
+The following non-governed, credential-safe checks passed after deployment:
+
+| Check | Result |
+| --- | --- |
+| Public staging health revision | PASS - `d593b9dcef7e007f5f4e9459262b7262be3c233a` |
+| Authenticated Remote MCP `initialize` | PASS - signed `MCP-Session-Id` returned; tool surface `2026-07-31.4` |
+| `verify_runtime_deployment` at staging | PASS - dependencies, health, migrations, scheduler, and worker |
+| Worker and scheduler process start | PASS - both started from the deployed main worktree |
+
+No governed MCP tool was invoked by this receipt and it creates no claim that
+a Product Owner confirmation, execution, provider run, delivery, or deployment
+was completed.
+
+### Retained verification iterations
+
+Two verification issues were observed and retained without being hidden:
+
+1. The first preflight script used the unavailable PowerShell
+   `SHA256.HashData` API. It stopped before any runtime mutation. The
+   fingerprint computation was repaired to use a SHA-256 instance's
+   `ComputeHash` method; neither the token nor its fingerprint was recorded.
+2. The first post-deployment assertion expected tool-surface version
+   `2026-07-31.5`. The deployed source correctly declares
+   `2026-07-31.4`; the verifier expectation was corrected and the subsequent
+   deployment verification passed. This was an evidence-verifier defect, not
+   a runtime version mismatch.
+
+**Status:** Engineering remediation PASS; staging deployment and operational
+preflight PASS; final ChatGPT Business UI Operational Acceptance not yet
 demonstrated.
