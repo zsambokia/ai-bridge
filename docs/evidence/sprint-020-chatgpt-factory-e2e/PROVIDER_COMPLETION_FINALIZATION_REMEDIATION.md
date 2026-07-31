@@ -1,6 +1,6 @@
 # Provider-completion finalization remediation
 
-Date: 2026-07-31  
+Date: 2026-07-31
 Scope: Sprint 6 — Complete ChatGPT → Factory End-to-End Proof
 
 ## Incident and factual trace
