@@ -18,6 +18,7 @@ from projects.execution import (
     heartbeat_job,
     is_non_retryable_execution_failure,
     reject_claimed_job,
+    requeue_provider_start_failure,
 )
 
 
@@ -94,6 +95,18 @@ class Command(BaseCommand):
                             f"{failed.run.token} workspace failed; continuing worker."
                         )
                     )
+                    processed_jobs += 1
+                    if once or (max_jobs and processed_jobs >= max_jobs):
+                        return
+                    continue
+                if str(exc) == "EXECUTOR_START_FAILED":
+                    recovered = requeue_provider_start_failure(job, worker_id)
+                    message = f"Execution {recovered.run.token} provider start " + (
+                        "retry budget exhausted; continuing worker."
+                        if recovered.status == "FAILED"
+                        else "queued for bounded recovery; continuing worker."
+                    )
+                    self.stdout.write(self.style.WARNING(message))
                     processed_jobs += 1
                     if once or (max_jobs and processed_jobs >= max_jobs):
                         return

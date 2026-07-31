@@ -33,6 +33,7 @@ from projects.execution import (
     record_gate_rerun,
     reject_claimed_job,
     repair_failure,
+    requeue_provider_start_failure,
     requeue_workspace_provisioning_failure,
     start_run,
 )
@@ -321,9 +322,48 @@ def test_workspace_failure_can_be_requeued_without_provider_execution(
     assert requeued.provider_attempt_metadata["recovery_action"] == (
         "RESTART_WORKSPACE_PROVISIONING"
     )
-    assert run.events.filter(
-        event_type="WORKSPACE_PROVISIONING_REQUEUED"
-    ).exists()
+    assert run.events.filter(event_type="WORKSPACE_PROVISIONING_REQUEUED").exists()
+
+
+@pytest.mark.django_db
+def test_provider_start_failure_is_requeued_for_a_repaired_runtime(
+    consumed_contract: tuple[Path, ExecutionContract, ExecutionStartRequest],
+) -> None:
+    """A worker release must not strand a provider-free governed run."""
+    root, contract, request = consumed_contract
+    enqueue_run(contract, request, root)
+    claimed = claim_next_job("failed-worker", 60)
+    assert claimed is not None
+    run = claimed.run
+    run.lifecycle = ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+    run.current_phase = "STARTING"
+    run.current_blocker = {"evidence": "CODEX_RUNTIME_NOT_READY"}
+    run.attempt_count = 1
+    run.save(
+        update_fields=[
+            "lifecycle",
+            "current_phase",
+            "current_blocker",
+            "attempt_count",
+            "updated_at",
+        ]
+    )
+
+    recovered = requeue_provider_start_failure(claimed, "failed-worker")
+
+    recovered.refresh_from_db()
+    run.refresh_from_db()
+    assert recovered.status == ExecutionJob.Status.RECOVERING
+    assert recovered.lease_owner == ""
+    assert (
+        recovered.provider_attempt_metadata["recovery_action"] == "RETRY_PROVIDER_START"
+    )
+    assert run.lifecycle == ExecutionRun.Lifecycle.STARTING
+    assert run.current_phase == "PROVIDER_RECOVERY_PENDING"
+    assert run.events.filter(event_type="PROVIDER_START_RECOVERY_QUEUED").exists()
+    recovered.next_recovery_at = timezone.now() - timedelta(seconds=1)
+    recovered.save(update_fields=["next_recovery_at"])
+    assert claim_next_job("repaired-worker", 60).pk == recovered.pk
 
 
 @pytest.mark.django_db

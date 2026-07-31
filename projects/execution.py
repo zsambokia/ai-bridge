@@ -48,6 +48,7 @@ ACTIVE_STATES = {
     ExecutionRun.Lifecycle.CLOSING,
 }
 MAX_PROVIDER_START_ATTEMPTS = 2
+PROVIDER_START_RECOVERY_DELAY_SECONDS = 15
 
 
 def lifecycle_status_projection(run: ExecutionRun) -> dict[str, object]:
@@ -397,6 +398,111 @@ def fail_claimed_job(job: ExecutionJob, worker_id: str, reason: str) -> Executio
             ]
         )
     add_event(locked.run, "WORKSPACE_PROVISIONING_FAILED", reason=reason)
+    return locked
+
+
+def requeue_provider_start_failure(job: ExecutionJob, worker_id: str) -> ExecutionJob:
+    """Return a provider-free start failure to the durable queue once.
+
+    ``start_run`` records a failed provider launch before it raises so the
+    incident is visible even if the worker process exits.  The worker must then
+    release its lease and restore an active lifecycle; otherwise a repaired
+    provider can never claim the same governed run.  Keep the retry budget on
+    the durable run and fail closed after it is exhausted.
+    """
+    expected_fencing_token = job.lease_fencing_token
+    now = timezone.now()
+    with transaction.atomic():
+        locked = (
+            ExecutionJob.objects.select_for_update()
+            .select_related("run")
+            .get(pk=job.pk)
+        )
+        if locked.lease_fencing_token != expected_fencing_token:
+            raise ValueError("WORKER_FENCING_TOKEN_STALE")
+        if (
+            locked.status != ExecutionJob.Status.LEASED
+            or locked.lease_owner != worker_id
+        ):
+            raise ValueError("WORKER_LEASE_NOT_OWNED")
+        run = locked.run
+        if (
+            run.lifecycle != ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT
+            or run.provider_execution_id
+        ):
+            raise ValueError("PROVIDER_START_RECOVERY_NOT_ALLOWED")
+        failure = (
+            run.current_blocker.get("evidence", "EXECUTOR_START_FAILED")
+            if isinstance(run.current_blocker, dict)
+            else "EXECUTOR_START_FAILED"
+        )
+        locked.lease_owner = ""
+        locked.lease_expires_at = None
+        if run.attempt_count >= MAX_PROVIDER_START_ATTEMPTS:
+            locked.status = ExecutionJob.Status.FAILED
+            locked.next_recovery_at = None
+            locked.save(
+                update_fields=[
+                    "status",
+                    "lease_owner",
+                    "lease_expires_at",
+                    "next_recovery_at",
+                    "updated_at",
+                ]
+            )
+            add_event(
+                run,
+                "PROVIDER_START_RETRY_EXHAUSTED",
+                attempts=run.attempt_count,
+                reason=str(failure)[:100],
+            )
+            return locked
+        locked.status = ExecutionJob.Status.RECOVERING
+        locked.recovery_attempts += 1
+        locked.next_recovery_at = now + timedelta(
+            seconds=PROVIDER_START_RECOVERY_DELAY_SECONDS
+        )
+        locked.provider_attempt_metadata = {
+            **locked.provider_attempt_metadata,
+            "recovery_action": "RETRY_PROVIDER_START",
+            "last_provider_start_failure": str(failure)[:300],
+        }
+        locked.save(
+            update_fields=[
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "recovery_attempts",
+                "next_recovery_at",
+                "provider_attempt_metadata",
+                "updated_at",
+            ]
+        )
+        run.lifecycle = ExecutionRun.Lifecycle.STARTING
+        run.current_phase = "PROVIDER_RECOVERY_PENDING"
+        run.current_blocker = {
+            "category": "provider start recovery pending",
+            "evidence": str(failure)[:300],
+            "retry_at": locked.next_recovery_at.isoformat(),
+        }
+        run.ended_at = None
+        run.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "ended_at",
+                "updated_at",
+            ]
+        )
+    add_event(
+        run,
+        "PROVIDER_START_RECOVERY_QUEUED",
+        recovery_attempt=locked.recovery_attempts,
+        retry_at=locked.next_recovery_at.isoformat()
+        if locked.next_recovery_at
+        else None,
+    )
     return locked
 
 
