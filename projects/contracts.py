@@ -116,6 +116,39 @@ def _assert_scope_publication(scope: ExecutableScope, repository_root: Path) -> 
         raise ValueError("CONTRACT_INTEGRITY_FAILURE:SCOPE_PUBLICATION_MISMATCH")
 
 
+def _delivery_policy(
+    project: Project, repository_root: Path, target_branch: str
+) -> dict[str, Any] | None:
+    """Make repository publication policy immutable before a provider starts."""
+    definition = project.definition_path
+    from .services import load_project_definition
+
+    branch_policy = load_project_definition(
+        repository_root / definition, repository_root
+    ).branch_policy
+    if not branch_policy:
+        # Repository publication is an explicit Project-definition capability.
+        # Generic definitions retain the canonical lifecycle without delivery.
+        return None
+    main_only = branch_policy.get("development_mode") == "main_only"
+    direct_write = branch_policy.get("direct_write_to_integration_branch") is True
+    pull_request_required = branch_policy.get("pull_request_required") is True
+    if main_only != direct_write or (main_only and pull_request_required):
+        raise ValueError("DELIVERY_POLICY_INVALID")
+    return {
+        "mode": "GOVERNED_MAIN" if main_only else "PULL_REQUEST",
+        "remote_name": "origin",
+        "target_ref": f"refs/heads/{target_branch}",
+        "force_push_allowed": False,
+        "remote_verification_required": True,
+        "review_required": pull_request_required,
+        # A provider cannot broaden this after it starts.  These are the
+        # publication roots used by canonical governed scopes.
+        "allowed_path_prefixes": ["projects/", "docs/", ".bridge/", "scripts/"],
+        "independent_verifier": "AI_BRIDGE_DELIVERY_VERIFIER",
+    }
+
+
 def generate_scope_execution_contract(
     scope: ExecutableScope,
     platform_root: Path,
@@ -178,6 +211,11 @@ def generate_scope_execution_contract(
         },
         "allowed_terminal_states": context.allowed_terminal_states,
     }
+    delivery_policy = _delivery_policy(
+        scope.project, repository_root, context.target_branch
+    )
+    if delivery_policy is not None:
+        payload["delivery"] = delivery_policy
     if "audit" in record:
         payload["execution"]["audit"] = record["audit"]
     if orchestration_session is not None:

@@ -35,6 +35,22 @@ provider-loss reconciliation, bounded provider-start retry, and a completed
 governed workspace-only request; the honest operational transcript is
 [`OPERATIONAL_ACCEPTANCE.md`](../evidence/sprint-017-orki-mandatory-orchestration-gate/OPERATIONAL_ACCEPTANCE.md).
 
+## Sprint 4 autonomous repository delivery
+
+Sprint 4 implementation and operational evidence are **ready for Product Owner
+review**. It adds a fail-closed, contract-bound delivery verifier: exact scoped
+local HEAD, clean workspace, required gates, SHA-bearing evidence, non-force
+push and remote-SHA readback are mandatory before a run can become completed.
+Remote movement requires reconciliation, and the execution provider cannot
+self-approve verification. `ExecutionDelivery` is the shared durable
+Admin/API/MCP projection. See
+[`AUTONOMOUS_REPOSITORY_DELIVERY.md`](../architecture/AUTONOMOUS_REPOSITORY_DELIVERY.md)
+and `docs/evidence/sprint-018-autonomous-repository-delivery/`.
+
+At Epic closure, create the requested Factory Readiness Dossier: the complete
+Sprint acceptance timeline, material remediation cycles, before/after maturity
+assessment, and known limitations/next areas.
+
 ## Sprint 3 durable AKB and roadmap feedback loop
 
 Sprint 3 implementation is complete and is **ready for Product Owner review**;

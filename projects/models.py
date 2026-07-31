@@ -1072,6 +1072,41 @@ class ExecutionWorkspace(models.Model):
         ordering = ["-created_at"]
 
 
+class ExecutionDelivery(models.Model):
+    """Independent, durable verification of one repository publication."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        REJECTED = "REJECTED", "Rejected"
+        RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED", "Reconciliation required"
+        PUSHED = "PUSHED", "Pushed"
+        VERIFIED = "VERIFIED", "Verified"
+
+    run = models.OneToOneField(
+        ExecutionRun, on_delete=models.PROTECT, related_name="delivery"
+    )
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.PENDING
+    )
+    policy = models.JSONField(default=dict)
+    remote_name = models.CharField(max_length=128, blank=True)
+    target_ref = models.CharField(max_length=255, blank=True)
+    baseline_remote_sha = models.CharField(max_length=64, blank=True)
+    final_commit_sha = models.CharField(max_length=64, blank=True)
+    remote_commit_sha = models.CharField(max_length=64, blank=True)
+    changed_files = models.JSONField(default=list)
+    evidence_manifest = models.JSONField(default=dict)
+    verifier_identity = models.CharField(max_length=128, blank=True)
+    failure_code = models.CharField(max_length=128, blank=True)
+    failure_detail = models.JSONField(default=dict)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class ExecutionJob(models.Model):
     """Durable, lease-owned queue entry for one authorized execution run.
 

@@ -13,6 +13,7 @@ from projects.models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
+    ExecutionDelivery,
     ExecutionProgressEvent,
     ExecutionProvider,
     ExecutionRun,
@@ -590,6 +591,21 @@ class ExecutionWorkspaceAdmin(admin.ModelAdmin):
         self, request: object, obj: ExecutionWorkspace | None = None
     ) -> bool:
         return False
+
+
+@admin.register(ExecutionDelivery)
+class ExecutionDeliveryAdmin(ReadOnlyAdmin):
+    list_display = (
+        "run",
+        "status",
+        "target_ref",
+        "final_commit_sha",
+        "remote_commit_sha",
+        "updated_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("run__token", "final_commit_sha", "remote_commit_sha")
+    readonly_fields = tuple(field.name for field in ExecutionDelivery._meta.fields)
 
 
 @admin.register(RuntimeBootstrapProfile)

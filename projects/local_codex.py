@@ -67,6 +67,8 @@ def prepare_local_codex(
     if not worker_id or lease_seconds <= 0:
         raise ValueError("INVALID_WORKER_LEASE")
     run = _run_for_token(execution_token)
+    if run.contract.payload.get("delivery"):
+        raise ValueError("LOCAL_CODEX_DELIVERY_REQUIRES_CANONICAL_COMPLETION")
     _verify_local_binding(run, platform_root)
     now = timezone.now()
     with transaction.atomic():

@@ -33,6 +33,7 @@ class ProjectDefinition:
     release_gates: list[dict[str, Any]]
     evidence_path_template: str
     allowed_terminal_states: list[str]
+    branch_policy: dict[str, Any]
 
 
 @dataclass
@@ -77,6 +78,10 @@ def load_project_definition(path: Path, repository_root: Path) -> ProjectDefinit
     root = _mapping(raw, "Project Definition", errors)
     project = _mapping(root.get("project"), "project", errors)
     repository = _mapping(root.get("repository"), "repository", errors)
+    raw_branch_policy = repository.get("branch_policy", {})
+    branch_policy = raw_branch_policy if isinstance(raw_branch_policy, dict) else {}
+    if not isinstance(raw_branch_policy, dict):
+        errors.append("repository.branch_policy must be a mapping")
     paths = _mapping(root.get("paths"), "paths", errors)
     release_gates = _mapping(root.get("release_gates"), "release_gates", errors)
     evidence = _mapping(root.get("evidence"), "evidence", errors)
@@ -138,6 +143,7 @@ def load_project_definition(path: Path, repository_root: Path) -> ProjectDefinit
         release_gates=[dict(item) for item in commands],
         evidence_path_template=evidence_path_template,
         allowed_terminal_states=list(allowed_terminal_states),
+        branch_policy=dict(branch_policy),
     )
 
 

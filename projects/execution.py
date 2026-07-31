@@ -13,6 +13,7 @@ from django.conf import settings
 from django.db import IntegrityError, OperationalError, models, transaction
 from django.utils import timezone
 
+from .delivery import delivery_projection, verify_and_publish_delivery
 from .execution_activity import console_line
 from .models import (
     ContractConsumption,
@@ -103,6 +104,7 @@ def lifecycle_status_projection(run: ExecutionRun) -> dict[str, object]:
             "final_commit_sha": run.final_commit_sha,
             "terminal_state": run.terminal_state,
         },
+        "delivery": delivery_projection(run),
     }
 
 
@@ -1454,6 +1456,7 @@ def complete_run(
     )
     if head.returncode or head.stdout.strip() != final_commit_sha:
         raise ValueError("RUN_FINAL_COMMIT_MISMATCH")
+    delivery = verify_and_publish_delivery(run, final_commit_sha, completion_data)
     run.lifecycle = ExecutionRun.Lifecycle.COMPLETED
     run.current_phase = "COMPLETED"
     run.final_commit_sha = final_commit_sha
@@ -1492,6 +1495,8 @@ def complete_run(
         manager.retain(workspace, run)
         add_event(run, "WORKSPACE_RETAINED", workspace_id=str(workspace.token))
     add_event(run, "EXECUTION_COMPLETED", final_commit_sha=final_commit_sha)
+    if delivery is not None:
+        add_event(run, "DELIVERY_VERIFIED", remote_sha=delivery.remote_commit_sha)
     return run
 
 
