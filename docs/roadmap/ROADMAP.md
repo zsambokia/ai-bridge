@@ -594,3 +594,13 @@ blocker, rerun its invalidated gate, and resume the original parent execution.
 The loop creates an auditable linked Work Item, never a replacement provider
 run or Execution Contract. The next Epic #11 dependency is Sprint D: the local
 Codex wrapper and durable handoff proof.
+
+## Sprint 6 confirmation-binding repair deployment
+
+The explicit Product Owner confirmation repair is deployed to the staging
+Remote MCP runtime at `3b3dec4081e26626fc06f93a46a370ffe6f01334`. Its public
+health surface is SHA-bound to that revision. This repairs persistence of an
+explicit unconditional confirmation without weakening server-derived scope,
+proposal, caller, approval-reference, or idempotency bindings. Sprint 6 still
+requires its one genuine ChatGPT Business UI request and in-UI approval for
+Operational Acceptance; static API authentication is not a substitute.

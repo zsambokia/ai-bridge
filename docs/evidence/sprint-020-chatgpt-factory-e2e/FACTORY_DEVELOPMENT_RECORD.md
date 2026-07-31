@@ -105,9 +105,28 @@ Regression evidence (local, 2026-07-31):
   remain rejected with
   `PRODUCT_OWNER_CONFIRMATION_REQUIRED`.
 
-The live staging runtime has not been changed by this diagnostic record. A
-fresh deployment and an actual ChatGPT Business UI retry are still required;
-no static-Bearer request is substituted for that operational proof.
+### Deployment iteration retained
+
+The first staging restart attempt stopped the old listener but an existing
+Django autoreloader immediately rebound port `8001`; it therefore could not
+activate the new immutable build identity. The replacement attempt then
+reported a false local-readiness failure because its probe used the
+unapproved `127.0.0.1` Host header. This was correctly rejected by Django;
+the staging hostname is the approved verification host.
+
+The controlled repair terminated only the known `8001` staging process tree
+and started one `--noreload` process from `main` at
+`3b3dec4081e26626fc06f93a46a370ffe6f01334`, with
+`AI_BRIDGE_BUILD_SHA` set to that same immutable revision. A local request
+with `Host: stage.artificial-software-factory.com` and the public
+`https://stage.artificial-software-factory.com/health/` endpoint both returned
+`200` and that exact build SHA. The public `GET /mcp/` returned the expected
+machine-readable `405`. No MCP state-changing request or credential was used
+in this deployment verification.
+
+This proves that the confirmation repair is deployed and reachable. An actual
+ChatGPT Business UI retry remains required; no static-Bearer request is
+substituted for that operational proof.
 
 ## Product Owner waiting-state decision
 

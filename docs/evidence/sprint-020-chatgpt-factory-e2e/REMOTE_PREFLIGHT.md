@@ -38,7 +38,7 @@ synthetic HTTP client. Before that observation, this record remains a
 preflight only; the repaired runtime proof does not claim a ChatGPT Business
 request occurred.
 
-## Confirmation-binding remediation pending deployment
+## Confirmation-binding remediation deployment
 
 On 2026-07-31, a real ChatGPT Business confirmation attempt was rejected before
 approval persistence even though it identified the exact proposed scope,
@@ -46,7 +46,16 @@ version, and hash. The failure is retained in the Factory Development record.
 The cause was a server-side exact phrase allowlist, not an absent Product Owner
 approval. The repaired source accepts an explicit unconditional statement such
 as `I approve the exact displayed proposal.` and continues to derive all
-durable authority bindings server-side. Local authenticated HTTP and recovery
-regression coverage passes; this preflight must be repeated only after the
-repaired `2026-07-31.4` tool surface is deployed. A static Bearer retry remains
-insufficient evidence for Sprint 6 Operational Acceptance.
+durable authority bindings server-side.
+
+The repaired `2026-07-31.4` surface is deployed at immutable revision
+`3b3dec4081e26626fc06f93a46a370ffe6f01334`: public `/health/` returned `200`
+with that exact `build_sha`, and public `GET /mcp/` returned the expected `405`.
+Two restart iterations are retained in the Factory Development record: an old
+autoreloader first reclaimed port `8001`, then a local probe was correctly
+rejected for using `127.0.0.1` rather than the approved staging Host header.
+Neither iteration used an MCP credential or changed governed state.
+
+A static Bearer retry remains insufficient evidence for Sprint 6 Operational
+Acceptance. The outstanding requirement is one observed request and approval
+from the configured ChatGPT Business UI.

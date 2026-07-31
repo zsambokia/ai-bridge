@@ -469,6 +469,17 @@ fail-closed and are not silently downgraded to rejections.
 
 ## Provider activity fidelity repair
 
+### Sprint 6 confirmation-binding deployment state
+
+The Remote MCP confirmation predicate accepts explicit, unconditional English
+or Hungarian Product Owner confirmations while rejecting conditional or
+negative wording. It never trusts client-supplied authority bindings:
+scope/version/hash, caller identity, approval reference, and retry key remain
+derived and checked by the governed service. The repair is live in staging at
+`3b3dec4081e26626fc06f93a46a370ffe6f01334`; the one unperformed ChatGPT
+Business UI request and in-UI approval remains the exclusive missing
+Operational Acceptance fact.
+
 The Codex CLI provider reads stdout and stderr as independent untrusted event
 streams. It handles JSON objects, JSON scalar values, malformed JSON, and
 plain text without ending the activity reader. Events retain bounded, redacted
