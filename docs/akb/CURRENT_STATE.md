@@ -168,6 +168,13 @@ The operating invariants are in
 Sprint acceptance remains subject to the recorded Release Gates and audit
 evidence.
 
+Sprint 6 additionally closes the provider-free provisioning recovery gap. A
+stale `STARTING` lease before `WORKSPACE_REPOSITORY_READY` is now reconciled
+from canonical queue and run facts, then retried with durable, bounded recovery
+evidence. This covers isolated checkout, venv, database, seed, and bootstrap
+before a provider PID exists; provider recovery remains a separate later-stage
+concern.
+
 Operational Acceptance is a separate mandatory Sprint closure stage. The
 Sprint 016 record documents a real-worker reattach, controlled dead-provider
 recovery, canonical completion, and Admin/application API/MCP projection parity

@@ -34,6 +34,19 @@ store or a parallel queue.
 All reconciliation decisions are idempotent: a subsequent pass sees the
 converged state and makes no duplicate transition or audit record.
 
+## Pre-workspace provisioning recovery
+
+A `STARTING` run has no provider identity while the worker is creating its
+isolated checkout, virtual environment, application database, seed state, and
+runtime bootstrap. Provider reconciliation cannot recover that interval.
+`reconcile_execution_jobs` therefore separately examines leased, provider-free
+provisioning jobs. An expired lease or stale heartbeat records an append-only
+`WORKSPACE_PROVISIONING_RECOVERY_QUEUED` attempt, clears the lease, and queues
+the same job for bounded recovery. An unexpected worker exception follows the
+same path. After three attempts it records
+`WORKSPACE_PROVISIONING_RECOVERY_EXHAUSTED` and the canonical external-review
+state; it never leaves a quiet worker with an unclassified intermediate run.
+
 ## Controller and recovery procedure
 
 The deployment entry point is:

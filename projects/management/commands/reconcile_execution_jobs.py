@@ -10,6 +10,9 @@ from django.core.management.base import BaseCommand, CommandError
 
 from projects.execution import provider
 from projects.execution_recovery import reconcile_execution_jobs
+from projects.workspace_provisioning_recovery import (
+    reconcile_stale_workspace_provisioning_jobs,
+)
 
 
 class Command(BaseCommand):
@@ -24,9 +27,12 @@ class Command(BaseCommand):
         if poll_seconds <= 0:
             raise CommandError("--poll-seconds must be positive.")
         while True:
-            decisions = reconcile_execution_jobs(
-                provider_status=lambda name, execution_id: provider(name).status(
-                    execution_id
+            decisions = reconcile_stale_workspace_provisioning_jobs()
+            decisions.extend(
+                reconcile_execution_jobs(
+                    provider_status=lambda name, execution_id: provider(name).status(
+                        execution_id
+                    )
                 )
             )
             self.stdout.write(f"Reconciled {len(decisions)} execution job(s).")

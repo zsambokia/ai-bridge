@@ -604,3 +604,10 @@ explicit unconditional confirmation without weakening server-derived scope,
 proposal, caller, approval-reference, or idempotency bindings. Sprint 6 still
 requires its one genuine ChatGPT Business UI request and in-UI approval for
 Operational Acceptance; static API authentication is not a substitute.
+
+Sprint 6 workspace-provisioning remediation is implemented locally: stale
+provider-free `STARTING` leases are reconciled into bounded recovery rather
+than remaining quiet. The repaired execution `218cb756-807c-46d5-8e82-dc19ac210f08`
+reached checkout, venv, database, bootstrap, and provider start on retry.
+This is a local runtime recovery proof, not the outstanding ChatGPT Business
+UI-to-Remote-MCP Operational Acceptance proof.

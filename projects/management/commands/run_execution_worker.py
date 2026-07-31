@@ -21,6 +21,9 @@ from projects.execution import (
     reject_claimed_job,
     requeue_provider_start_failure,
 )
+from projects.workspace_provisioning_recovery import (
+    queue_workspace_provisioning_recovery,
+)
 
 
 class Command(BaseCommand):
@@ -126,6 +129,29 @@ class Command(BaseCommand):
                         return
                     continue
                 raise CommandError(str(exc)) from exc
+            except Exception as exc:
+                recovery = queue_workspace_provisioning_recovery(
+                    job,
+                    worker_id=worker_id,
+                    reason="WORKER_UNHANDLED_WORKSPACE_PROVISIONING_EXCEPTION",
+                    exception_type=type(exc).__name__,
+                )
+                if recovery is None:
+                    raise CommandError(
+                        "Unhandled execution worker exception outside "
+                        "workspace provisioning recovery."
+                    ) from exc
+                self.stdout.write(
+                    self.style.WARNING(
+                        "Execution "
+                        f"{job.run.token} provisioning recovery queued after "
+                        f"{type(exc).__name__}; continuing worker."
+                    )
+                )
+                processed_jobs += 1
+                if once or (max_jobs and processed_jobs >= max_jobs):
+                    return
+                continue
             self.stdout.write(self.style.SUCCESS(f"Started execution {run.token}."))
             processed_jobs += 1
             if once or (max_jobs and processed_jobs >= max_jobs):
