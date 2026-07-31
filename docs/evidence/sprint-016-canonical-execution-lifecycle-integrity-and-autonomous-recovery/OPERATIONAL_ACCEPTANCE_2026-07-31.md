@@ -1,9 +1,9 @@
 # Operational Acceptance — Sprint 016
 
-**Date:** 2026-07-31 (Europe/Budapest)  
-**Repository:** `zsambokia/ai-bridge`  
-**Execution profile:** Product Owner Factory Development Mode  
-**Acceptance runtime:** isolated local Django runtime at `127.0.0.1:8017`  
+**Date:** 2026-07-31 (Europe/Budapest)
+**Repository:** `zsambokia/ai-bridge`
+**Execution profile:** Product Owner Factory Development Mode
+**Acceptance runtime:** isolated local Django runtime at `127.0.0.1:8017`
 **Code revision under test:** `546bde6a66eaf645ddc0f3e047b5ed5c238f4847`
 
 ## Revision binding and repair history
@@ -90,7 +90,7 @@ uses the public application-tool invocation boundary.
 
 ## Operational decision
 
-**Engineering Acceptance:** PASS (superseded code revision repaired and revalidated).  
+**Engineering Acceptance:** PASS (superseded code revision repaired and revalidated).
 **Operational Acceptance:** PASS for the declared isolated Factory acceptance
 runtime at `546bde6a66eaf645ddc0f3e047b5ed5c238f4847`.
 
