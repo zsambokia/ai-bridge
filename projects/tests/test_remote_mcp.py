@@ -7,8 +7,9 @@ import os
 import subprocess
 import sys
 import uuid
+from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from django.test import Client, override_settings
@@ -48,12 +49,20 @@ def test_local_settings_bind_the_ignored_e2e_token_to_mcp_runtime() -> None:
     assert completed.stdout.strip() == "True"
 
 
-def _post(client: Client, body: dict[str, object], token: str = TOKEN) -> Any:
-    return client.post(
+def _post(
+    client: Client,
+    body: dict[str, object],
+    token: str = TOKEN,
+    session_id: str | None = None,
+) -> Any:
+    headers: dict[str, str] = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+    if session_id:
+        headers["HTTP_MCP_SESSION_ID"] = session_id
+    return cast(Any, client).post(
         "/mcp/",
         data=json.dumps(body),
         content_type="application/json",
-        HTTP_AUTHORIZATION=f"Bearer {token}",
+        **headers,
     )
 
 
@@ -70,7 +79,11 @@ def _initialize(client: Client) -> Any:
 
 
 def _call(
-    client: Client, request_id: int, name: str, arguments: dict[str, object]
+    client: Client,
+    request_id: int,
+    name: str,
+    arguments: dict[str, object],
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     response = _post(
         client,
@@ -80,6 +93,7 @@ def _call(
             "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         },
+        session_id=session_id,
     )
     assert response.status_code == 200
     result = response.json()["result"]
@@ -160,6 +174,7 @@ def test_streamable_http_initializes_lists_and_calls_real_status() -> None:
         "tools": {"listChanged": False}
     }
     assert initialization["Cache-Control"] == "no-store, private"
+    assert initialization["MCP-Session-Id"]
 
     tools = _post(
         client, {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
@@ -198,8 +213,12 @@ def test_storybook_request_flows_from_http_mcp_to_orchestrated_contract(
     )
     client = Client()
     with override_settings(BASE_DIR=tmp_path):
+        initialization = _initialize(client)
+        session_id = initialization["MCP-Session-Id"]
         listed = _post(
-            client, {"jsonrpc": "2.0", "id": 10, "method": "tools/list", "params": {}}
+            client,
+            {"jsonrpc": "2.0", "id": 10, "method": "tools/list", "params": {}},
+            session_id=session_id,
         ).json()["result"]["tools"]
         prepare_schema = next(
             tool for tool in listed if tool["name"] == "execution.prepare"
@@ -219,6 +238,7 @@ def test_storybook_request_flows_from_http_mcp_to_orchestrated_contract(
                 "request": 'Create a new Django application named "storybook".',
                 "idempotency_key": "storybook-propose-001",
             },
+            session_id,
         )
         assert proposed["status"] == "SCOPE_PROPOSED"
         scope_identifier = proposed["scope"]["identifier"]
@@ -227,6 +247,7 @@ def test_storybook_request_flows_from_http_mcp_to_orchestrated_contract(
             12,
             "scope.review",
             {"project_id": project.project_id, "scope_identifier": scope_identifier},
+            session_id,
         )["proposal_review"]
         ProjectContext.objects.create(
             project=project,
@@ -252,6 +273,7 @@ def test_storybook_request_flows_from_http_mcp_to_orchestrated_contract(
                     f"hash {review['proposal_hash']}."
                 ),
             },
+            session_id,
         )
         assert confirmed["status"] == "EXECUTION_QUEUED"
         assert confirmed["proposal_version"] == review["proposal_version"]
@@ -380,3 +402,38 @@ def test_cloudflare_hosts_and_forwarded_https_are_accepted() -> None:
         "/mcp/", data="{}", content_type="application/json"
     )
     assert unapproved.status_code == 400
+
+
+@pytest.mark.django_db
+def test_server_issued_mcp_session_cannot_be_reused_by_another_caller() -> None:
+    """A valid token change must not turn a captured session into an approval."""
+    client = Client()
+    initialized = _initialize(client)
+    session_id = initialized["MCP-Session-Id"]
+    replacement_token = "second-test-mcp-token"
+    replacement_fingerprint = sha256(
+        f"Bearer {replacement_token}".encode("utf-8")
+    ).hexdigest()
+
+    with override_settings(
+        MCP_API_TOKEN=replacement_token,
+        MCP_PRODUCT_OWNER_CALLER_FINGERPRINTS=(replacement_fingerprint,),
+    ):
+        response = _post(
+            client,
+            {
+                "jsonrpc": "2.0",
+                "id": 88,
+                "method": "tools/call",
+                "params": {
+                    "name": "conversation.confirm",
+                    "arguments": {"confirmation_text": "Igen, jóváhagyom."},
+                },
+            },
+            token=replacement_token,
+            session_id=session_id,
+        )
+
+    result = response.json()["result"]
+    assert result["isError"] is True
+    assert result["content"][0]["text"] == "CONVERSATION_CONTEXT_MISSING"

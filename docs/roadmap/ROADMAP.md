@@ -88,20 +88,21 @@ Engineering and isolated-runtime Operational Acceptance are recorded at the
 final implementation revision `4b8f59f19f8f215993811973f88d4f71374e08b7`.
 Sprint 3 remains out of scope until Product Owner review accepts this Sprint.
 
-### Sprint 6 confirmation-binding repair (staging verified; UI proof pending)
+### Sprint 6 confirmation-binding remediation (engineering PASS; deployment/UI proof pending)
 
 The Sprint 6 ChatGPT Business proof remains incomplete, but a real Product
-Owner confirmation exposed a defect in the Remote MCP confirmation predicate:
-it rejected an unconditional English approval before a canonical approval could
-be persisted. The repair accepts explicit unconditional English or Hungarian
-approval while preserving server-derived caller, proposal, approval-reference,
-and idempotency bindings. Negative and conditional confirmation text remains
-fail-closed. Local regression evidence is retained in
-`docs/evidence/sprint-020-chatgpt-factory-e2e/`. The complete repair is
-deployed and runtime-verified on staging at
-`30648dc0625fef7e6451b0b7ace9bc6422a5c96d`; the remaining requirement is a
-fresh actual ChatGPT Business UI request and in-UI approval. Only that UI path
-can complete Sprint 6 Operational Acceptance.
+Owner confirmation exposed two defects before a canonical approval could be
+persisted: the normalized Hungarian phrase was absent from the explicit
+allow-list, and the Remote MCP adapter did not carry a durable,
+server-issued conversation binding from review to confirmation. The repair
+uses a caller-bound signed MCP session and a durable exact
+scope/version/hash binding, while retaining server-derived caller,
+approval-reference, and idempotency protections. Negative and conditional
+confirmation text remains fail-closed. Local regression evidence is retained
+in `docs/evidence/sprint-020-chatgpt-factory-e2e/`. This source revision has
+not yet been deployed to staging; deployment process identity and a fresh
+actual ChatGPT Business UI proposal/approval remain mandatory Operational
+Acceptance evidence.
 
 **Status:** ACTIVE PROJECT ROADMAP  
 **Scope:** AI Bridge project  
@@ -597,9 +598,9 @@ The loop creates an auditable linked Work Item, never a replacement provider
 run or Execution Contract. The next Epic #11 dependency is Sprint D: the local
 Codex wrapper and durable handoff proof.
 
-## Sprint 6 confirmation-binding repair deployment
+## Sprint 6 confirmation-binding repair deployment history
 
-The explicit Product Owner confirmation repair is deployed to the staging
+The earlier, phrase-only Product Owner confirmation repair was deployed to the staging
 Remote MCP runtime at `30648dc0625fef7e6451b0b7ace9bc6422a5c96d`. Its public
 health surface is SHA-bound to that revision. This repairs persistence of an
 explicit unconditional confirmation without weakening server-derived scope,
@@ -622,7 +623,8 @@ facts and an explicit no-change or missing-completion outcome, then uses
 bounded technical recovery. The legacy execution has no committed change or
 delivery and remains immutable historical evidence; a fresh ChatGPT Business
 UI request is required for the truthful end-to-end proof after staging carries
-this repair.
+this repair. It does not prove the later caller/session-binding remediation is
+loaded by any staging MCP, worker, or scheduler process.
 
 The subsequent cleanup-recovery repair is also included in that staging
 revision. A runtime verifier first honestly failed when an expired locked

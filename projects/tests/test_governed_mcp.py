@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 
 import projects.governed_mcp as governed_mcp
@@ -13,6 +14,7 @@ from projects.contract_policy import EXECUTION_LEVELS, RISK_MODIFIERS, TASK_TYPE
 from projects.governed_mcp import (
     TOOL_SURFACE_VERSION,
     TOOLS,
+    McpRequestContext,
     invoke_public_tool,
     public_tools,
 )
@@ -28,6 +30,7 @@ from projects.models import (
     ExecutionWorkspace,
     GovernanceApproval,
     McpAuditEvent,
+    McpConversationBinding,
     McpIdempotencyRecord,
     Project,
     ProjectContext,
@@ -728,7 +731,7 @@ def test_conversational_confirmation_binds_the_current_exact_review(
         "I do not approve the displayed proposal.",
         "I approve, but don't start execution yet.",
     ):
-        with pytest.raises(ValueError, match="PRODUCT_OWNER_CONFIRMATION_REQUIRED"):
+        with pytest.raises(ValueError, match="CONFIRMATION_TEXT_REJECTED"):
             invoke_public_tool(
                 "conversation.confirm",
                 {
@@ -736,6 +739,129 @@ def test_conversational_confirmation_binds_the_current_exact_review(
                     "scope_identifier": scope.identifier,
                     "confirmation_text": confirmation_text,
                 },
+            )
+
+
+@pytest.mark.django_db
+def test_remote_conversation_confirmation_requires_the_origin_session_and_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = Project.objects.create(
+        project_id="remote-confirmation-project",
+        display_name="Remote Confirmation Project",
+        repository_full_name="example/remote-confirmation-project",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(
+        project, "Create a deterministic confirmation flow.", kind="SPRINT"
+    )
+    caller = "remote-service-principal"
+    # Remote adapters pass the opaque authenticated caller fingerprint through
+    # unchanged; only local callers are hashed by the application service.
+    fingerprint = caller
+    context = McpRequestContext(
+        caller=caller, conversation_context="signed-session-a", remote=True
+    )
+    with override_settings(MCP_PRODUCT_OWNER_CALLER_FINGERPRINTS=(fingerprint,)):
+        review = invoke_public_tool(
+            "scope.review",
+            {"project_id": project.project_id, "scope_identifier": scope.identifier},
+            caller=caller,
+            request_context=context,
+        )
+        assert review["proposal_review"]["confirmation_eligible"] is True
+        binding = McpConversationBinding.objects.get(scope=scope)
+        assert binding.proposal_hash == scope.record["proposal_hash"]
+        monkeypatch.setattr(
+            "projects.governed_mcp._advance_orchestration", lambda *_: None
+        )
+        confirmed = invoke_public_tool(
+            "conversation.confirm",
+            {"confirmation_text": "Igen, jóváhagyom."},
+            caller=caller,
+            request_context=context,
+        )
+        assert confirmed["orchestration_token"]
+        assert GovernanceApproval.objects.filter(scope=scope).count() == 1
+        with pytest.raises(ValueError, match="CONVERSATION_BINDING_MISMATCH"):
+            invoke_public_tool(
+                "conversation.confirm",
+                {
+                    "confirmation_text": "Igen, jóváhagyom.",
+                    "scope_identifier": scope.identifier,
+                },
+                caller=caller,
+                request_context=McpRequestContext(
+                    caller=caller, conversation_context="signed-session-b", remote=True
+                ),
+            )
+        with pytest.raises(ValueError, match="PRODUCT_OWNER_AUTHORITY_MISSING"):
+            invoke_public_tool(
+                "conversation.confirm",
+                {"confirmation_text": "Igen, jóváhagyom."},
+                caller="untrusted-principal",
+                request_context=McpRequestContext(
+                    caller="untrusted-principal",
+                    conversation_context="signed-session-a",
+                    remote=True,
+                ),
+            )
+
+
+@pytest.mark.django_db
+def test_remote_confirmation_exposes_safe_deterministic_binding_diagnostics() -> None:
+    project = Project.objects.create(
+        project_id="remote-confirmation-diagnostics",
+        display_name="Remote Confirmation Diagnostics",
+        repository_full_name="example/remote-confirmation-diagnostics",
+        definition_path=".bridge/project.yaml",
+        onboarding_status=Project.OnboardingStatus.READY,
+    )
+    scope = propose_scope(project, "Confirm a reviewed remote proposal.", kind="SPRINT")
+    caller = "remote-diagnostics-principal"
+    fingerprint = caller
+    confirmation = {"confirmation_text": "Igen, jóváhagyom."}
+    with override_settings(MCP_PRODUCT_OWNER_CALLER_FINGERPRINTS=(fingerprint,)):
+        with pytest.raises(ValueError, match="CALLER_IDENTITY_MISSING"):
+            invoke_public_tool(
+                "conversation.confirm",
+                confirmation,
+                request_context=McpRequestContext(
+                    caller="", conversation_context="signed-session", remote=True
+                ),
+            )
+        with pytest.raises(ValueError, match="CONVERSATION_CONTEXT_MISSING"):
+            invoke_public_tool(
+                "conversation.confirm",
+                confirmation,
+                caller=caller,
+                request_context=McpRequestContext(caller=caller, remote=True),
+            )
+        context = McpRequestContext(
+            caller=caller, conversation_context="signed-session", remote=True
+        )
+        with pytest.raises(ValueError, match="PENDING_PROPOSAL_NOT_FOUND"):
+            invoke_public_tool(
+                "conversation.confirm",
+                {**confirmation, "scope_identifier": scope.identifier},
+                caller=caller,
+                request_context=context,
+            )
+        invoke_public_tool(
+            "scope.review",
+            {"project_id": project.project_id, "scope_identifier": scope.identifier},
+            caller=caller,
+            request_context=context,
+        )
+        scope.status = ExecutableScope.Status.APPROVED
+        scope.save(update_fields=["status"])
+        with pytest.raises(ValueError, match="PROPOSAL_BINDING_MISMATCH"):
+            invoke_public_tool(
+                "conversation.confirm",
+                confirmation,
+                caller=caller,
+                request_context=context,
             )
 
 
@@ -949,11 +1075,7 @@ def test_review_routes_an_eligible_product_owner_to_simple_confirmation() -> Non
     assert review["next_tool"] == "conversation.confirm"
     assert review["required_user_input"] == ["confirmation_text"]
     confirm_schema = TOOLS["conversation.confirm"]["inputSchema"]
-    assert confirm_schema["required"] == [
-        "project_id",
-        "scope_identifier",
-        "confirmation_text",
-    ]
+    assert confirm_schema["required"] == ["confirmation_text"]
     with pytest.raises(ValueError, match="unknown property: product_owner_identity"):
         invoke_public_tool(
             "conversation.confirm",

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import unicodedata
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -84,6 +86,7 @@ from .models import (
     KnowledgeContextPackage,
     KnowledgeEntry,
     McpAuditEvent,
+    McpConversationBinding,
     McpIdempotencyRecord,
     Project,
     RoadmapItem,
@@ -125,11 +128,25 @@ MUTATING = {
 }
 _PRODUCT_OWNER_CONFIRMATIONS = {
     "igen",
+    "igen jovahagyom",
     "igen jo lesz",
     "jo lesz igy",
     "mehet",
     "rendben csinald meg",
 }
+
+
+@dataclass(frozen=True)
+class McpRequestContext:
+    """Authenticated transport context carried from the MCP adapter.
+
+    ``conversation_context`` is an opaque, server-signed session identifier. It
+    is deliberately not a model-provided thread or user identifier.
+    """
+
+    caller: str
+    conversation_context: str | None = None
+    remote: bool = False
 _PRODUCT_OWNER_CONFIRMATION_PREFIXES = (
     "i approve",
     "i confirm",
@@ -1031,8 +1048,6 @@ _TOOLS.extend(
                 "confirmation_text": {"type": "string", "minLength": 1},
             },
             [
-                "project_id",
-                "scope_identifier",
                 "confirmation_text",
             ],
         ),
@@ -1319,8 +1334,15 @@ def _project(arguments: dict[str, Any]) -> Project:
         raise ValueError("PROJECT_NOT_VISIBLE: select a ready visible project.")
 
 
+def _configured_product_owner_fingerprints() -> set[str]:
+    configured = settings.MCP_PRODUCT_OWNER_CALLER_FINGERPRINTS
+    if isinstance(configured, str):
+        return {item.strip() for item in configured.split(",") if item.strip()}
+    return set(configured)
+
+
 def _derived_conversation_confirmation(
-    arguments: dict[str, Any], caller: str
+    arguments: dict[str, Any], request_context: McpRequestContext
 ) -> dict[str, Any]:
     """Bind a simple conversational reply to authenticated MCP request context.
 
@@ -1330,16 +1352,104 @@ def _derived_conversation_confirmation(
     durable values before the ordinary canonical orchestration is entered.
     """
     if not _is_explicit_product_owner_confirmation(arguments["confirmation_text"]):
-        raise ValueError("PRODUCT_OWNER_CONFIRMATION_REQUIRED")
-    project = _project(arguments)
-    scope = ExecutableScope.objects.get(
-        project=project, identifier=arguments["scope_identifier"]
+        raise ValueError("CONFIRMATION_TEXT_REJECTED")
+    if not request_context.caller:
+        raise ValueError("CALLER_IDENTITY_MISSING")
+    if request_context.remote and not request_context.conversation_context:
+        raise ValueError("CONVERSATION_CONTEXT_MISSING")
+    # The HTTP adapter already supplies a SHA-256 fingerprint of the bearer
+    # credential.  Never hash it again: configuration should hold that exact
+    # opaque, non-secret identity.  Local callers retain the legacy hashing
+    # behaviour so they cannot supply a precomputed Product Owner identity.
+    caller_fingerprint = (
+        request_context.caller
+        if request_context.remote
+        else hashlib.sha256(request_context.caller.encode("utf-8")).hexdigest()
     )
-    caller_fingerprint = hashlib.sha256(caller.encode("utf-8")).hexdigest()
+    if request_context.remote and not any(
+        hmac.compare_digest(caller_fingerprint, item)
+        for item in _configured_product_owner_fingerprints()
+    ):
+        raise ValueError("PRODUCT_OWNER_AUTHORITY_MISSING")
+    conversation_context = request_context.conversation_context or (
+        "local:" + caller_fingerprint
+    )
+    all_caller_bindings = McpConversationBinding.objects.select_related(
+        "scope__project"
+    ).filter(caller_fingerprint=caller_fingerprint)
+    bindings = all_caller_bindings.filter(
+        conversation_context=conversation_context
+    ).order_by("-updated_at")
+    requested_project = arguments.get("project_id")
+    requested_scope = arguments.get("scope_identifier")
+    candidates = list(bindings)
+    if requested_project:
+        candidates = [
+            item
+            for item in candidates
+            if item.scope.project.project_id == requested_project
+        ]
+    if requested_scope:
+        candidates = [
+            item for item in candidates if item.scope.identifier == requested_scope
+        ]
+    if not candidates:
+        # Direct in-process callers predate remote session binding.  Preserve
+        # their explicit project/scope confirmation path while keeping Remote
+        # MCP strictly server-session-bound.
+        if not request_context.remote and requested_project and requested_scope:
+            try:
+                scope = ExecutableScope.objects.select_related("project").get(
+                    project__project_id=requested_project,
+                    identifier=requested_scope,
+                )
+            except ExecutableScope.DoesNotExist:
+                raise ValueError("PENDING_PROPOSAL_NOT_FOUND")
+            review = review_scope(scope)
+            if not review["confirmation_eligible"]:
+                raise ValueError("PROPOSAL_BINDING_MISMATCH")
+            pending, _ = McpConversationBinding.objects.update_or_create(
+                scope=scope,
+                caller_fingerprint=caller_fingerprint,
+                conversation_context=conversation_context,
+                defaults={
+                    "proposal_version": review["proposal_version"],
+                    "proposal_hash": review["proposal_hash"],
+                    "origin_tool": "scope.review",
+                },
+            )
+            candidates = [pending]
+        if not candidates:
+            requested_bindings = all_caller_bindings
+            if requested_project:
+                requested_bindings = requested_bindings.filter(
+                    scope__project__project_id=requested_project
+                )
+            if requested_scope:
+                requested_bindings = requested_bindings.filter(
+                    scope__identifier=requested_scope
+                )
+            if requested_bindings.exists():
+                raise ValueError("CONVERSATION_BINDING_MISMATCH")
+        if not candidates:
+            # A caller that has reviewed this scope in a different server-issued
+            # session must never use that review from the current session.
+            if (requested_project or requested_scope) and all_caller_bindings.exists():
+                raise ValueError("CONVERSATION_BINDING_MISMATCH")
+        if not candidates:
+            raise ValueError("PENDING_PROPOSAL_NOT_FOUND")
+    if len(candidates) != 1:
+        raise ValueError("PENDING_PROPOSAL_NOT_FOUND")
+    pending = candidates[0]
+    scope = pending.scope
+    project = scope.project
     product_owner_identity = f"authenticated-mcp-caller:{caller_fingerprint}"
     existing = (
         ConversationOrchestration.objects.filter(
-            scope=scope, product_owner_identity=product_owner_identity
+            scope=scope,
+            product_owner_identity=product_owner_identity,
+            caller_fingerprint=caller_fingerprint,
+            conversation_context=conversation_context,
         )
         .order_by("created_at")
         .first()
@@ -1350,11 +1460,17 @@ def _derived_conversation_confirmation(
     else:
         review = review_scope(scope)
         if not review["confirmation_eligible"]:
-            raise ValueError("CLARIFICATION_REQUIRED")
+            raise ValueError("PROPOSAL_BINDING_MISMATCH")
         proposal_version = review["proposal_version"]
         proposal_hash = review["proposal_hash"]
+        if (
+            proposal_version != pending.proposal_version
+            or proposal_hash != pending.proposal_hash
+        ):
+            raise ValueError("PROPOSAL_BINDING_MISMATCH")
     binding = {
         "caller": caller_fingerprint,
+        "conversation_context": conversation_context,
         "project_id": project.project_id,
         "scope_identifier": scope.identifier,
         "proposal_version": proposal_version,
@@ -1364,12 +1480,14 @@ def _derived_conversation_confirmation(
         json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return {
-        "project_id": arguments["project_id"],
-        "scope_identifier": arguments["scope_identifier"],
+        "project_id": project.project_id,
+        "scope_identifier": scope.identifier,
         "confirmation_text": "igen",
         "product_owner_identity": product_owner_identity,
         "confirmation_reference": f"conversation-confirmation:v1:{digest}",
         "idempotency_key": f"conversation-confirm:v1:{digest}",
+        "caller_fingerprint": caller_fingerprint,
+        "conversation_context": conversation_context,
     }
 
 
@@ -1402,6 +1520,30 @@ def _derived_recovery_confirmation(
         "confirmation_reference": f"scope-resume-confirmation:v1:{digest}",
         "idempotency_key": f"scope-resume-confirm:v1:{digest}",
     }
+
+
+def _record_pending_conversation_binding(
+    scope: ExecutableScope,
+    review: dict[str, Any],
+    tool_name: str,
+    request_context: McpRequestContext,
+) -> None:
+    """Persist the exact reviewed proposal as seen by one Remote MCP session."""
+    if not request_context.remote or not request_context.conversation_context:
+        return
+    if not review.get("confirmation_eligible"):
+        return
+    caller_fingerprint = request_context.caller
+    McpConversationBinding.objects.update_or_create(
+        scope=scope,
+        conversation_context=request_context.conversation_context,
+        defaults={
+            "caller_fingerprint": caller_fingerprint,
+            "proposal_version": review["proposal_version"],
+            "proposal_hash": review["proposal_hash"],
+            "origin_tool": tool_name,
+        },
+    )
 
 
 def _approval(
@@ -2045,7 +2187,15 @@ def _confirm_and_execute(
         confirmation_reference=arguments["confirmation_reference"],
         proposal_version=arguments["proposal_version"],
         proposal_hash=arguments["proposal_hash"],
+        caller_fingerprint=arguments.get("caller_fingerprint", ""),
+        conversation_context=arguments.get("conversation_context", ""),
     )
+    if arguments.get("conversation_context"):
+        McpConversationBinding.objects.filter(
+            scope=scope,
+            conversation_context=arguments["conversation_context"],
+            caller_fingerprint=arguments.get("caller_fingerprint", ""),
+        ).update(confirmed_at=timezone.now())
     _advance_orchestration(flow, caller)
     return _orchestration_result(flow)
 
@@ -2411,7 +2561,10 @@ def _prepared_codex_handoff(scope: ExecutableScope) -> dict[str, Any]:
 
 
 def invoke_public_tool(
-    name: str, arguments: Any, caller: str = "bearer-token"
+    name: str,
+    arguments: Any,
+    caller: str = "bearer-token",
+    request_context: McpRequestContext | None = None,
 ) -> dict[str, Any]:
     """Authorize, validate and invoke one safe public tool."""
     if name not in TOOLS:
@@ -2421,8 +2574,13 @@ def invoke_public_tool(
     tool = TOOLS[name]
     schema = tool["inputSchema"]
     _validate_arguments(schema, arguments)
+    request_context = request_context or McpRequestContext(caller=caller)
     if name == "conversation.confirm":
-        arguments = _derived_conversation_confirmation(arguments, caller)
+        try:
+            arguments = _derived_conversation_confirmation(arguments, request_context)
+        except ValueError as exc:
+            _audit(caller, name, None, "REJECTED", {"code": str(exc)})
+            raise
     elif name == "scope.resume_confirm_and_execute":
         arguments = {
             **arguments,
@@ -2577,6 +2735,7 @@ def invoke_public_tool(
                 identifier=arguments["scope_identifier"], project=project
             )
             review = review_scope(scope)
+            _record_pending_conversation_binding(scope, review, name, request_context)
             result = {
                 "status": "PROPOSAL_REVIEW",
                 "project_id": project.project_id,
@@ -3208,6 +3367,21 @@ def invoke_public_tool(
             result = invoke_operation(
                 operation, dict(arguments), Path(settings.BASE_DIR)
             )
+            if name in {"sprint.propose", "work_item.propose"}:
+                if not isinstance(result, dict):
+                    raise ValueError("INVALID_PROPOSAL_RESULT")
+                scope_record = result.get("scope", {})
+                if not isinstance(scope_record, dict):
+                    raise ValueError("INVALID_PROPOSAL_SCOPE")
+                identifier = scope_record.get("identifier")
+                if isinstance(identifier, str):
+                    proposed_scope = ExecutableScope.objects.get(identifier=identifier)
+                    proposal_review = result.get("proposal_review", {})
+                    if not isinstance(proposal_review, dict):
+                        raise ValueError("INVALID_PROPOSAL_REVIEW")
+                    _record_pending_conversation_binding(
+                        proposed_scope, proposal_review, name, request_context
+                    )
         elif name.startswith("contract."):
             action = name.split(".")[1]
             op = {

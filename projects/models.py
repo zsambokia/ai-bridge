@@ -1314,6 +1314,9 @@ class ConversationOrchestration(models.Model):
     confirmation_reference = models.CharField(max_length=255)
     proposal_version = models.PositiveIntegerField()
     proposal_hash = models.CharField(max_length=64)
+    # These are opaque server-issued values, never user supplied identity claims.
+    caller_fingerprint = models.CharField(max_length=64, blank=True)
+    conversation_context = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=64, default="CONFIRMATION_RECEIVED")
     current_step = models.CharField(max_length=64, default="APPROVAL")
     preparation = models.ForeignKey(
@@ -1358,6 +1361,39 @@ class ConversationOrchestration(models.Model):
 
     def __str__(self) -> str:
         return f"{self.scope.identifier}:{self.status}"
+
+
+class McpConversationBinding(models.Model):
+    """The pending proposal's authenticated Remote MCP conversation binding."""
+
+    scope = models.ForeignKey(
+        ExecutableScope, on_delete=models.PROTECT, related_name="mcp_conversation_bindings"
+    )
+    caller_fingerprint = models.CharField(max_length=64)
+    conversation_context = models.CharField(max_length=255)
+    proposal_version = models.PositiveIntegerField()
+    proposal_hash = models.CharField(max_length=64)
+    origin_tool = models.CharField(max_length=64)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scope", "conversation_context"],
+                name="unique_mcp_scope_conversation_context",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["caller_fingerprint", "conversation_context"],
+                name="mcp_conversation_ctx_idx",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scope.identifier}:{self.origin_tool}"
 
 
 class ExecutionProvider(models.Model):

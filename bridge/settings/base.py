@@ -81,6 +81,12 @@ MCP_PUBLIC_BASE_URL = os.environ.get(
 ).rstrip("/")
 MCP_AUTH_MODE = os.environ.get("MCP_AUTH_MODE", "bearer").strip().lower()
 MCP_API_TOKEN = os.environ.get("MCP_API_TOKEN", "")
+MCP_PRODUCT_OWNER_CALLER_FINGERPRINTS = tuple(
+    item.strip()
+    for item in os.environ.get("MCP_PRODUCT_OWNER_CALLER_FINGERPRINTS", "").split(",")
+    if item.strip()
+)
+MCP_SESSION_MAX_AGE_SECONDS = int(os.environ.get("MCP_SESSION_MAX_AGE_SECONDS", "3600"))
 AI_BRIDGE_DEV_EXECUTION_ACTIVITY = os.environ.get(
     "AI_BRIDGE_DEV_EXECUTION_ACTIVITY", "true"
 ).strip().lower() in {"1", "true", "yes", "on"}

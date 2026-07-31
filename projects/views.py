@@ -5,23 +5,34 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import uuid
 from typing import Any
 
 from django.conf import settings
+from django.core import signing
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .governed_mcp import TOOL_SURFACE_VERSION, invoke_public_tool, public_tools
+from .governed_mcp import (
+    TOOL_SURFACE_VERSION,
+    McpRequestContext,
+    invoke_public_tool,
+    public_tools,
+)
 
 MCP_PROTOCOL_VERSION = "2025-03-26"
 MCP_SERVER_INFO = {"name": "ai-bridge", "version": TOOL_SURFACE_VERSION}
 
 
-def _response(payload: dict[str, Any], status: int = 200) -> JsonResponse:
+def _response(
+    payload: dict[str, Any], status: int = 200, session_id: str | None = None
+) -> JsonResponse:
     response = JsonResponse(payload, status=status)
     response["Cache-Control"] = "no-store, private"
     response["MCP-Protocol-Version"] = MCP_PROTOCOL_VERSION
     response["X-Content-Type-Options"] = "nosniff"
+    if session_id:
+        response["MCP-Session-Id"] = session_id
     return response
 
 
@@ -53,9 +64,16 @@ def _authenticate(request: HttpRequest) -> JsonResponse | None:
     return None
 
 
-def _tool_result(name: str, arguments: Any, caller: str) -> dict[str, Any]:
+def _tool_result(
+    name: str, arguments: Any, request_context: McpRequestContext
+) -> dict[str, Any]:
     try:
-        status = invoke_public_tool(name, arguments, caller=caller)
+        status = invoke_public_tool(
+            name,
+            arguments,
+            caller=request_context.caller,
+            request_context=request_context,
+        )
     except (ValueError, KeyError) as exc:
         return {"content": [{"type": "text", "text": str(exc)}], "isError": True}
     except Exception:
@@ -72,6 +90,33 @@ def _tool_result(name: str, arguments: Any, caller: str) -> dict[str, Any]:
     }
 
 
+def _issue_session_id(caller: str) -> str:
+    """Issue an opaque, expiring MCP session bound to its authenticated caller."""
+    return signing.dumps(
+        {"nonce": uuid.uuid4().hex, "caller": caller},
+        salt="ai-bridge.mcp-session.v1",
+    )
+
+
+def _session_id_from_request(request: HttpRequest, caller: str) -> str | None:
+    value = request.headers.get("MCP-Session-Id", "")
+    if not value:
+        return None
+    try:
+        payload = signing.loads(
+            value,
+            salt="ai-bridge.mcp-session.v1",
+            max_age=settings.MCP_SESSION_MAX_AGE_SECONDS,
+        )
+    except (signing.BadSignature, signing.SignatureExpired):
+        return None
+    if not isinstance(payload, dict) or not hmac.compare_digest(
+        payload.get("caller", ""), caller
+    ):
+        return None
+    return value
+
+
 @csrf_exempt
 def mcp_endpoint(request: HttpRequest) -> HttpResponse:
     """Serve JSON-RPC over Streamable HTTP without browser-only middleware."""
@@ -85,6 +130,11 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
     caller = hashlib.sha256(
         request.headers["Authorization"].encode("utf-8")
     ).hexdigest()
+    request_context = McpRequestContext(
+        caller=caller,
+        conversation_context=_session_id_from_request(request, caller),
+        remote=True,
+    )
     try:
         message = json.loads(request.body)
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -100,6 +150,7 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
         version = params.get("protocolVersion")
         if not isinstance(version, str):
             return _error(request_id, -32602, "protocolVersion is required.")
+        session_id = _issue_session_id(caller)
         return _response(
             {
                 "jsonrpc": "2.0",
@@ -114,7 +165,8 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
                         "approval reference."
                     ),
                 },
-            }
+            },
+            session_id=session_id,
         )
     if method == "notifications/initialized" and "id" not in message:
         response = HttpResponse(status=202)
@@ -133,7 +185,9 @@ def mcp_endpoint(request: HttpRequest) -> HttpResponse:
             {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "result": _tool_result(name, params.get("arguments", {}), caller),
+                "result": _tool_result(
+                    name, params.get("arguments", {}), request_context
+                ),
             }
         )
     return _error(request_id, -32601, "Method not found.")

@@ -338,6 +338,31 @@ The token is a discovery result, not a transfer of ownership:
 to another contract. Cancelling it still requires the durable approval and
 active-lifecycle validation for that run's own contract.
 
+## Remote MCP conversation binding
+
+Remote MCP authentication identifies the configured MCP client, not a
+user-supplied Product Owner claim. The HTTP adapter derives an opaque caller
+fingerprint from the authenticated credential and issues a signed,
+short-lived `MCP-Session-Id` on `initialize`. It validates the session against
+that same caller on every request. Neither caller nor session may be supplied
+in tool arguments.
+
+For a Remote MCP request, `scope.review` records a `McpConversationBinding`
+containing the canonical scope, proposal version/hash, caller fingerprint, and
+server-issued session. `conversation.confirm` accepts only affirmative text;
+the service derives all remaining confirmation input from that durable binding.
+The binding is locked and marked confirmed with the canonical approval flow, so
+repeated identical confirmation reuses the existing approval/contract/run.
+Different sessions, callers, projects, scopes, stale reviews, and exact
+proposal mismatches fail closed with non-sensitive diagnostic codes recorded in
+the MCP audit layer.
+
+The session is an MCP transport context, not an assertion that the remote
+provider exposes a human ChatGPT identity or thread identifier. Product Owner
+authority is the server-owned caller fingerprint allow-list; the actual
+ChatGPT Business UI flow remains the operational proof that the client carries
+the session correctly.
+
 ## Interrupted approval recovery
 
 `ConversationOrchestration` and `GovernanceApproval` are the durable recovery
