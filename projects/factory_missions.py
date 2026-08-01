@@ -41,6 +41,21 @@ def _strings(value: object) -> list[str]:
     )
 
 
+def _owner_authorized_plan_generation(message: str) -> bool:
+    """Recognise an explicit request to move from discovery to a Plan."""
+    normalized = " ".join(message.casefold().replace(",", " ").split())
+    return normalized in {
+        "ok mehet",
+        "rendben mehet",
+        "mehet",
+        "kezdheted",
+        "indulhat",
+        "készíts tervet",
+        "készítsd el a tervet",
+        "mehet a terv",
+    }
+
+
 def apply_understanding(
     session: FactoryChatSession, data: Mapping[str, object], message: str
 ) -> FactoryMission:
@@ -51,9 +66,10 @@ def apply_understanding(
         if text_value:
             setattr(mission, field, text_value[:2000])
     for field in _LIST_FIELDS:
-        list_value = _strings(data.get(field, []))
-        if list_value:
-            setattr(mission, field, list_value[:30])
+        # An explicit empty list closes a previously raised question.  The
+        # old truthy-only merge kept stale decisions indefinitely.
+        if field in data:
+            setattr(mission, field, _strings(data.get(field))[:30])
     confidence = data.get("recommendation_confidence")
     if isinstance(confidence, (int, float)):
         mission.recommendation_confidence = max(0.0, min(1.0, float(confidence)))
@@ -63,11 +79,16 @@ def apply_understanding(
     if not mission.objective:
         mission.objective = message[:2000]
     concrete = len(message.split()) >= 8
+    plan_requested = _owner_authorized_plan_generation(message)
     mission.requirements_sufficient = bool(
         mission.objective
         and mission.primary_workflow
         and not mission.unresolved_decisions
-        and (mission.recommendation_confidence >= CONFIDENCE_THRESHOLD or concrete)
+        and (
+            mission.recommendation_confidence >= CONFIDENCE_THRESHOLD
+            or concrete
+            or plan_requested
+        )
     )
     if mission.requirements_sufficient and mission.plan_id is None:
         mission.phase = FactoryMission.Phase.REQUIREMENTS_SUFFICIENT

@@ -178,6 +178,13 @@ def _prompt(context: dict[str, object], message: str) -> str:
                     "recommendation_confidence, repository_proposal. "
                     "Use unresolved_decisions only for a real business decision."
                 ),
+                (
+                    "When the owner explicitly authorizes plan preparation "
+                    "after a summary (for example 'ok, mehet' or 'készíts "
+                    "tervet'), return the complete current understanding, "
+                    "clear resolved decisions with an empty list, and do not "
+                    "promise a plan later."
+                ),
             ],
             "context": context,
             "latest_owner_message": message,
@@ -324,9 +331,11 @@ def reply(request: Any, project: Project | None, text: str) -> list[dict[str, st
             before = mission.plan_id
             mission = create_plan_when_sufficient(mission, request.user.get_username())
             if not before and mission.plan_id:
+                # Keep this system-generated transition message encoding-stable.
                 response = (
-                    "Már elegendő információm van a tervhez. Elkészítettem a "
-                    "javasolt megoldást és a Sprint-felosztást a jobb oldali tervben."
+                    "M\u00e1r elegend\u0151 inform\u00e1ci\u00f3m van a tervhez. "
+                    "Elk\u00e9sz\u00edtettem a javasolt megold\u00e1st \u00e9s a "
+                    "Sprint-feloszt\u00e1st a jobb oldali tervben."
                 )
                 FactoryChatMessage.objects.filter(
                     session=session,

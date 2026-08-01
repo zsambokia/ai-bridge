@@ -338,6 +338,67 @@ class FactoryChatTests(TestCase):
         assert mission.plan is not None
         self.assertEqual(mission.plan.plan_document["objective"], "Konténerkalkulátor")
 
+    def test_explicit_plan_request_closes_a_resolved_question_and_creates_plan(
+        self,
+    ) -> None:
+        """A short owner confirmation must not leave Orki in questionnaire mode."""
+        ExecutionProvider.objects.create(
+            provider_id="plan-request-openai",
+            name="Plan request OpenAI",
+            kind=ExecutionProvider.Kind.OPENAI,
+            role=ExecutionProvider.Role.MODEL_API,
+            status=ExecutionProvider.Status.ACTIVE,
+            adapter_key="plan-request-openai",
+            enabled=True,
+            capabilities=["MODEL_INFERENCE"],
+            credential_binding="OPENAI_API_KEY",
+        )
+        session = FactoryChatSession.objects.create(
+            project=self.project, actor_identity=self.user.get_username()
+        )
+        FactoryMission.objects.create(
+            session=session,
+            objective="Konténerkihasználtság-kalkulátor",
+            primary_workflow="A beszerző megadja a méreteket, majd számítást kér.",
+            unresolved_decisions=["Kell export?"],
+        )
+        payload = {
+            "reply": "Rendben, nekilátok.",
+            "plan": None,
+            "understanding": {"unresolved_decisions": []},
+        }
+        self.client.force_login(self.user)
+        client_session = self.client.session
+        client_session["factory_orki_session"] = str(session.token)
+        client_session.save()
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "OPENAI_API_KEY": "test",
+                    "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "plan-request-openai",
+                },
+            ),
+            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+        ):
+            adapter_for.return_value.invoke_model.return_value = {
+                "output_text": __import__("json").dumps(payload)
+            }
+            response = self.client.post(
+                reverse("factory-chat-message"), {"message": "ok, mehet"}
+            )
+        self.assertRedirects(response, reverse("factory-chat"))
+        mission = FactoryMission.objects.get(session=session)
+        self.assertTrue(mission.requirements_sufficient)
+        self.assertEqual(mission.unresolved_decisions, [])
+        self.assertEqual(
+            mission.phase, FactoryMission.Phase.AWAITING_PRODUCT_OWNER_APPROVAL
+        )
+        self.assertContains(
+            self.client.get(reverse("factory-chat")),
+            "Már elegendő információm van a tervhez.",
+        )
+
     def test_plan_approval_continues_without_a_technical_question(self) -> None:
         self.client.force_login(self.user)
         self.client.post(
