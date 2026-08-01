@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factory Chat</title>
+  <style>
+    :root { color-scheme: dark; --bg:#10151d; --panel:#18212d; --line:#334155; --text:#e5edf7; --muted:#9ba9bb; --accent:#4fd1c5; }
+    * { box-sizing:border-box } body { margin:0; font:16px system-ui,sans-serif; background:var(--bg); color:var(--text) } a { color:var(--accent) }
+    header { display:flex; gap:1rem; align-items:center; padding:.75rem 1rem; border-bottom:1px solid var(--line); flex-wrap:wrap } header strong{font-size:1.1rem} .grow{flex:1}
+    .mode a,.tabs a { display:inline-block; padding:.45rem .65rem; text-decoration:none; border-radius:.4rem }.active{background:#26565a;color:white!important}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    main { display:grid; grid-template-columns:minmax(12rem, 1fr) minmax(18rem, 32vw) minmax(25rem, 2fr); min-height:calc(100vh - 62px) }.pane { padding:1rem; border-right:1px solid var(--line) }.pane:last-child{border:0} h2{font-size:1rem;margin-top:0}.project{display:block;padding:.6rem;border-bottom:1px solid var(--line);text-decoration:none}.project[aria-current]{background:#22334a}.message{padding:.65rem;margin:.5rem 0;border-radius:.45rem;background:#202c3b}.owner{border-left:3px solid var(--accent)} form{display:flex;gap:.5rem;margin-top:1rem} input{min-width:0;flex:1;padding:.65rem;border:1px solid var(--line);border-radius:.35rem;background:#0b1017;color:inherit}button,.button{padding:.65rem .8rem;border:0;border-radius:.35rem;background:var(--accent);color:#092023;font-weight:700;text-decoration:none}.muted{color:var(--muted)}.card{border:1px solid var(--line);border-radius:.5rem;padding:1rem;margin-bottom:.75rem}.mobile-tabs{display:none}
+    @media (max-width: 760px) { main{display:block;min-height:0}.pane{display:none;border:0}.pane[data-panel="{{ panel }}"]{display:block}.mobile-tabs{display:flex;position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);justify-content:space-around}.mobile-tabs a{padding:.85rem .25rem;text-decoration:none}.desktop-only{display:none} }
+  </style>
+</head>
+<body>
+  <header><strong>Factory Chat</strong><span class="muted">Munkatér: {{ request.user.get_username }}</span>{% if context.project %}<span class="muted">Projekt: {{ context.project.display_name }} · Mód: {{ mode }}</span>{% endif %}<span class="grow"></span>
+    <span class="mode" aria-label="Mód">
+      <a class="{% if mode == 'planning' %}active{% endif %}" href="?mode=planning">Tervezés</a><a class="{% if mode == 'coding' %}active{% endif %}" href="?mode=coding">Kódolás</a><a class="{% if mode == 'memory' %}active{% endif %}" href="?mode=memory">Memória</a></span>
+  </header>
+  <main>
+    <aside class="pane" data-panel="projects"><h2>Projektek</h2>{% for project in projects %}<a class="project" {% if context.project == project %}aria-current="page"{% endif %} href="?project={{ project.project_id|urlencode }}">{{ project.display_name }}<br><small class="muted">{{ project.onboarding_status }}</small></a>{% empty %}<p class="muted">Nincs elérhető projekt.</p>{% endfor %}<p><a class="button" href="{% url 'factory-chat-new-project' %}">Új projekt indítása</a></p></aside>
+    <section class="pane" data-panel="chat"><h2>Kontextusos beszélgetés</h2><p class="muted">Minden kérés a szerveren marad; ez nem közvetlen LLM-csatorna.</p>{% for message in messages %}<div class="message {{ message.role }}"><strong>{% if message.role == 'owner' %}Ön{% else %}AI Bridge{% endif %}</strong><br>{{ message.text }}</div>{% empty %}<p class="muted">Írjon egy kérdést az aktív munkakörnyezethez.</p>{% endfor %}<form method="post" action="{% url 'factory-chat-message' %}">{% csrf_token %}<label class="sr-only" for="message">Üzenet</label><input id="message" name="message" maxlength="1000" required placeholder="Kérdés vagy utasítás…"><button type="submit">Küldés</button></form></section>
+    <section class="pane" data-panel="context"><h2>Aktív munkakörnyezet</h2><div id="context-status">{% include "projects/factory_context_status.html" %}</div></section>
+  </main><nav class="mobile-tabs" aria-label="Mobil nézet"><a class="{% if panel == 'context' %}active{% endif %}" href="?panel=context">Kontextus</a><a class="{% if panel == 'chat' %}active{% endif %}" href="?panel=chat">Chat</a><a class="{% if panel == 'projects' %}active{% endif %}" href="?panel=projects">Projektek</a></nav>
+  <script>
+    window.setInterval(async () => {
+      const response = await fetch("{% url 'factory-chat-status' %}", {headers: {"X-Requested-With": "FactoryChat"}});
+      if (response.ok) document.getElementById("context-status").innerHTML = await response.text();
+    }, 5000);
+  </script>
+</body></html>

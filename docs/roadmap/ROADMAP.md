@@ -678,3 +678,21 @@ workspace raised `PermissionError` from the scheduler; the repair records a
 bounded retained retry instead. The rerun passed public SHA, migration plan,
 dependencies, worker, and scheduler checks. This proves the staging runtime is
 ready for, but does not replace, the required ChatGPT Business UI proof.
+
+## Issue #17 — Factory Chat UI and Autonomous Project Mission
+
+Factory Development Mode delivery is proceeding in the Product Owner-approved
+Sprint sequence for the Factory Chat UI and Autonomous Project Mission.
+
+### Sprint 2 — Project shell and native conversation
+
+Completed on `main` from baseline
+`f4a1f95f5e26c52018d6a7b0e21c83de1ac216ca`.
+
+The authenticated, server-rendered Factory Chat now provides a deliberate
+three-panel desktop shell (Projects, Conversation, AWC) with a compact mobile
+projection, session-local conversation continuity, canonical project-context
+selection, planning/coding/memory modes, and a bounded context-status refresh.
+The browser layer remains a projection: it neither calls a provider nor changes
+confirmation, execution, scope, or artifact authority. Sprint 3 is the next
+approved implementation boundary.
