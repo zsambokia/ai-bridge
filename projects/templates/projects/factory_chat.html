@@ -4,39 +4,43 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Factory Chat</title>
   <style>
-    :root { color-scheme: dark; --bg:#10151d; --panel:#18212d; --line:#334155; --text:#e5edf7; --muted:#9ba9bb; --accent:#4fd1c5; }
-    * { box-sizing:border-box } body { margin:0; font:16px system-ui,sans-serif; background:var(--bg); color:var(--text) } a { color:var(--accent) }
-    header { display:flex; gap:1rem; align-items:center; padding:.75rem 1rem; border-bottom:1px solid var(--line); flex-wrap:wrap } header strong{font-size:1.1rem} .grow{flex:1}
-    .mode a,.tabs a { display:inline-block; padding:.45rem .65rem; text-decoration:none; border-radius:.4rem }.active{background:#26565a;color:white!important}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-    main { display:grid; grid-template-columns:minmax(12rem, 1fr) minmax(18rem, 32vw) minmax(25rem, 2fr); min-height:calc(100vh - 62px) }.pane { padding:1rem; border-right:1px solid var(--line) }.pane:last-child{border:0} h2{font-size:1rem;margin-top:0}.project{display:block;padding:.6rem;border-bottom:1px solid var(--line);text-decoration:none}.project[aria-current]{background:#22334a}.message{padding:.65rem;margin:.5rem 0;border-radius:.45rem;background:#202c3b}.owner{border-left:3px solid var(--accent)} form{display:flex;gap:.5rem;margin-top:1rem} input{min-width:0;flex:1;padding:.65rem;border:1px solid var(--line);border-radius:.35rem;background:#0b1017;color:inherit}button,.button{padding:.65rem .8rem;border:0;border-radius:.35rem;background:var(--accent);color:#092023;font-weight:700;text-decoration:none}.muted{color:var(--muted)}.card{border:1px solid var(--line);border-radius:.5rem;padding:1rem;margin-bottom:.75rem}.mobile-tabs{display:none}
-    @media (max-width: 760px) { main{display:block;min-height:0}.pane{display:none;border:0}.pane[data-panel="{{ panel }}"]{display:block}.mobile-tabs{display:flex;position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);justify-content:space-around}.mobile-tabs a{padding:.85rem .25rem;text-decoration:none}.desktop-only{display:none} }
+    :root { --ink:#172033; --muted:#667085; --line:#d9e1ec; --paper:#fff; --wash:#f5f8fc; --accent:#2563eb; --accent-dark:#1747b0; }
+    * { box-sizing:border-box } body { margin:0; font:16px/1.5 system-ui,sans-serif; color:var(--ink); background:var(--wash) } button,input { font:inherit } button { cursor:pointer }
+    header { background:var(--paper); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:1rem; padding:.8rem max(1rem, calc((100vw - 1180px)/2)); flex-wrap:wrap } header strong{font-size:1.1rem}.grow{flex:1}.muted{color:var(--muted)}
+    main { max-width:1180px; margin:auto; display:grid; grid-template-columns:220px minmax(0,1fr) 300px; gap:1rem; padding:1rem }.pane { min-width:0 }.shell,.status-card { background:var(--paper); border:1px solid var(--line); border-radius:14px; box-shadow:0 1px 2px #1720330d }
+    .projects { padding:.7rem }.project { display:block; padding:.65rem .7rem; border-radius:8px; color:inherit; text-decoration:none; margin:.2rem 0 }.project[aria-current],.project:hover{background:#eaf1ff}.new-project{width:100%; margin-top:.7rem}
+    .conversation { display:flex; flex-direction:column; min-height:72vh }.conversation-head { padding:1rem 1.1rem; border-bottom:1px solid var(--line) }.conversation-head h1 { margin:0; font-size:1.1rem }.messages { flex:1; padding:1rem; display:flex; flex-direction:column; gap:.7rem }.message { max-width:85%; padding:.7rem .85rem; border-radius:12px; background:#edf3fe }.message.owner { align-self:flex-end; background:#dce9ff }.message strong { font-size:.85rem }.composer { border-top:1px solid var(--line); display:flex; padding:.8rem; gap:.5rem }.composer input { flex:1; min-width:0; border:1px solid #b9c6d8; border-radius:9px; padding:.65rem .75rem }
+    button,.button { display:inline-block; border:0; border-radius:8px; background:var(--accent); color:white; padding:.62rem .8rem; font-weight:650; text-decoration:none }.quiet-button { color:var(--accent-dark); background:#eaf1ff; margin-top:.5rem }.status { display:flex; flex-direction:column; gap:.7rem }.status-card { padding:.9rem 1rem }.status-card h2 { margin:0 0:.3rem; font-size:.82rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted) }.status-card p { margin:.25rem 0 }.status-title { font-weight:700; color:var(--ink) }.status-card form { margin-top:.6rem }.technical-details { font-size:.85rem; color:var(--muted); padding:.3rem .15rem } .technical-details summary { cursor:pointer }
+    .feedback { min-height:1.5rem; margin:.35rem 0 0; color:#167044 }.feedback.error { color:#b42318 }.mode a { color:var(--muted); text-decoration:none; padding:.38rem .55rem; border-radius:7px }.mode .active{background:#eaf1ff;color:var(--accent-dark)}.mobile-tabs{display:none}
+    @media (max-width:800px) { header{padding:.7rem 1rem}.desktop-mode{display:none} main{display:block;padding:.75rem}.projects{margin-bottom:.75rem}.projects .project{display:none}.conversation{min-height:58vh}.status{margin-top:.75rem}.mobile-tabs{display:flex;position:sticky;bottom:0;background:white;border-top:1px solid var(--line);justify-content:space-around;padding:.45rem}.mobile-tabs a{color:var(--muted);text-decoration:none;padding:.3rem}.message{max-width:92%} }
   </style>
 </head>
 <body>
-  <header><strong>Factory Chat</strong><span class="muted">Munkatér: {{ request.user.get_username }}</span>{% if context.project %}<span class="muted">Projekt: {{ context.project.display_name }} · Mód: {{ mode }}</span>{% endif %}<span class="grow"></span>
-    <span class="mode" aria-label="Mód">
-      <a class="{% if mode == 'planning' %}active{% endif %}" href="?mode=planning">Tervezés</a><a class="{% if mode == 'coding' %}active{% endif %}" href="?mode=coding">Kódolás</a><a class="{% if mode == 'memory' %}active{% endif %}" href="?mode=memory">Memória</a></span>
-  </header>
+  <header><strong>Factory Chat</strong><span class="muted">Beszélgetés a fejlesztésről</span><span class="grow"></span><span class="mode desktop-mode"><a class="{% if mode == 'planning' %}active{% endif %}" href="?mode=planning">Tervezés</a><a class="{% if mode == 'coding' %}active{% endif %}" href="?mode=coding">Előrehaladás</a><a class="{% if mode == 'memory' %}active{% endif %}" href="?mode=memory">Memória</a></span></header>
   <main>
-    <aside class="pane" data-panel="projects"><h2>Projektek</h2>{% for project in projects %}<a class="project" {% if context.project == project %}aria-current="page"{% endif %} href="?project={{ project.project_id|urlencode }}">{{ project.display_name }}<br><small class="muted">{{ project.onboarding_status }}</small></a>{% empty %}<p class="muted">Nincs elérhető projekt.</p>{% endfor %}<p><a class="button" href="{% url 'factory-chat-new-project' %}">Új projekt indítása</a></p></aside>
-    <section class="pane" data-panel="chat"><h2>Kontextusos beszélgetés</h2><p class="muted">Minden kérés a szerveren marad; ez nem közvetlen LLM-csatorna.</p>{% for message in messages %}<div class="message {{ message.role }}"><strong>{% if message.role == 'owner' %}Ön{% else %}AI Bridge{% endif %}</strong><br>{{ message.text }}</div>{% empty %}<p class="muted">Írjon egy kérdést az aktív munkakörnyezethez.</p>{% endfor %}<form method="post" action="{% url 'factory-chat-message' %}">{% csrf_token %}<label class="sr-only" for="message">Üzenet</label><input id="message" name="message" maxlength="1000" required placeholder="Kérdés vagy utasítás…"><button type="submit">Küldés</button></form></section>
-    <section class="pane" data-panel="context"><h2>Aktív munkakörnyezet</h2><div id="context-status">{% include "projects/factory_context_status.html" %}</div></section>
-    {% if mode == "planning" and context.project %}<div class="card"><h2>Terv kérdőív</h2><p class="muted">A terv szerveroldali műtermék; a Roadmap és Memória csak jelölt marad.</p><form method="post" action="{% url 'factory-plan-create' %}" style="display:block">{% csrf_token %}<input type="hidden" name="project_id" value="{{ context.project.project_id }}"><label>Cél<input name="outcome" required maxlength="1000"></label><label>Cím<input name="title" maxlength="160"></label><label>Egység<select name="kind"><option value="WORK_ITEM">Munkatétel</option><option value="SPRINT">Sprint</option></select></label><label>Típus<select name="task_type"><option>FEATURE</option><option>BUGFIX</option><option>MIGRATION</option><option>DOCUMENTATION</option><option>SECURITY</option></select></label><label>Műszaki korlátok<textarea name="technical_constraints"></textarea></label><label>Elfogadási ellenőrzések<textarea name="acceptance_checks"></textarea></label><label>Üzleti döntési kérdés<textarea name="business_escalation"></textarea></label><button type="submit">Terv készítése</button></form></div>{% endif %}
-  </main><nav class="mobile-tabs" aria-label="Mobil nézet"><a class="{% if panel == 'context' %}active{% endif %}" href="?panel=context">Kontextus</a><a class="{% if panel == 'chat' %}active{% endif %}" href="?panel=chat">Chat</a><a class="{% if panel == 'projects' %}active{% endif %}" href="?panel=projects">Projektek</a></nav>
+    <aside class="shell projects" aria-label="Projektek"><h2>Projektek</h2>{% for project in projects %}<a class="project" {% if context.project == project %}aria-current="page"{% endif %} href="?project={{ project.project_id|urlencode }}">{{ project.display_name }}</a>{% empty %}<p class="muted">Még nincs projekt.</p>{% endfor %}<form method="post" action="{% url 'factory-chat-new-project' %}" data-new-project>{% csrf_token %}<button class="new-project" type="submit">Új projekt</button></form></aside>
+    <section class="shell conversation" aria-label="Beszélgetés Orkival"><div class="conversation-head"><h1>Orki</h1><p class="muted">Mondd el, mit szeretnél elérni. Orki rövid kérdésekkel segít összeállítani a tervet.</p><p id="interaction-feedback" class="feedback" aria-live="polite"></p></div><div id="chat-messages" class="messages">{% for message in messages %}<article class="message {{ message.role }}"><strong>{% if message.role == 'owner' %}Ön{% else %}Orki{% endif %}</strong><br>{{ message.text }}</article>{% empty %}<p class="muted">Kezdd egy új ötlettel, vagy kérdezd meg: „Hogyan érhető el az alkalmazás?”</p>{% endfor %}</div><form class="composer" method="post" action="{% url 'factory-chat-message' %}" data-chat-form>{% csrf_token %}<label class="sr-only" for="message">Üzenet</label><input id="message" name="message" maxlength="1000" required placeholder="Írd ide, mire van szükséged…"><button type="submit">Küldés</button></form></section>
+    <aside class="status" aria-label="Aktuális feladat"><div id="context-status">{% include "projects/factory_context_status.html" %}</div></aside>
+  </main>
+  <nav class="mobile-tabs" aria-label="Gyors műveletek"><a href="#chat-messages">Beszélgetés</a><a href="#context-status">Teendő</a></nav>
   <script>
-    const refreshContext = async () => {
-      const response = await fetch("{% url 'factory-chat-status' %}", {headers: {"X-Requested-With": "FactoryChat"}});
-      if (response.ok) document.getElementById("context-status").innerHTML = await response.text();
-    };
-    window.setInterval(refreshContext, 5000);
+    const statusUrl = "{% url 'factory-chat-status' %}";
+    const feedback = (text, error=false) => { const node=document.getElementById("interaction-feedback"); node.textContent=text; node.classList.toggle("error", error); };
+    const refreshContext = async () => { const response = await fetch(statusUrl, {headers:{"X-Requested-With":"FactoryChat"}}); if(response.ok) document.getElementById("context-status").innerHTML = await response.text(); };
+    const addMessage = (message) => { const item=document.createElement("article"); item.className=`message ${message.role}`; item.innerHTML=`<strong>${message.role === "owner" ? "Ön" : "Orki"}</strong><br>`; item.append(document.createTextNode(message.text)); document.getElementById("chat-messages").append(item); item.scrollIntoView({block:"nearest"}); };
     document.addEventListener("submit", async (event) => {
-      const form = event.target;
-      if (!form.matches("form[action*='/factory/plan'], form[action*='/factory/memory/']")) return;
+      const form=event.target;
+      if (!form.matches("[data-chat-form], [data-new-project], [data-factory-action]")) return;
       event.preventDefault();
-      const response = await fetch(form.action, {
-        method: "POST", body: new FormData(form), headers: {"X-Requested-With": "FactoryChat"},
-      });
-      if (response.ok) { form.reset(); await refreshContext(); }
+      const button=form.querySelector("button[type=submit]"); if (button) button.disabled=true;
+      try {
+        const response=await fetch(form.action,{method:"POST",body:new FormData(form),headers:{"X-Requested-With":"FactoryChat"}});
+        if (!response.ok) { feedback("Most nem sikerült a művelet. Kérlek, próbáld újra.", true); return; }
+        if (form.matches("[data-chat-form], [data-new-project]")) { const data=await response.json(); data.messages.forEach(addMessage); form.reset(); }
+        await refreshContext(); feedback("Rendben, frissítettem a folyamatot.");
+      } catch (_) { feedback("Kapcsolati hiba történt. Kérlek, próbáld újra.", true); }
+      finally { if (button) button.disabled=false; }
     });
+    window.setInterval(refreshContext, 7000);
   </script>
 </body></html>

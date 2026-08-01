@@ -9,6 +9,7 @@ from .factory_chat import (
     factory_memory_search,
     factory_plan_approve,
     factory_plan_create,
+    factory_plan_request_changes,
 )
 
 urlpatterns = [
@@ -19,6 +20,11 @@ urlpatterns = [
         "factory/plans/<int:plan_id>/approve/",
         factory_plan_approve,
         name="factory-plan-approve",
+    ),
+    path(
+        "factory/plans/<int:plan_id>/changes/",
+        factory_plan_request_changes,
+        name="factory-plan-request-changes",
     ),
     path("factory/status/", factory_chat_status, name="factory-chat-status"),
     path("factory/memory/search/", factory_memory_search, name="factory-memory-search"),

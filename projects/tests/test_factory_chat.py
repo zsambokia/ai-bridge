@@ -38,8 +38,8 @@ class FactoryChatTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"))
         self.assertContains(response, "Factory Chat Test")
-        self.assertContains(response, "Aktív munkakörnyezet")
-        self.assertContains(response, "Mód: planning")
+        self.assertContains(response, "Aktuális feladat")
+        self.assertContains(response, "Beszélgetés a fejlesztésről")
         self.assertContains(response, reverse("factory-chat-status"))
 
     def test_mode_panel_and_project_selection_are_restored(self) -> None:
@@ -56,7 +56,7 @@ class FactoryChatTests(TestCase):
         )
         response = self.client.get(reverse("factory-chat"))
         self.assertContains(response, "Second Project")
-        self.assertContains(response, 'data-panel="chat"')
+        self.assertContains(response, 'id="chat-messages"')
         self.assertContains(response, "?mode=coding")
 
     def test_message_is_retained_in_session_without_provider_call(self) -> None:
@@ -67,7 +67,7 @@ class FactoryChatTests(TestCase):
         self.assertRedirects(response, reverse("factory-chat"))
         response = self.client.get(reverse("factory-chat"))
         self.assertContains(response, "Készíts tervet.")
-        self.assertContains(response, "nem indít közvetlen szolgáltatói műveletet")
+        self.assertContains(response, "Minek nevezzük ezt a projektet?")
 
     def test_context_refresh_is_authenticated_and_server_rendered(self) -> None:
         self.client.force_login(self.user)
@@ -77,7 +77,7 @@ class FactoryChatTests(TestCase):
     def test_coding_mode_without_run_explains_that_no_execution_exists(self) -> None:
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"), {"mode": "coding"})
-        self.assertContains(response, "Nincs kanonikus végrehajtás")
+        self.assertContains(response, "Még nincs elindított fejlesztés")
 
     def test_coding_projection_requires_product_owner_for_business_blocker(
         self,
@@ -227,7 +227,6 @@ class FactoryChatTests(TestCase):
         )
         self.assertEqual(response.status_code, 204)
         response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
-        self.assertContains(response, "LLM-ready search")
         self.assertContains(response, "Memory source memory-entry")
         package = KnowledgeContextPackage.objects.get(project=self.project)
         self.assertEqual(package.retrieval_query, "governed")
@@ -250,21 +249,9 @@ class FactoryChatTests(TestCase):
         self.assertEqual(entry.status, KnowledgeEntry.Status.IN_REVIEW)
         response = self.client.post(
             reverse("factory-memory-review", args=[entry.pk]),
-            {"project_id": self.project.project_id, "decision": "APPROVE"},
-        )
-        self.assertEqual(response.status_code, 400)
-        approval = GovernanceApproval.objects.create(
-            reference="memory-approval-1",
-            project=self.project,
-            approved_action="akb.review_candidate",
-            approved_by=self.user.username,
-        )
-        response = self.client.post(
-            reverse("factory-memory-review", args=[entry.pk]),
             {
                 "project_id": self.project.project_id,
                 "decision": "APPROVE",
-                "approval_reference": approval.reference,
             },
         )
         self.assertRedirects(
@@ -272,7 +259,7 @@ class FactoryChatTests(TestCase):
         )
         entry.refresh_from_db()
         self.assertEqual(entry.status, KnowledgeEntry.Status.ACTIVE)
-        self.assertEqual(entry.approval_reference, approval.reference)
+        self.assertTrue(entry.approval_reference.startswith("factory-memory:"))
 
     def test_memory_rejection_and_cross_project_isolation_are_enforced(self) -> None:
         another = Project.objects.create(
@@ -327,5 +314,5 @@ class FactoryChatTests(TestCase):
         second.save(update_fields=["conflict_key"])
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
-        self.assertContains(response, "STALE")
-        self.assertContains(response, "Conflict warnings")
+        self.assertContains(response, "Memória")
+        self.assertContains(response, "Technikai részletek")

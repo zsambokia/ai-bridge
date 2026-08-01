@@ -1,4 +1,4 @@
-"""Browser acceptance for the bounded Issue #17 Factory Chat mission."""
+"""Real Chromium acceptance for the conversational Factory Chat journey."""
 
 from __future__ import annotations
 
@@ -9,24 +9,12 @@ from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from playwright.sync_api import Browser, Page, Playwright, sync_playwright
 
-from projects.knowledge import (
-    create_or_upsert_candidate,
-    record_context_use,
-    review_candidate,
-)
-from projects.models import (
-    ExecutionContract,
-    ExecutionRun,
-    ExecutionStartRequest,
-    GovernanceApproval,
-    KnowledgeContextPackage,
-    OrchestrationSession,
-    Project,
-)
+from projects.knowledge import create_or_upsert_candidate
+from projects.models import Project
 
 
 class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
-    """Exercise the delivered UI in a real desktop and mobile Chromium page."""
+    """Exercise the delivered product-owner experience in Chromium."""
 
     _previous_async_unsafe: ClassVar[str | None]
     _playwright: ClassVar[Playwright]
@@ -35,8 +23,6 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        # The synchronous Playwright driver owns an asyncio loop while the
-        # live-server test performs ordinary synchronous ORM setup.
         cls._previous_async_unsafe = os.environ.get("DJANGO_ALLOW_ASYNC_UNSAFE")
         os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
         cls._playwright = sync_playwright().start()
@@ -64,36 +50,6 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
             repository_root="C:/workspace/factory-chat-browser",
             onboarding_status=Project.OnboardingStatus.READY,
         )
-        self.entry = create_or_upsert_candidate(
-            self.project,
-            {
-                "entry_key": "browser-mission-memory",
-                "knowledge_type": "GENERAL",
-                "title": "Browser mission memory",
-                "content": (
-                    "Factory Chat browser mission keeps provider calls server-owned."
-                ),
-                "source_reference": "docs/evidence/issue-017-browser-mission.md",
-                "evidence_references": ["docs/evidence/issue-017-browser-mission.md"],
-            },
-            self.user.username,
-        )
-        review_candidate(
-            self.project, self.entry.pk, "REQUEST_REVIEW", self.user.username
-        )
-        approval = GovernanceApproval.objects.create(
-            reference="browser-memory-approval",
-            project=self.project,
-            approved_action="akb.review_candidate",
-            approved_by=self.user.username,
-        )
-        review_candidate(
-            self.project,
-            self.entry.pk,
-            "APPROVE",
-            self.user.username,
-            approval.reference,
-        )
 
     def _login(self, page: Page) -> None:
         page.goto(f"{self.live_server_url}/")
@@ -102,92 +58,106 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         page.get_by_role("button", name="Belépés").click()
         page.wait_for_url(f"{self.live_server_url}/")
 
-    def test_bounded_multi_sprint_mission_across_desktop_and_mobile(self) -> None:
+    def _send(self, page: Page, message: str) -> None:
+        messages = page.locator("#chat-messages .message")
+        before = messages.count()
+        page.get_by_label("Üzenet").fill(message)
+        page.get_by_role("button", name="Küldés").click()
+        messages.nth(before + 1).wait_for()
+
+    def _complete_discovery(self, page: Page, name: str = "Demo17") -> None:
+        messages = page.locator("#chat-messages .message")
+        before = messages.count()
+        page.get_by_role("button", name="Új projekt").click()
+        messages.nth(before).wait_for()
+        self.assertIn("Minek nevezzük", messages.nth(before).inner_text())
+        for answer in (
+            name,
+            "Belső kollégák",
+            "Új bejegyzés felvétele és megőrzése",
+            "Kihagyom",
+        ):
+            self._send(page, answer)
+        page.get_by_text("Jóváhagyás szükséges.", exact=True).wait_for()
+
+    def test_new_project_stays_in_factory_chat_and_is_approved(self) -> None:
         desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
         self._login(desktop)
-        desktop.get_by_role("link", name="Tervezés").click()
-        desktop.get_by_label("Cél").fill("Deliver the bounded Factory Chat mission.")
-        desktop.get_by_label("Cím").fill("Browser mission plan")
-        desktop.get_by_role("button", name="Terv készítése").click()
-        desktop.wait_for_timeout(100)
-        self.assertTrue(self.project.factory_plans.exists())
-        desktop_display = desktop.locator("main").evaluate(
-            "node => getComputedStyle(node).display"
+        self._complete_discovery(desktop, "Új Factory Chat projekt")
+        self.assertNotIn("admin", desktop.url)
+        self.assertNotIn("registry", desktop.url)
+        desktop.get_by_role("button", name="Jóváhagyom a tervet").click()
+        desktop.get_by_text("A tervet jóváhagytad.", exact=False).wait_for()
+        self.assertTrue(
+            Project.objects.filter(display_name="Új Factory Chat projekt").exists()
         )
-        self.assertEqual(desktop_display, "grid")
-
-        desktop.get_by_role("link", name="Memória").click()
-        desktop.locator("#memory-query").fill("provider")
-        desktop.get_by_role("button", name="Search").click()
-        desktop.wait_for_timeout(100)
-        desktop.get_by_text("Browser mission memory", exact=True).wait_for()
-        package = KnowledgeContextPackage.objects.filter(project=self.project).first()
-        self.assertIsNotNone(package)
-        assert package is not None
-
-        session = OrchestrationSession.objects.create(
-            project=self.project,
-            idempotency_key="factory-chat-browser-mission",
-            provider_id="orki",
-            status=OrchestrationSession.Status.COMPLETED,
-            request_summary="Factory Chat browser mission",
-            correlation_id="factory-chat-browser-mission",
-            context_package_hash=package.package_hash,
-            context_entry_ids=package.entry_ids,
+        self.assertEqual(
+            desktop.locator("main").evaluate("node => getComputedStyle(node).display"),
+            "grid",
         )
-        record_context_use(package.pk, session=session)
-        contract = ExecutionContract.objects.create(
-            project=self.project,
-            handoff_identifier="factory-chat-browser-contract",
-            approved_sprint_path="docs/sprints/issue-017-sprint-6-factory-chat-end-to-end-acceptance.md",
-            contract_hash="a" * 64,
-            payload={
-                "scope": {
-                    "identifier": "issue-017-browser",
-                    "epic_reference": "issue-017",
-                }
+        desktop.close()
+
+    def test_existing_project_question_returns_the_live_url(self) -> None:
+        desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
+        self._login(desktop)
+        self._send(desktop, "Hogyan érhető el az alkalmazás?")
+        desktop.get_by_text(self.live_server_url, exact=False).wait_for()
+        self.assertNotIn(
+            "kanonikus munkakörnyezet", desktop.locator("body").inner_text()
+        )
+        desktop.close()
+
+    def test_default_state_uses_no_engineering_language(self) -> None:
+        desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
+        self._login(desktop)
+        body = desktop.locator("body").inner_text()
+        for forbidden in (
+            "ExecutableScope object",
+            "Active scope",
+            "Governed conversation",
+            "BREAK_GLASS_TERMINALIZED",
+            "EXECUTION_QUEUED",
+            "canonical server-owned approval card",
+        ):
+            self.assertNotIn(forbidden, body)
+        self.assertIn("aktuális feladat", body.casefold())
+        desktop.close()
+
+    def test_memory_candidate_can_be_reviewed_without_an_internal_reference(
+        self,
+    ) -> None:
+        entry = create_or_upsert_candidate(
+            self.project,
+            {
+                "entry_key": "reviewable-browser-memory",
+                "knowledge_type": "GENERAL",
+                "title": "Javasolt emlékeztető",
+                "content": "A kiadás ellenőrzése szükséges.",
+                "source_reference": "browser",
+                "evidence_references": ["browser"],
             },
-            lifecycle=ExecutionContract.Lifecycle.CONSUMED,
-            orchestration_session=session,
+            self.user.username,
         )
-        authorization = GovernanceApproval.objects.create(
-            reference="browser-execution-approval",
-            project=self.project,
-            approved_action="AUTHORIZE_EXECUTION",
-            approved_by=self.user.username,
-        )
-        request = ExecutionStartRequest.objects.create(
-            contract=contract, approval=authorization
-        )
-        ExecutionRun.objects.create(
-            contract=contract,
-            start_request=request,
-            repository=self.project.repository_full_name,
-            branch="main",
-            baseline_commit="b" * 40,
-            contract_hash=contract.contract_hash,
-            workspace_identifier="factory-chat-browser-workspace",
-            provider_name="codex-cli",
-            lifecycle=ExecutionRun.Lifecycle.COMPLETED,
-            current_phase="CLOSING",
-            evidence_root="docs/evidence/issue-017-sprint-6-factory-chat-end-to-end-acceptance",
-            final_commit_sha="c" * 40,
-            terminal_state="PASS — READY FOR PRODUCT OWNER REVIEW",
-            orchestration_session=session,
-        )
-        desktop.get_by_role("link", name="Kódolás").click()
-        desktop.get_by_text("Coding status:", exact=False).wait_for()
-        self.assertTrue(ExecutionRun.objects.filter(orchestration_session=session).exists())
-        self.assertEqual(package.uses.get().session_id, session.pk)
+        desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
+        self._login(desktop)
+        desktop.goto(f"{self.live_server_url}/?mode=memory")
+        desktop.get_by_role("button", name="Átnézem").click()
+        desktop.get_by_role("button", name="Jóváhagyom a frissítést").wait_for()
+        desktop.get_by_role("button", name="Jóváhagyom a frissítést").click()
+        desktop.get_by_text("Nincs jóváhagyásra váró memóriafrissítés.").wait_for()
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, "ACTIVE")
+        desktop.close()
 
+    def test_mobile_planning_and_approval_flow(self) -> None:
         mobile = self._browser.new_page(viewport={"width": 390, "height": 844})
         self._login(mobile)
-        mobile.get_by_role("link", name="Chat").click()
-        mobile.get_by_role("heading", name="Kontextusos beszélgetés").wait_for()
+        self._complete_discovery(mobile, "Mobil terv")
+        mobile.get_by_role("button", name="Jóváhagyom a tervet").click()
+        mobile.get_by_text("A tervet jóváhagytad.", exact=False).wait_for()
         self.assertEqual(
             mobile.locator("main").evaluate("node => getComputedStyle(node).display"),
             "block",
         )
         self.assertTrue(mobile.locator(".mobile-tabs").is_visible())
-        desktop.close()
         mobile.close()
