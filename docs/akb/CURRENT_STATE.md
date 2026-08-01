@@ -592,6 +592,15 @@ and runtime projections. A UI action does not bypass AKB governance:
 candidate review, activation with project-bound approval, and rejection are
 delegated to the canonical service and append `KnowledgeRevision` records.
 
+## Issue #17 Sprint 6 Factory Chat end-to-end acceptance
+
+The Factory Chat Epic is accepted through a real Chromium mission, rather than
+only request-level coverage. The mission proves the project-scoped handoff
+from plan to approved AKB Memory package, Orki session, consumed execution
+contract, completed run, and Coding projection. It also checks the mobile
+single-column Chat surface. This is integration evidence, not a new browser
+authority or a claim of direct provider dispatch.
+
 ## Sprint D local Codex operational knowledge
 
 Use `prepare_local_codex` (or the `prepare_local_codex` management command)

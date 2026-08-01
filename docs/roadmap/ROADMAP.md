@@ -684,6 +684,17 @@ ready for, but does not replace, the required ChatGPT Business UI proof.
 Factory Development Mode delivery is proceeding in the Product Owner-approved
 Sprint sequence for the Factory Chat UI and Autonomous Project Mission.
 
+### Sprint 6 — End-to-end acceptance
+
+Completed on `main` from baseline
+`715d39d3506375f7105fe68881e1429e19f38afa`.
+
+A real Chromium mission covers the delivered Planning, Memory, Orki-context,
+execution, and Coding flow at desktop width, plus the mobile Chat projection.
+It remains a server-owned governance surface; provider dispatch and public
+deployment are not browser capabilities or claims. The Issue #17 evidence is
+in `docs/evidence/issue-017-sprint-6-factory-chat-end-to-end-acceptance/`.
+
 ### Sprint 2 — Project shell and native conversation
 
 Completed on `main` from baseline
