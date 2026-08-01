@@ -168,7 +168,15 @@ class OpenAIAdapter:
         return _post_json(
             f"{base_url.rstrip('/')}/responses",
             {"Authorization": f"Bearer {token}"},
-            {"model": model, "input": prompt[:4000], "max_output_tokens": 256},
+            {
+                "model": model,
+                "input": prompt[:4000],
+                # Factory Chat expects a complete mission artifact. 256 tokens can
+                # truncate valid JSON before its closing brace, which is not a
+                # recoverable model response.
+                "max_output_tokens": 900,
+                "text": {"format": {"type": "json_object"}},
+            },
         )
 
 

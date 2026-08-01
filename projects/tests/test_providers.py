@@ -12,6 +12,7 @@ from projects.models import ExecutionProvider
 from projects.provider_events import project_provider_line
 from projects.providers import (
     CodexCliAdapter,
+    OpenAIAdapter,
     check_health,
     credential_value,
     model_adapter_for,
@@ -20,6 +21,43 @@ from projects.providers import (
     select_provider,
     structured_model_response,
 )
+
+
+@pytest.mark.django_db
+def test_openai_model_requests_complete_json_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = ExecutionProvider.objects.create(
+        provider_id="openai-json-artifact",
+        name="OpenAI JSON artifact",
+        kind=ExecutionProvider.Kind.OPENAI,
+        role=ExecutionProvider.Role.MODEL_API,
+        status=ExecutionProvider.Status.ACTIVE,
+        adapter_key="openai-json-artifact-adapter",
+        enabled=True,
+        capabilities=["MODEL_INFERENCE"],
+        credential_binding="OPENAI_API_KEY",
+    )
+    received: dict[str, object] = {}
+
+    def fake_post(
+        url: str, headers: dict[str, str], payload: dict[str, object]
+    ) -> dict[str, object]:
+        received.update({"url": url, "headers": headers, "payload": payload})
+        return {"id": "response-test"}
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-value")
+    monkeypatch.setattr("projects.providers._post_json", fake_post)
+
+    assert OpenAIAdapter().invoke_model(entry, "mission prompt") == {
+        "id": "response-test"
+    }
+    assert received["payload"] == {
+        "model": "gpt-4.1-mini",
+        "input": "mission prompt",
+        "max_output_tokens": 900,
+        "text": {"format": {"type": "json_object"}},
+    }
 
 
 def test_codex_activity_projection_retains_redacted_structured_provider_output() -> (
