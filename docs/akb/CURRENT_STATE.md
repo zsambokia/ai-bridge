@@ -573,6 +573,15 @@ fail closed. A corrupted published scope file can be re-projected from the
 unchanged canonical record, the bounded repair for a deterministic
 published-content-hash mismatch.
 
+## Issue #17 Sprint 4 Factory Chat Coding Mode
+
+Coding Mode is a presentation-only, server-rendered view over a canonical
+`ExecutionRun`. It derives plain-language lifecycle status, Sprint checklist
+progress, matching-Epic execution progress, verification metadata, owner
+action/no-action state, recent activity, and optional diagnostics from the
+existing lifecycle/activity projections. It must not create a second lifecycle,
+browser-side progress record, or provider dispatch path.
+
 ## Sprint D local Codex operational knowledge
 
 Use `prepare_local_codex` (or the `prepare_local_codex` management command)

@@ -363,6 +363,15 @@ authority is the server-owned caller fingerprint allow-list; the actual
 ChatGPT Business UI flow remains the operational proof that the client carries
 the session correctly.
 
+## Factory Chat Coding Mode projection
+
+Issue #17 Sprint 4's Coding Mode is a server-rendered read-only projection. It
+uses `lifecycle_status_projection` and `activity_summary` for an existing
+`ExecutionRun`; its Epic summary is calculated only from immutable contract
+payload bindings on canonical runs in the same Project. The browser can poll
+the fragment but has no route that starts a provider, changes an execution,
+or grants approval authority.
+
 ## Interrupted approval recovery
 
 `ConversationOrchestration` and `GovernanceApproval` are the durable recovery

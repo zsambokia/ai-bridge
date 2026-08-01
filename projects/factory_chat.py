@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
+from .factory_coding import coding_projection
 from .factory_planning import approve_plan, create_plan
 from .models import (
     ConversationOrchestration,
@@ -71,6 +72,7 @@ def _context(project: Project | None, mode: str = "planning") -> dict[str, objec
             "memory": None,
             "conversation": None,
             "artifact": None,
+            "coding": None,
         }
     context: dict[str, object] = {
         "project": project,
@@ -97,6 +99,10 @@ def _context(project: Project | None, mode: str = "planning") -> dict[str, objec
         context["artifact"] = context["memory"]
     else:
         context["artifact"] = context["scope"] or context["roadmap"]
+    run = context["run"]
+    context["coding"] = coding_projection(run) if mode == "coding" and isinstance(
+        run, ExecutionRun
+    ) else coding_projection(None) if mode == "coding" else None
     return context
 
 

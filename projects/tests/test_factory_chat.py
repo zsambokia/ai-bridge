@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from projects.factory_coding import coding_projection
 from projects.models import FactoryPlan, GovernanceApproval, Project
 
 
@@ -62,6 +65,50 @@ class FactoryChatTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat-status"))
         self.assertContains(response, "Factory Chat Test")
+
+    def test_coding_mode_without_run_explains_that_no_execution_exists(self) -> None:
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("factory-chat"), {"mode": "coding"})
+        self.assertContains(response, "Nincs kanonikus végrehajtás")
+
+    def test_coding_projection_requires_product_owner_for_business_blocker(
+        self,
+    ) -> None:
+        class Run:
+            lifecycle = "BLOCKED_BUSINESS_DECISION"
+            current_blocker = {"question": "Melyik ügyfélcsoportot válasszuk?"}
+            contract = type(
+                "Contract",
+                (),
+                {"payload": {}, "approved_sprint_path": "docs/sprints/example.md"},
+            )()
+
+        with (
+            patch(
+                "projects.factory_coding.lifecycle_status_projection",
+                return_value={
+                    "status": "BLOCKED_BUSINESS_DECISION",
+                    "phase": "AWAITING_DECISION",
+                    "heartbeat": {},
+                    "queue": {"status": "QUEUED"},
+                    "workspace": {"status": "RETAINED"},
+                    "evidence": {
+                        "evidence_root": "docs/evidence/example",
+                        "final_commit_sha": "",
+                        "terminal_state": "",
+                    },
+                },
+            ),
+            patch(
+                "projects.factory_coding.activity_summary",
+                return_value={"checklist": [], "latest_events": []},
+            ),
+        ):
+            projection = coding_projection(Run())  # type: ignore[arg-type]
+        action = projection["action"]
+        assert isinstance(action, dict)
+        self.assertTrue(action["required"])
+        self.assertEqual(action["title"], "Termék Tulajdonos döntése szükséges")
 
     def test_planning_questionnaire_creates_proposed_artifacts(self) -> None:
         self.client.force_login(self.user)
