@@ -18,6 +18,9 @@
 - `docs/roadmap/ROADMAP.md`
 - `docs/akb/CURRENT_STATE.md`
 
-## Remaining action
+## Closure binding
 
-Commit and push this evidence-only Sprint 8 audit package after final repository checks. Full acceptance-scenario execution remains owned by the separate ChatGPT Business Platform Certification Epic.
+The evidence-only Sprint 8 audit package was committed and pushed on `main` at
+`2466876b29214a7249aaceee8902add782e06b30`, after final repository checks.
+Full acceptance-scenario execution remains owned by the separate ChatGPT
+Business Platform Certification Epic.

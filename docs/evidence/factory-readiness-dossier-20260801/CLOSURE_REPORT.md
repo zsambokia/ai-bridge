@@ -1,6 +1,6 @@
 # Sprint 8 closure report
 
-The final AI Bridge-owned readiness audit and dossier are complete. Engineering gates passed and the audit preserved both prior accepted evidence and a new failed-audit-attempt/repair record.
+The final AI Bridge-owned readiness audit and dossier are complete. Engineering gates passed on final evidence revision `2466876b29214a7249aaceee8902add782e06b30`, and the audit preserved both prior accepted evidence and new failed-audit-attempt/repair records.
 
 The mandatory complete-chain acceptance scenario is not executable without the external ChatGPT Business workspace/app capability. This is deliberately not replaced by local HTTP/MCP evidence. Sprint 6 remains unchanged and non-PASS; therefore Sprint 8 cannot honestly receive full Operational Acceptance and the Epic cannot be closed.
 
