@@ -22,4 +22,6 @@
 
 ## Remaining steps
 
-- Complete: release gates, independent audit, implementation commit, and push are bound in the closure record.
+- Complete: all Release Gates and the independent audit passed. Implementation
+  commit `ef48c386eddd626e5910f1e7877dbdcf8f326aa9` was pushed to
+  `origin/main` on 2026-08-01.

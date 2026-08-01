@@ -13,5 +13,5 @@ PASS — READY FOR PRODUCT OWNER REVIEW
 
 ## Commit and delivery binding
 
-- Implementation commit: pending final commit.
-- Push: pending final push to `origin/main`.
+- Implementation commit: `ef48c386eddd626e5910f1e7877dbdcf8f326aa9`.
+- Push: confirmed to `origin/main` on 2026-08-01.
