@@ -12,4 +12,7 @@ PASS — READY FOR PRODUCT OWNER REVIEW.
 - Scope review passed; see `INDEPENDENT_SPRINT_AUDIT.md`.
 - Browser E2E is represented by authenticated Django integration tests because the in-app browser attachment was unavailable.
 
-The implementation commit and push confirmation are added in the following closure binding commit.
+## Delivery binding
+
+- Implementation commit: `1d1c555edae242eae5a4d4e1e8668857e99d302c`.
+- Push: confirmed to `origin/main` on 2026-08-01.

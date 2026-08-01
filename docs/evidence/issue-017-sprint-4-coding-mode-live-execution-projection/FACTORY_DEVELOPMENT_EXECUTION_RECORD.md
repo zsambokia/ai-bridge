@@ -21,4 +21,9 @@
 
 ## Remaining steps
 
-- Run and record the complete Release Gate set, perform independent audit, bind the final commits, and push.
+- Complete: all required gates, independent audit, implementation commit, and push.
+
+## Commit and delivery binding
+
+- Implementation commit: `1d1c555edae242eae5a4d4e1e8668857e99d302c`.
+- Push: confirmed to `origin/main` on 2026-08-01.
