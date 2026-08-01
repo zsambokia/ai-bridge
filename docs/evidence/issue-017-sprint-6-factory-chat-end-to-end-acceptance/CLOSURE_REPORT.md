@@ -12,4 +12,5 @@ PASS — READY FOR PRODUCT OWNER REVIEW
 ## Commit and delivery binding
 
 - Implementation commit: `f6507d1` (`test(factory-chat): add issue 17 end-to-end acceptance`).
-- Branch: `main`; push binding is recorded by the follow-up evidence commit.
+- Delivery-evidence commit: `b22d4b5` (`docs(evidence): bind issue 17 epic delivery`).
+- Branch: `main`; both commits were pushed to `origin/main` on 2026-08-01.
