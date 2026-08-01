@@ -18,9 +18,22 @@ Sprint 016 is not execution authority.
 
 ## Implemented foundation
 
+## Sprint 8 Factory Readiness Dossier and external-certification boundary
+
+The final Sprint 8 dossier is recorded at
+`docs/evidence/factory-readiness-dossier-20260801/`. It reassesses the full
+promised chain at **82/100** maturity from the 40/100 corrective baseline and
+separates accepted AI Bridge-owned readiness from the unaccepted ChatGPT
+Business UI/Remote MCP platform proof. The score is not an Epic release
+verdict: Sprint 6 remains unchanged and non-PASS, and the separate ChatGPT
+Business Platform Certification Epic must still prove a genuine UI request,
+Product Owner UI approval, Remote MCP call, canonical orchestration/delivery/
+deployment receipts, and later UI retrieval. No local bearer-token or seeded
+projection substitutes for that evidence.
+
 ## Sprint 7 autonomous technical remediation and self-healing proof
 
-Sprint 7 is ready for Product Owner review under Factory Development Mode. An
+Sprint 7 is accepted by the Product Owner under Factory Development Mode. An
 unclassified worker exception outside the specialised workspace-provisioning
 recovery path is now a durable technical-remediation incident: Orki records
 ownership, evidence, a bounded child remediation scope, and the original run

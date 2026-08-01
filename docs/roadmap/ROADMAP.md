@@ -1,9 +1,24 @@
 # AI Bridge Roadmap
 
+## Factory Readiness Remediation — Sprint 8
+
+**Status:** `FINAL AUDIT COMPLETE — EPIC OPEN FOR EXTERNAL PLATFORM CERTIFICATION`.
+
+Sprint 8 records the final Factory Readiness Dossier at
+`docs/evidence/factory-readiness-dossier-20260801/`. The evidence-backed
+reassessment moves the complete-chain maturity baseline from **40/100** to
+**82/100**, while deliberately retaining the ChatGPT Business UI/Remote MCP
+proof as an unverified external-platform boundary. AI Bridge-owned lifecycle,
+Orki, knowledge, delivery, deployment and remediation evidence is classified
+separately from that missing proof. Sprint 6 remains non-PASS and unchanged;
+Issue #15 cannot claim final autonomous-factory readiness until the separate
+ChatGPT Business Platform Certification Epic records the genuine UI-originated
+chain.
+
 ## Factory Readiness Remediation — Sprint 7
 
-**Status:** `READY FOR PRODUCT OWNER REVIEW` (Engineering and Operational
-Acceptance evidence complete under Factory Development Mode).
+**Status:** `PASS — ACCEPTED` (Product Owner Engineering and Operational
+Acceptance accepted).
 
 Sprint 7 makes routine technical recovery a persisted, bounded and resumable
 factory capability. An unexpected non-provisioning worker fault now becomes an
@@ -104,7 +119,8 @@ and `docs/evidence/sprint-017-orki-mandatory-orchestration-gate/`.
 
 Engineering and isolated-runtime Operational Acceptance are recorded at the
 final implementation revision `4b8f59f19f8f215993811973f88d4f71374e08b7`.
-Sprint 3 remains out of scope until Product Owner review accepts this Sprint.
+Sprint 2 is accepted; later Sprint evidence is retained in its own historical
+package and does not alter this Sprint 2 record.
 
 ### Sprint 6 confirmation-binding remediation (engineering PASS; deployment/UI proof pending)
 
