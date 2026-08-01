@@ -696,3 +696,16 @@ selection, planning/coding/memory modes, and a bounded context-status refresh.
 The browser layer remains a projection: it neither calls a provider nor changes
 confirmation, execution, scope, or artifact authority. Sprint 3 is the next
 approved implementation boundary.
+
+### Sprint 3 — Planning Mode and Plan Approval
+
+Completed on `main` from baseline
+`72aaf1aabbf79aea237bb3edcee69c1bfac4aa0a`.
+
+Planning Mode now creates a durable server-side plan, a proposed canonical
+scope with no execution authorization, and candidate-only Roadmap and Memory
+outputs. Its one-time plan approval is intentionally distinct from execution
+confirmation: it does not invoke a provider, bind execution authority, accept
+Roadmap changes, or activate Memory. Explicit business questions produce a
+separate decision-required state. Sprint 4 is the next approved implementation
+boundary.

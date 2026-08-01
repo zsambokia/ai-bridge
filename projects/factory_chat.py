@@ -10,13 +10,16 @@ from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
+from .factory_planning import approve_plan, create_plan
 from .models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionRun,
+    FactoryPlan,
     KnowledgeContextPackage,
     Project,
 )
@@ -24,6 +27,21 @@ from .models import (
 SESSION_KEY = "factory_chat"
 VALID_MODES = {"planning", "coding", "memory"}
 VALID_PANELS = {"context", "chat", "projects"}
+
+
+def _planning_response(request: HttpRequest, project: Project) -> HttpResponse:
+    """Keep enhanced planning posts on the current page when JavaScript is on.
+
+    The redirect remains a non-JavaScript fallback.  The request header is a
+    presentation hint only and never changes server-side authority.
+    """
+    if request.headers.get("X-Requested-With") == "FactoryChat":
+        response = HttpResponse(status=204)
+        response["X-Factory-Context"] = reverse("factory-chat-status")
+        return response
+    return redirect(
+        f"{reverse('factory-chat')}?project={project.project_id}&mode=planning"
+    )
 
 
 def _state(request: HttpRequest) -> dict[str, Any]:
@@ -68,6 +86,9 @@ def _context(project: Project | None, mode: str = "planning") -> dict[str, objec
         .first(),
         "conversation": ConversationOrchestration.objects.filter(scope__project=project)
         .order_by("-updated_at")
+        .first(),
+        "plan": FactoryPlan.objects.filter(project=project)
+        .order_by("-created_at")
         .first(),
     }
     if mode == "coding" and context["run"]:
@@ -131,6 +152,45 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
     state["messages"] = messages
     request.session.modified = True
     return redirect("factory-chat")
+
+
+@login_required
+@require_http_methods(["POST"])
+def factory_plan_create(request: HttpRequest) -> HttpResponse:
+    project = get_object_or_404(
+        Project,
+        project_id=request.POST.get("project_id"),
+        lifecycle=Project.Lifecycle.ACTIVE,
+    )
+    try:
+        create_plan(
+            project,
+            {
+                "outcome": request.POST.get("outcome", ""),
+                "title": request.POST.get("title", ""),
+                "kind": request.POST.get("kind", "WORK_ITEM"),
+                "task_type": request.POST.get("task_type", "FEATURE"),
+                "technical_constraints": request.POST.get("technical_constraints", ""),
+                "acceptance_checks": request.POST.get("acceptance_checks", ""),
+                "risk_modifiers": request.POST.get("risk_modifiers", ""),
+                "business_escalation": request.POST.get("business_escalation", ""),
+            },
+            request.user.get_username(),
+        )
+    except ValueError as exc:
+        return HttpResponseBadRequest(str(exc))
+    return _planning_response(request, project)
+
+
+@login_required
+@require_http_methods(["POST"])
+def factory_plan_approve(request: HttpRequest, plan_id: int) -> HttpResponse:
+    plan = get_object_or_404(FactoryPlan, pk=plan_id)
+    try:
+        approve_plan(plan.pk, plan.project, request.user.get_username())
+    except ValueError as exc:
+        return HttpResponseBadRequest(str(exc))
+    return _planning_response(request, plan.project)
 
 
 @login_required

@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from projects.models import Project
+from projects.models import FactoryPlan, GovernanceApproval, Project
 
 
 class FactoryChatTests(TestCase):
@@ -62,3 +62,85 @@ class FactoryChatTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat-status"))
         self.assertContains(response, "Factory Chat Test")
+
+    def test_planning_questionnaire_creates_proposed_artifacts(self) -> None:
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-plan-create"),
+            {
+                "project_id": self.project.project_id,
+                "outcome": "Create a governed plan artifact.",
+                "title": "Governed plan",
+                "kind": "WORK_ITEM",
+                "task_type": "FEATURE",
+                "technical_constraints": "Keep provider calls on the backend.",
+                "acceptance_checks": "Targeted tests pass\nNo provider call",
+            },
+        )
+        self.assertRedirects(
+            response, f"/?project={self.project.project_id}&mode=planning"
+        )
+        plan = FactoryPlan.objects.get(project=self.project)
+        self.assertEqual(plan.status, FactoryPlan.Status.PENDING_APPROVAL)
+        self.assertEqual(plan.scope.status, "PROPOSED")
+        self.assertEqual(plan.scope.record["execution_authorization"], "NONE")
+        assert plan.roadmap_candidate is not None
+        assert plan.memory_candidate is not None
+        self.assertEqual(plan.roadmap_candidate.status, "CANDIDATE")
+        self.assertEqual(plan.memory_candidate.status, "CANDIDATE")
+
+    def test_plan_approval_is_once_only_and_does_not_authorize_execution(self) -> None:
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("factory-plan-create"),
+            {
+                "project_id": self.project.project_id,
+                "outcome": "Plan safely.",
+                "task_type": "FEATURE",
+            },
+        )
+        plan = FactoryPlan.objects.get(project=self.project)
+        response = self.client.post(reverse("factory-plan-approve", args=[plan.pk]))
+        self.assertRedirects(
+            response, f"/?project={self.project.project_id}&mode=planning"
+        )
+        plan.refresh_from_db()
+        self.assertEqual(plan.status, FactoryPlan.Status.APPROVED)
+        self.assertEqual(plan.scope.status, "PROPOSED")
+        self.assertEqual(plan.scope.record["execution_authorization"], "NONE")
+        assert plan.approval is not None
+        self.assertEqual(plan.approval.approved_action, "PLAN_ARTIFACT_APPROVAL")
+        self.assertEqual(GovernanceApproval.objects.filter(scope=plan.scope).count(), 1)
+        response = self.client.post(reverse("factory-plan-approve", args=[plan.pk]))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(GovernanceApproval.objects.filter(scope=plan.scope).count(), 1)
+
+    def test_enhanced_planning_post_refreshes_context_without_redirect(self) -> None:
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-plan-create"),
+            {
+                "project_id": self.project.project_id,
+                "outcome": "Create asynchronously.",
+            },
+            HTTP_X_REQUESTED_WITH="FactoryChat",
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response["X-Factory-Context"], reverse("factory-chat-status"))
+        self.assertTrue(FactoryPlan.objects.filter(project=self.project).exists())
+
+    def test_business_escalation_blocks_plan_approval(self) -> None:
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("factory-plan-create"),
+            {
+                "project_id": self.project.project_id,
+                "outcome": "Choose a market commitment.",
+                "business_escalation": "Which market should receive the paid feature?",
+            },
+        )
+        plan = FactoryPlan.objects.get(project=self.project)
+        self.assertEqual(plan.status, FactoryPlan.Status.BUSINESS_DECISION_REQUIRED)
+        response = self.client.post(reverse("factory-plan-approve", args=[plan.pk]))
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(GovernanceApproval.objects.filter(scope=plan.scope).exists())

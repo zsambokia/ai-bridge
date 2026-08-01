@@ -21,11 +21,22 @@
     <aside class="pane" data-panel="projects"><h2>Projektek</h2>{% for project in projects %}<a class="project" {% if context.project == project %}aria-current="page"{% endif %} href="?project={{ project.project_id|urlencode }}">{{ project.display_name }}<br><small class="muted">{{ project.onboarding_status }}</small></a>{% empty %}<p class="muted">Nincs elérhető projekt.</p>{% endfor %}<p><a class="button" href="{% url 'factory-chat-new-project' %}">Új projekt indítása</a></p></aside>
     <section class="pane" data-panel="chat"><h2>Kontextusos beszélgetés</h2><p class="muted">Minden kérés a szerveren marad; ez nem közvetlen LLM-csatorna.</p>{% for message in messages %}<div class="message {{ message.role }}"><strong>{% if message.role == 'owner' %}Ön{% else %}AI Bridge{% endif %}</strong><br>{{ message.text }}</div>{% empty %}<p class="muted">Írjon egy kérdést az aktív munkakörnyezethez.</p>{% endfor %}<form method="post" action="{% url 'factory-chat-message' %}">{% csrf_token %}<label class="sr-only" for="message">Üzenet</label><input id="message" name="message" maxlength="1000" required placeholder="Kérdés vagy utasítás…"><button type="submit">Küldés</button></form></section>
     <section class="pane" data-panel="context"><h2>Aktív munkakörnyezet</h2><div id="context-status">{% include "projects/factory_context_status.html" %}</div></section>
+    {% if mode == "planning" and context.project %}<div class="card"><h2>Terv kérdőív</h2><p class="muted">A terv szerveroldali műtermék; a Roadmap és Memória csak jelölt marad.</p><form method="post" action="{% url 'factory-plan-create' %}" style="display:block">{% csrf_token %}<input type="hidden" name="project_id" value="{{ context.project.project_id }}"><label>Cél<input name="outcome" required maxlength="1000"></label><label>Cím<input name="title" maxlength="160"></label><label>Egység<select name="kind"><option value="WORK_ITEM">Munkatétel</option><option value="SPRINT">Sprint</option></select></label><label>Típus<select name="task_type"><option>FEATURE</option><option>BUGFIX</option><option>MIGRATION</option><option>DOCUMENTATION</option><option>SECURITY</option></select></label><label>Műszaki korlátok<textarea name="technical_constraints"></textarea></label><label>Elfogadási ellenőrzések<textarea name="acceptance_checks"></textarea></label><label>Üzleti döntési kérdés<textarea name="business_escalation"></textarea></label><button type="submit">Terv készítése</button></form></div>{% endif %}
   </main><nav class="mobile-tabs" aria-label="Mobil nézet"><a class="{% if panel == 'context' %}active{% endif %}" href="?panel=context">Kontextus</a><a class="{% if panel == 'chat' %}active{% endif %}" href="?panel=chat">Chat</a><a class="{% if panel == 'projects' %}active{% endif %}" href="?panel=projects">Projektek</a></nav>
   <script>
-    window.setInterval(async () => {
+    const refreshContext = async () => {
       const response = await fetch("{% url 'factory-chat-status' %}", {headers: {"X-Requested-With": "FactoryChat"}});
       if (response.ok) document.getElementById("context-status").innerHTML = await response.text();
-    }, 5000);
+    };
+    window.setInterval(refreshContext, 5000);
+    document.addEventListener("submit", async (event) => {
+      const form = event.target;
+      if (!form.matches("form[action*='/factory/plan']")) return;
+      event.preventDefault();
+      const response = await fetch(form.action, {
+        method: "POST", body: new FormData(form), headers: {"X-Requested-With": "FactoryChat"},
+      });
+      if (response.ok) { form.reset(); await refreshContext(); }
+    });
   </script>
 </body></html>

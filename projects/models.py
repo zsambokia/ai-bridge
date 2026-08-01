@@ -554,6 +554,48 @@ class GovernanceApproval(models.Model):
             self.save(update_fields=["revoked_at"])
 
 
+class FactoryPlan(models.Model):
+    """A reviewable planning artifact; it is deliberately not execution authority."""
+
+    class Status(models.TextChoices):
+        PENDING_APPROVAL = "PENDING_APPROVAL", "Pending plan approval"
+        BUSINESS_DECISION_REQUIRED = (
+            "BUSINESS_DECISION_REQUIRED",
+            "Business decision required",
+        )
+        APPROVED = "APPROVED", "Plan approved"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="factory_plans"
+    )
+    scope = models.OneToOneField(
+        ExecutableScope, on_delete=models.PROTECT, related_name="factory_plan"
+    )
+    questionnaire = models.JSONField(default=dict)
+    plan_hash = models.CharField(max_length=64)
+    status = models.CharField(max_length=32, choices=Status.choices)
+    business_escalation = models.TextField(blank=True)
+    roadmap_candidate = models.ForeignKey(
+        "RoadmapUpdateCandidate", null=True, blank=True, on_delete=models.PROTECT
+    )
+    memory_candidate = models.ForeignKey(
+        "KnowledgeEntry", null=True, blank=True, on_delete=models.PROTECT
+    )
+    approval = models.OneToOneField(
+        GovernanceApproval,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="factory_plan_approval",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class McpAuditEvent(models.Model):
     """Append-only audit record for externally requested governed actions."""
 
