@@ -188,10 +188,23 @@ def _prompt(context: dict[str, object], message: str) -> str:
 
 
 def _decode(text: str) -> tuple[str, dict[str, object] | None, dict[str, object]]:
+    candidate = text.strip()
+    if candidate.startswith("```"):
+        candidate = candidate.split("\n", 1)[-1]
+        if candidate.rstrip().endswith("```"):
+            candidate = candidate.rstrip()[:-3].rstrip()
     try:
-        result = json.loads(text)
+        result = json.loads(candidate)
     except json.JSONDecodeError as exc:
-        raise ValueError("ORKI_RESPONSE_INVALID") from exc
+        # Some providers wrap an otherwise valid object in a short preamble.
+        # Recover only a complete JSON object; never synthesize an answer.
+        start, end = candidate.find("{"), candidate.rfind("}")
+        if start < 0 or end <= start:
+            raise ValueError("ORKI_RESPONSE_INVALID") from exc
+        try:
+            result = json.loads(candidate[start : end + 1])
+        except json.JSONDecodeError as nested_exc:
+            raise ValueError("ORKI_RESPONSE_INVALID") from nested_exc
     if not isinstance(result, dict) or not isinstance(result.get("reply"), str):
         raise ValueError("ORKI_RESPONSE_INVALID")
     plan = result.get("plan")
@@ -201,6 +214,19 @@ def _decode(text: str) -> tuple[str, dict[str, object] | None, dict[str, object]
     if not isinstance(understanding, dict):
         raise ValueError("ORKI_RESPONSE_INVALID")
     return result["reply"].strip()[:2000], plan, understanding
+
+
+def _safe_failure_code(exc: Exception) -> str:
+    """Persist a stable non-secret failure category, never provider response text."""
+    value = str(exc)
+    known = {
+        "ORKI_RESPONSE_INVALID",
+        "PROVIDER_REMOTE_REQUEST_FAILED",
+        "PROVIDER_REMOTE_RESPONSE_INVALID",
+        "MODEL_PROVIDER_RESPONSE_INVALID",
+        "MODEL_PROVIDER_ADAPTER_UNAVAILABLE",
+    }
+    return value if value in known else "ORKI_MODEL_REQUEST_FAILED"
 
 
 def get_or_create_session(request: Any, project: Project | None) -> FactoryChatSession:
@@ -308,7 +334,7 @@ def reply(request: Any, project: Project | None, text: str) -> list[dict[str, st
                     role=FactoryChatMessage.Role.ORKI,
                 ).update(body=response, response_hash=_hash(response))
         return messages_for(session)[-2:]
-    except (ValueError, OSError, TimeoutError):
+    except (ValueError, OSError, TimeoutError) as exc:
         FactoryChatMessage.objects.create(
             session=session,
             role=FactoryChatMessage.Role.ORKI,
@@ -320,6 +346,6 @@ def reply(request: Any, project: Project | None, text: str) -> list[dict[str, st
             prompt_hash=_hash(prompt),
             latency_ms=round((perf_counter() - started) * 1000),
             attempt_count=MAX_RETRIES,
-            error_code="ORKI_MODEL_REQUEST_FAILED",
+            error_code=_safe_failure_code(exc),
         )
         return messages_for(session)[-2:]

@@ -233,6 +233,42 @@ class FactoryChatTests(TestCase):
         ).latest("pk")
         self.assertEqual(message.model, "gpt-4.1-mini")
 
+    def test_provider_json_wrapped_in_a_code_fence_is_accepted(self) -> None:
+        ExecutionProvider.objects.create(
+            provider_id="fenced-json-openai",
+            name="Fenced JSON OpenAI",
+            kind=ExecutionProvider.Kind.OPENAI,
+            role=ExecutionProvider.Role.MODEL_API,
+            status=ExecutionProvider.Status.ACTIVE,
+            adapter_key="fenced-json-openai",
+            enabled=True,
+            capabilities=["MODEL_INFERENCE"],
+            credential_binding="OPENAI_API_KEY",
+        )
+        self.client.force_login(self.user)
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "OPENAI_API_KEY": "test-only-value",
+                    "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "fenced-json-openai",
+                },
+            ),
+            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+        ):
+            adapter_for.return_value.invoke_model.return_value = {
+                "output_text": "```json\n{\"reply\":\"Rendben.\",\"plan\":null}\n```",
+            }
+            response = self.client.post(
+                reverse("factory-chat-message"), {"message": "Kezdj\u00fck."}
+            )
+        self.assertEqual(response.status_code, 302)
+        message = FactoryChatMessage.objects.filter(
+            role=FactoryChatMessage.Role.ORKI
+        ).latest("pk")
+        self.assertEqual(message.status, FactoryChatMessage.Status.COMPLETED)
+        self.assertEqual(message.body, "Rendben.")
+
     def test_sufficient_understanding_creates_a_canonical_plan_artifact(self) -> None:
         ExecutionProvider.objects.create(
             provider_id="mission-openai",
