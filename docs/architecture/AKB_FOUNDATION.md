@@ -100,6 +100,22 @@ Its details include operation, context identifiers, non-content input
 reference, approval reference, modified entry ID, package hash where relevant,
 and outcome.
 
+## Issue #17 Sprint 5 Factory Chat Memory Mode
+
+Memory Mode is a server-owned projection over the canonical generic AKB
+service. A query records the exact bounded context package used for the Factory
+Chat work context; its sources, source versions, stale warnings, conflict
+diagnostics, repository/roadmap/runtime projection, and package hash are
+rendered without exposing a browser-to-provider channel. “LLM-ready” means
+attributable context preparation for Orki/LLM work, not a new direct model
+call, vector store, or semantic-retrieval claim.
+
+Project-local candidates are moved only through the existing
+`CANDIDATE → IN_REVIEW → ACTIVE` service lifecycle. Activation needs a
+project-bound `akb.review_candidate` approval reference; rejection stays a
+separate append-only revision. The service rejects a foreign project entry
+before any state transition.
+
 ## External execution reconciliation knowledge
 
 When Factory Development Mode or another external governed path has completed

@@ -582,6 +582,16 @@ action/no-action state, recent activity, and optional diagnostics from the
 existing lifecycle/activity projections. It must not create a second lifecycle,
 browser-side progress record, or provider dispatch path.
 
+## Issue #17 Sprint 5 Factory Chat Memory Mode
+
+The Factory Chat Memory view reuses the existing generic AKB lifecycle and
+context-package evidence. Its server builds and records a deterministic,
+project-bound package for `factory-chat:memory`, then renders bounded sources,
+search results, stale/conflict diagnostics, and read-only repository, roadmap,
+and runtime projections. A UI action does not bypass AKB governance:
+candidate review, activation with project-bound approval, and rejection are
+delegated to the canonical service and append `KnowledgeRevision` records.
+
 ## Sprint D local Codex operational knowledge
 
 Use `prepare_local_codex` (or the `prepare_local_codex` management command)

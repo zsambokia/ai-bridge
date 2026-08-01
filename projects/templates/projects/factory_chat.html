@@ -31,7 +31,7 @@
     window.setInterval(refreshContext, 5000);
     document.addEventListener("submit", async (event) => {
       const form = event.target;
-      if (!form.matches("form[action*='/factory/plan']")) return;
+      if (!form.matches("form[action*='/factory/plan'], form[action*='/factory/memory/']")) return;
       event.preventDefault();
       const response = await fetch(form.action, {
         method: "POST", body: new FormData(form), headers: {"X-Requested-With": "FactoryChat"},

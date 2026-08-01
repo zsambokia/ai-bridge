@@ -3,9 +3,17 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from projects.factory_coding import coding_projection
-from projects.models import FactoryPlan, GovernanceApproval, Project
+from projects.knowledge import create_or_upsert_candidate, review_candidate
+from projects.models import (
+    FactoryPlan,
+    GovernanceApproval,
+    KnowledgeContextPackage,
+    KnowledgeEntry,
+    Project,
+)
 
 
 class FactoryChatTests(TestCase):
@@ -191,3 +199,133 @@ class FactoryChatTests(TestCase):
         response = self.client.post(reverse("factory-plan-approve", args=[plan.pk]))
         self.assertEqual(response.status_code, 400)
         self.assertFalse(GovernanceApproval.objects.filter(scope=plan.scope).exists())
+
+    def _memory_candidate(
+        self, project: Project, key: str = "memory-entry"
+    ) -> KnowledgeEntry:
+        return create_or_upsert_candidate(
+            project,
+            {
+                "entry_key": key,
+                "knowledge_type": "GENERAL",
+                "title": f"Memory source {key}",
+                "content": "A governed Memory source for Factory Chat.",
+                "source_reference": "docs/memory-source.md",
+                "evidence_references": ["docs/evidence/memory.md"],
+                "is_must_know": True,
+            },
+            self.user.username,
+        )
+
+    def test_memory_search_builds_project_bound_context_package(self) -> None:
+        self._memory_candidate(self.project)
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-memory-search"),
+            {"project_id": self.project.project_id, "query": "governed"},
+            HTTP_X_REQUESTED_WITH="FactoryChat",
+        )
+        self.assertEqual(response.status_code, 204)
+        response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
+        self.assertContains(response, "LLM-ready search")
+        self.assertContains(response, "Memory source memory-entry")
+        package = KnowledgeContextPackage.objects.get(project=self.project)
+        self.assertEqual(package.retrieval_query, "governed")
+        self.assertEqual(package.work_context_id, "factory-chat:memory")
+
+    def test_memory_review_activation_requires_project_approval(self) -> None:
+        entry = self._memory_candidate(self.project)
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-memory-review", args=[entry.pk]),
+            {
+                "project_id": self.project.project_id,
+                "decision": "REQUEST_REVIEW",
+            },
+        )
+        self.assertRedirects(
+            response, f"/?project={self.project.project_id}&mode=memory"
+        )
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, KnowledgeEntry.Status.IN_REVIEW)
+        response = self.client.post(
+            reverse("factory-memory-review", args=[entry.pk]),
+            {"project_id": self.project.project_id, "decision": "APPROVE"},
+        )
+        self.assertEqual(response.status_code, 400)
+        approval = GovernanceApproval.objects.create(
+            reference="memory-approval-1",
+            project=self.project,
+            approved_action="akb.review_candidate",
+            approved_by=self.user.username,
+        )
+        response = self.client.post(
+            reverse("factory-memory-review", args=[entry.pk]),
+            {
+                "project_id": self.project.project_id,
+                "decision": "APPROVE",
+                "approval_reference": approval.reference,
+            },
+        )
+        self.assertRedirects(
+            response, f"/?project={self.project.project_id}&mode=memory"
+        )
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, KnowledgeEntry.Status.ACTIVE)
+        self.assertEqual(entry.approval_reference, approval.reference)
+
+    def test_memory_rejection_and_cross_project_isolation_are_enforced(self) -> None:
+        another = Project.objects.create(
+            project_id="memory-other-project",
+            display_name="Memory Other",
+            repository_full_name="example/memory-other",
+            definition_path="projects/memory-other.yaml",
+            onboarding_status=Project.OnboardingStatus.READY,
+        )
+        own_entry = self._memory_candidate(self.project, "memory-own-entry")
+        foreign_entry = self._memory_candidate(another, "memory-foreign-entry")
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-memory-review", args=[foreign_entry.pk]),
+            {"project_id": self.project.project_id, "decision": "REJECT"},
+        )
+        self.assertEqual(response.status_code, 400)
+        foreign_entry.refresh_from_db()
+        self.assertEqual(foreign_entry.status, KnowledgeEntry.Status.CANDIDATE)
+        response = self.client.post(
+            reverse("factory-memory-review", args=[own_entry.pk]),
+            {"project_id": self.project.project_id, "decision": "REJECT"},
+        )
+        self.assertRedirects(
+            response, f"/?project={self.project.project_id}&mode=memory"
+        )
+        own_entry.refresh_from_db()
+        self.assertEqual(own_entry.status, KnowledgeEntry.Status.REJECTED)
+
+    def test_memory_projection_displays_stale_and_conflict_diagnostics(self) -> None:
+        first = self._memory_candidate(self.project, "memory-conflict-one")
+        second = self._memory_candidate(self.project, "memory-conflict-two")
+        for entry, reference in (
+            (first, "memory-conflict-approval-one"),
+            (second, "memory-conflict-approval-two"),
+        ):
+            review_candidate(
+                self.project, entry.pk, "REQUEST_REVIEW", self.user.username
+            )
+            GovernanceApproval.objects.create(
+                reference=reference,
+                project=self.project,
+                approved_action="akb.review_candidate",
+                approved_by=self.user.username,
+            )
+            review_candidate(
+                self.project, entry.pk, "APPROVE", self.user.username, reference
+            )
+        first.conflict_key = second.conflict_key = "shared-memory-fact"
+        first.review_due_at = timezone.now()
+        first.save(update_fields=["conflict_key", "review_due_at"])
+        second.save(update_fields=["conflict_key"])
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
+        self.assertContains(response, "STALE")
+        self.assertContains(response, "Conflict warnings")
