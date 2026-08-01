@@ -8,4 +8,8 @@ PASS — READY FOR PRODUCT OWNER REVIEW
 
 - Engineering, backend, frontend, integration, operational, and independent Epic evidence are all PASS.
 - The final Release Gate matrix is in `RELEASE_GATE_RESULTS.md`.
-- The implementation commit and pushed `main` binding are added after the final validation run.
+
+## Commit and delivery binding
+
+- Implementation commit: `f6507d1` (`test(factory-chat): add issue 17 end-to-end acceptance`).
+- Branch: `main`; push binding is recorded by the follow-up evidence commit.
