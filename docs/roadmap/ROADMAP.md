@@ -1,5 +1,17 @@
 # AI Bridge Roadmap
 
+## Issue #17 — Factory Chat UI: Sprint 1 UX contract
+
+**Status:** `PASS — ACCEPTED`.
+
+The Factory Chat control-surface contract has completed its required early
+Product Owner review. It defines the mobile-first workspace, the
+server-resolved Active Work Context projection, and a canonical server-side
+approval interaction without introducing a parallel execution or conversation
+domain. Sprint 2 is the next permitted item and may build only the minimal
+project shell and native conversation boundary defined by the approved
+contract. Evidence: `docs/evidence/issue-017-sprint-1-factory-chat-ux-contract/`.
+
 ## Factory Readiness Remediation — Sprint 8
 
 **Status:** `FINAL AUDIT COMPLETE — EPIC OPEN FOR EXTERNAL PLATFORM CERTIFICATION`.
