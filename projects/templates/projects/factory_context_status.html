@@ -3,6 +3,18 @@
   <h2>Projekt</h2>
   <p><strong>{{ context.project.display_name }}</strong></p>
 </section>
+{% if context.plan and context.plan.status == "PENDING_APPROVAL" %}
+<section class="status-card approval-card" data-plan-approval>
+  <h2>Terv elkészült</h2>
+  <p>Nézd át a javaslatot. Egy jóváhagyás után Orki folytatja a szállítást.</p>
+  <form method="post" action="{% url 'factory-plan-approve' context.plan.pk %}" data-factory-action data-quick-action>{% csrf_token %}<button type="submit">Jóváhagyom</button></form>
+  <details>
+    <summary>Más döntést szeretnék</summary>
+    <form method="post" action="{% url 'factory-plan-request-changes' context.plan.pk %}" data-factory-action>{% csrf_token %}<label class="sr-only" for="plan-change-reason">Mi változzon?</label><textarea id="plan-change-reason" class="reason" name="reason" required placeholder="Mi változzon?"></textarea><button class="quiet-button" type="submit">Módosítást kérek</button></form>
+    <form method="post" action="{% url 'factory-plan-reject' context.plan.pk %}" data-factory-action>{% csrf_token %}<label class="sr-only" for="plan-reject-reason">Az elutasítás oka</label><textarea id="plan-reject-reason" class="reason" name="reason" required placeholder="Az elutasítás oka"></textarea><button class="quiet-button" type="submit">Elutasítom</button></form>
+  </details>
+</section>
+{% endif %}
 <section class="status-card"><h2>Aktu&#225;lis feladat</h2><p>{{ context.mission.next }}</p></section>
 <section class="status-card">
   <h2>Hol tart a tervez&#233;s?</h2>
@@ -31,11 +43,7 @@
   <h2>Javasolt terv</h2>
   <p><strong>{{ context.plan.questionnaire.outcome }}</strong></p>
   {% if context.plan.plan_document %}<p>{{ context.plan.plan_document.mvp_boundary }}</p>{% endif %}
-  {% if context.plan.status == "PENDING_APPROVAL" %}
-  <form method="post" action="{% url 'factory-plan-approve' context.plan.pk %}" data-factory-action>{% csrf_token %}<button type="submit">J&#243;v&#225;hagyom a tervet</button></form>
-  <form method="post" action="{% url 'factory-plan-request-changes' context.plan.pk %}" data-factory-action>{% csrf_token %}<textarea class="reason" name="reason" required placeholder="Mi v&#225;ltozzon?"></textarea><button class="quiet-button" type="submit">V&#225;ltoztat&#225;st k&#233;rek</button></form>
-  <form method="post" action="{% url 'factory-plan-reject' context.plan.pk %}" data-factory-action>{% csrf_token %}<textarea class="reason" name="reason" required placeholder="Az elutas&#237;t&#225;s oka"></textarea><button class="quiet-button" type="submit">Elutas&#237;tom</button></form>
-  {% elif context.plan.status == "APPROVED" %}<p>Orki &#225;tvette a sz&#225;ll&#237;t&#225;st.</p>
+  {% if context.plan.status == "APPROVED" %}<p>Orki &#225;tvette a sz&#225;ll&#237;t&#225;st.</p>
   {% else %}<p>{{ context.plan.business_escalation }}</p>{% endif %}
 </section>
 {% endif %}

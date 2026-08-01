@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import ClassVar
 from unittest import skip
@@ -66,6 +67,33 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         page.get_by_role("button", name="Küldés").click()
         messages.nth(before + 1).wait_for()
 
+    def _mock_message_response(self, page: Page) -> None:
+        """Keep UI acceptance deterministic; provider behavior has backend tests."""
+        page.route(
+            "**/factory/message/",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "messages": [
+                            {"role": "owner", "text": "Teszt", "status": "COMPLETED"},
+                            {
+                                "role": "orki",
+                                "text": "Orki gyors válasza.",
+                                "status": "COMPLETED",
+                            },
+                        ],
+                        "ok": True,
+                        "orki_availability": {
+                            "label": "Orki online",
+                            "state": "available",
+                        },
+                    }
+                ),
+            ),
+        )
+
     def _complete_discovery(self, page: Page, name: str = "Demo17") -> None:
         messages = page.locator("#chat-messages .message")
         before = messages.count()
@@ -127,6 +155,7 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
     def test_browser_sends_one_persisted_orki_response(self) -> None:
         desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
         self._login(desktop)
+        self._mock_message_response(desktop)
         self._send(desktop, "K\u00e9sz\u00edts tervet.")
         self.assertGreaterEqual(desktop.locator("#chat-messages .message").count(), 2)
         self.assertIn("Orki", desktop.locator("#orki-status").inner_text())
@@ -173,6 +202,7 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
     ) -> None:
         desktop = self._browser.new_page(viewport={"width": 1280, "height": 900})
         self._login(desktop)
+        self._mock_message_response(desktop)
         composer = desktop.get_by_label("Üzenet")
         composer.fill("első sor")
         composer.press("Shift+Enter")
@@ -187,6 +217,57 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         composer.fill("   ")
         composer.press("Enter")
         desktop.get_by_text("Üres üzenetet nem lehet küldeni.", exact=True).wait_for()
+        desktop.close()
+
+    def test_thinking_state_locks_composer_until_the_server_response_arrives(
+        self,
+    ) -> None:
+        desktop = self._browser.new_page(viewport={"width": 1280, "height": 900})
+        self._login(desktop)
+        desktop.route(
+            "**/factory/message/",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "messages": [
+                            {"role": "owner", "text": "Teszt", "status": "COMPLETED"},
+                            {
+                                "role": "orki",
+                                "text": "A szerver válasza megérkezett.",
+                                "status": "COMPLETED",
+                            },
+                        ],
+                        "ok": True,
+                        "orki_availability": {
+                            "label": "Orki online",
+                            "state": "available",
+                        },
+                    }
+                ),
+            ),
+        )
+        desktop.evaluate(
+            """() => {
+                const originalFetch = window.fetch.bind(window);
+                window.fetch = (...args) => new Promise((resolve, reject) => {
+                    window.setTimeout(
+                        () => originalFetch(...args).then(resolve, reject), 300
+                    );
+                });
+            }"""
+        )
+        composer = desktop.locator("#message")
+        composer.fill("Teszt")
+        composer.press("Enter")
+        desktop.locator("#orki-thinking").wait_for(state="visible")
+        self.assertTrue(composer.is_disabled())
+        submit_button = desktop.locator(".composer button[type='submit']")
+        self.assertTrue(submit_button.is_disabled())
+        desktop.locator("#chat-messages .message").nth(1).wait_for()
+        desktop.wait_for_timeout(500)
+        self.assertFalse(composer.is_disabled())
         desktop.close()
 
     def test_memory_candidate_can_be_reviewed_without_an_internal_reference(

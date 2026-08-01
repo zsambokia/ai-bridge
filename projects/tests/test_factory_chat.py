@@ -44,7 +44,7 @@ class FactoryChatTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"))
         self.assertContains(response, "Factory Chat Test")
-        self.assertContains(response, 'aria-label="Orki k&#252;ldet&#233;se"')
+        self.assertContains(response, 'aria-label="Orki küldetése"')
         self.assertContains(response, "Mit &#233;rtett meg Orki?")
         self.assertContains(response, reverse("factory-chat-status"))
 
@@ -76,7 +76,7 @@ class FactoryChatTests(TestCase):
         response = self.client.get(reverse("factory-chat"))
         self.assertContains(response, "Second Project")
         self.assertContains(response, 'id="chat-messages"')
-        self.assertContains(response, "Orki, a digit&#225;lis COO")
+        self.assertContains(response, "Orki, a digitális COO")
 
     @skip(
         "The former scripted discovery flow is intentionally no longer "
@@ -426,14 +426,73 @@ class FactoryChatTests(TestCase):
         mission.refresh_from_db()
         self.assertEqual(mission.phase, FactoryMission.Phase.ORKI_OWNS_DELIVERY)
 
+    def test_natural_language_approval_uses_the_canonical_approval_path(self) -> None:
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("factory-plan-create"),
+            {
+                "project_id": self.project.project_id,
+                "outcome": "Plan safely.",
+                "task_type": "FEATURE",
+            },
+        )
+        plan = FactoryPlan.objects.get(project=self.project)
+        session = FactoryChatSession.objects.create(
+            project=self.project, actor_identity=self.user.get_username()
+        )
+        mission = FactoryMission.objects.create(
+            session=session,
+            plan=plan,
+            requirements_sufficient=True,
+            repository_proposal={"mode": "create"},
+        )
+        with patch("projects.factory_chat.ensure_repository") as ensure:
+            response = self.client.post(
+                reverse("factory-chat-message"), {"message": "Jóváhagyom"}
+            )
+        self.assertRedirects(response, reverse("factory-chat"))
+        ensure.assert_called_once()
+        plan.refresh_from_db()
+        mission.refresh_from_db()
+        self.assertEqual(plan.status, FactoryPlan.Status.APPROVED)
+        self.assertEqual(mission.phase, FactoryMission.Phase.ORKI_OWNS_DELIVERY)
+        self.assertTrue(
+            FactoryChatMessage.objects.filter(
+                session__project=self.project,
+                role=FactoryChatMessage.Role.ORKI,
+                body__contains="átvette a szállítást",
+            ).exists()
+        )
+
     def test_workspace_uses_multiline_composer_and_human_mission_labels(self) -> None:
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"))
         self.assertContains(response, '<textarea id="message"')
         self.assertContains(response, "e.isComposing")
         self.assertContains(response, "shiftKey")
+        self.assertContains(response, 'id="orki-thinking"')
         self.assertContains(response, "Hol tart a tervez&#233;s?")
         self.assertNotContains(response, "AWAITING_PRODUCT_OWNER_APPROVAL")
+
+    def test_pending_plan_renders_top_level_approval_quick_actions(self) -> None:
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("factory-plan-create"),
+            {
+                "project_id": self.project.project_id,
+                "outcome": "Render an approval card.",
+                "task_type": "FEATURE",
+            },
+        )
+
+        response = self.client.get(reverse("factory-chat"))
+        plan = FactoryPlan.objects.get(project=self.project)
+
+        self.assertContains(response, 'data-plan-approval')
+        self.assertContains(response, 'data-quick-action')
+        self.assertContains(response, f'/factory/plans/{plan.pk}/approve/')
+        self.assertContains(response, f'/factory/plans/{plan.pk}/changes/')
+        self.assertContains(response, f'/factory/plans/{plan.pk}/reject/')
 
     def test_context_refresh_is_authenticated_and_server_rendered(self) -> None:
         self.client.force_login(self.user)
@@ -443,7 +502,7 @@ class FactoryChatTests(TestCase):
     def test_coding_mode_without_run_explains_that_no_execution_exists(self) -> None:
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"), {"mode": "coding"})
-        self.assertContains(response, 'aria-label="Orki k&#252;ldet&#233;se"')
+        self.assertContains(response, 'aria-label="Orki küldetése"')
 
     def test_coding_projection_requires_product_owner_for_business_blocker(
         self,
@@ -593,7 +652,7 @@ class FactoryChatTests(TestCase):
         )
         self.assertEqual(response.status_code, 204)
         response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
-        self.assertContains(response, 'aria-label="Orki k&#252;ldet&#233;se"')
+        self.assertContains(response, 'aria-label="Orki küldetése"')
         package = KnowledgeContextPackage.objects.get(project=self.project)
         self.assertEqual(package.retrieval_query, "governed")
         self.assertEqual(package.work_context_id, "factory-chat:memory")
@@ -680,5 +739,5 @@ class FactoryChatTests(TestCase):
         second.save(update_fields=["conflict_key"])
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
-        self.assertContains(response, 'aria-label="Orki k&#252;ldet&#233;se"')
+        self.assertContains(response, 'aria-label="Orki küldetése"')
         self.assertContains(response, "Mit javasol?")

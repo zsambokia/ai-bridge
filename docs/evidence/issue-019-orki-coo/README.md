@@ -91,3 +91,55 @@ python manage.py test --settings=bridge.settings.test            PASS: 44 tests,
 The browser suite includes COO response persistence, plan controls, fixed
 three-column desktop layout, conversation-only scrolling, multiline send,
 Shift+Enter newline and empty-send protection.
+
+## Modern Conversational UX correction — 2026-08-01
+
+The original Plan approval controls were embedded after the long Plan preview,
+so they could be outside a normal 100% browser viewport.  The pending Plan now
+has a dedicated `Terv elkészült` card at the top of the fixed Mission panel.
+It presents the three Product Owner decisions without requiring zoom or a
+conversation-pane scroll:
+
+- `Jóváhagyom` invokes the canonical server-side approval continuation.
+- `Módosítást kérek` and `Elutasítom` retain their required-reason forms and
+  invoke their canonical server-side operations.
+- An unambiguous natural-language approval (`Jóváhagyom`, `ok, mehet`, and
+  equivalent normalized forms) invokes that same approval continuation; it is
+  recorded in the durable conversation transcript and does not invoke the
+  provider to infer a decision.
+
+The Composer is an accessible multiline textarea: Enter submits, Shift+Enter
+inserts a newline, IME composition cannot submit, whitespace-only messages are
+rejected, and one in-flight interaction disables the textarea and action
+buttons.  During that interval the UI exposes an `Orki gondolkodik…` live
+status with the actual server-side stage currently known to the browser.
+
+Conversation auto-scroll follows new content only when the reader was already
+near the bottom.  The Projects panel, Mission panel, and Composer remain fixed
+on desktop; only the Conversation message region scrolls.  Draft text remains
+in session storage for safe refresh restoration.
+
+The current provider adapter returns a complete server response rather than a
+token stream.  The UI deliberately does not fabricate streaming.  Native
+incremental rendering remains conditional on a server-side provider streaming
+protocol and will use the same server-owned request path when that capability
+is added.
+
+### Correction validation
+
+```text
+python manage.py test projects.tests.test_factory_chat \
+  projects.tests.test_factory_chat_browser_e2e --verbosity 1
+PASS: 36 tests, 4 intentionally skipped
+
+python -m ruff check projects/factory_chat.py \
+  projects/tests/test_factory_chat.py \
+  projects/tests/test_factory_chat_browser_e2e.py
+PASS
+```
+
+The Chromium suite now covers textarea keyboard behavior, duplicate-send
+protection, the temporary Composer lock, and the visible thinking state while
+a delayed server response is in flight.  Its response transport is mocked only
+for browser interaction determinism; the real provider evidence above remains
+the provider-path proof.

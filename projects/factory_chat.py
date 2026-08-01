@@ -6,6 +6,7 @@ Project, plan, approval, execution and knowledge services retain authority.
 
 from __future__ import annotations
 
+import unicodedata
 from typing import Any
 from uuid import uuid4
 
@@ -191,6 +192,66 @@ def _response(request: HttpRequest, project: Project, mode: str) -> HttpResponse
     )
 
 
+def _approval_phrase(text: str) -> bool:
+    """Recognize an unambiguous Product Owner approval without an LLM call."""
+    normalized = "".join(
+        character
+        for character in unicodedata.normalize("NFKD", text.casefold())
+        if not unicodedata.combining(character)
+    )
+    return normalized.strip() in {
+        "jovahagyom",
+        "jovahagyom a tervet",
+        "ok mehet",
+        "oke mehet",
+        "rendben mehet",
+    }
+
+
+def _continue_after_plan_approval(plan: FactoryPlan, actor: str) -> FactoryPlan:
+    """Single server-owned approval path for buttons and natural language."""
+    approved_plan = approve_plan(plan.pk, plan.project, actor)
+    session = (
+        FactoryChatSession.objects.filter(project=plan.project)
+        .order_by("-updated_at")
+        .first()
+    )
+    if session:
+        mission = mission_for(session)
+        mission.phase = mission.Phase.PLAN_APPROVED
+        mission.save(update_fields=["phase", "updated_at"])
+        mission = begin_autonomous_delivery(mission)
+        try:
+            ensure_repository(mission)
+        except RepositoryRemediationRequired as error:
+            mission.delivery_status = {
+                "state": "repository_remediation",
+                "next": "Orki biztonságosan javítja a repository előkészítését.",
+                "reason": str(error)[:300],
+            }
+            mission.save(update_fields=["delivery_status", "updated_at"])
+    return approved_plan
+
+
+def _record_natural_language_approval(
+    request: HttpRequest, plan: FactoryPlan, text: str
+) -> list[dict[str, str]]:
+    """Keep semantic approval in the transcript while bypassing provider inference."""
+    session = get_or_create_session(request, plan.project)
+    FactoryChatMessage.objects.create(
+        session=session, role=FactoryChatMessage.Role.OWNER, body=text
+    )
+    FactoryChatMessage.objects.create(
+        session=session,
+        role=FactoryChatMessage.Role.ORKI,
+        body=(
+            "A tervet jóváhagytad. Orki átvette a szállítást, és a "
+            "jóváhagyott terv szerint folytatja a következő lépéssel."
+        ),
+    )
+    return messages_for(session)[-2:]
+
+
 def _add_messages(
     state: dict[str, Any], *messages: dict[str, str]
 ) -> list[dict[str, str]]:
@@ -351,14 +412,33 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_http_methods(["POST"])
 def factory_chat_message(request: HttpRequest) -> HttpResponse:
-    text = request.POST.get("message", "").strip()
-    if not text or len(text) > 1000:
+    # Preserve multiline input exactly; reject only whitespace-only submissions.
+    text = request.POST.get("message", "")
+    if not text.strip() or len(text) > 1000:
         return HttpResponseBadRequest(
             "Az üzenet megadása kötelező és legfeljebb 1000 karakter lehet."
         )
-    added = orki_reply(request, _selected_project(request), text)
+    project = _selected_project(request)
+    pending_plan = (
+        FactoryPlan.objects.filter(
+            project=project,
+            status=FactoryPlan.Status.PENDING_APPROVAL,
+        )
+        .order_by("-created_at")
+        .first()
+        if project
+        else None
+    )
+    if pending_plan and _approval_phrase(text):
+        try:
+            _continue_after_plan_approval(pending_plan, request.user.get_username())
+        except ValueError as exc:
+            return HttpResponseBadRequest(str(exc))
+        added = _record_natural_language_approval(request, pending_plan, text)
+    else:
+        added = orki_reply(request, project, text)
     if _enhanced(request):
-        orki_session = get_or_create_session(request, _selected_project(request))
+        orki_session = get_or_create_session(request, project)
         return JsonResponse(
             {
                 "messages": added,
@@ -402,26 +482,7 @@ def factory_plan_create(request: HttpRequest) -> HttpResponse:
 def factory_plan_approve(request: HttpRequest, plan_id: int) -> HttpResponse:
     plan = get_object_or_404(FactoryPlan, pk=plan_id)
     try:
-        approve_plan(plan.pk, plan.project, request.user.get_username())
-        session = (
-            FactoryChatSession.objects.filter(project=plan.project)
-            .order_by("-updated_at")
-            .first()
-        )
-        if session:
-            mission = mission_for(session)
-            mission.phase = mission.Phase.PLAN_APPROVED
-            mission.save(update_fields=["phase", "updated_at"])
-            mission = begin_autonomous_delivery(mission)
-            try:
-                ensure_repository(mission)
-            except RepositoryRemediationRequired as error:
-                mission.delivery_status = {
-                    "state": "repository_remediation",
-                    "next": "Orki biztonságosan javítja a repository előkészítését.",
-                    "reason": str(error)[:300],
-                }
-                mission.save(update_fields=["delivery_status", "updated_at"])
+        _continue_after_plan_approval(plan, request.user.get_username())
     except ValueError as exc:
         return HttpResponseBadRequest(str(exc))
     return _response(request, plan.project, "planning")
