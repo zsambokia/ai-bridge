@@ -11,7 +11,7 @@
 - Baseline commit: `be6c2c6bc136cf47886df4ba8d95239865e72a19`.
 - Started: 2026-08-01.
 - Review-contract SHA-256: `F4159690511FC5BFB5B5B9D31B69354A80788299EB4CA7100055E1350F381B2A`.
-- Execution status: **PRODUCT OWNER REVIEW ACCEPTED — RELEASE GATE VALIDATION IN PROGRESS**.
+- Execution status: **PASS — DELIVERED**.
 
 ## Context inspected before mutation
 
@@ -73,15 +73,15 @@ The acceptance is recorded separately in
 
 ## Remaining steps and next action
 
-1. Run the applicable documentation and repository Release Gates from the
-   final reviewed state and record their results.
-2. Complete acceptance and closure evidence, then prepare the requested
-   commit/push workflow if all gates pass.
-3. Only after Sprint 1 passes may Sprint 2 be started.
+1. Sprint 2 is now the next permitted work; it must remain within the approved
+   Issue #17 Sprint 2 scope.
+2. Preserve this evidence and do not re-open Sprint 1 unless the approved
+   interaction contract itself changes.
 
 ## Validation status
 
-Full Release Gates are not yet claimed as passed. No runtime behaviour changed,
-so there is no operational deployment or migration acceptance to claim. This
-record is a durable recovery checkpoint: after interruption, resume from this
-baseline and accepted-review status rather than recreating the sprint.
+All resolved Release Gates passed and the scoped closure commit was delivered;
+see `RELEASE_GATE_RESULTS.md` and `DELIVERY_RECORD.md`. No runtime behaviour
+changed, so there is no operational deployment or migration acceptance beyond
+the documentation-only acceptance record. This remains a durable recovery
+checkpoint for the completed Sprint 1 boundary.
