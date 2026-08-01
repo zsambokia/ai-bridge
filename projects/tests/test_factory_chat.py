@@ -48,6 +48,19 @@ class FactoryChatTests(TestCase):
         self.assertContains(response, "Mit &#233;rtett meg Orki?")
         self.assertContains(response, reverse("factory-chat-status"))
 
+    def test_new_project_creates_a_durable_project_bound_orki_session(self) -> None:
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-chat-new-project"),
+            HTTP_X_REQUESTED_WITH="FactoryChat",
+        )
+        self.assertEqual(response.status_code, 200)
+        project_id = response.json()["project"]["id"]
+        project = Project.objects.get(project_id=project_id)
+        self.assertEqual(project.onboarding_status, Project.OnboardingStatus.PENDING)
+        session = FactoryChatSession.objects.get(project=project)
+        self.assertEqual(session.messages.first().role, FactoryChatMessage.Role.OWNER)
+
     def test_mode_panel_and_project_selection_are_restored(self) -> None:
         another = Project.objects.create(
             project_id="second-project",

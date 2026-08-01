@@ -515,16 +515,29 @@ def factory_chat_status(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["POST", "GET"])
 def factory_chat_new_project(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
+        project = _new_project_from_answers(["\u00daj projekt"])
+        state = _state(request)
+        state.update({"project_id": project.project_id, "mode": "planning"})
+        request.session.modified = True
         messages = orki_reply(
-            request, None, "\u00daj projektet szeretn\u00e9k ind\u00edtani."
+            request,
+            project,
+            "\u00daj projektet szeretn\u00e9k ind\u00edtani. "
+            "Vezesd a felfedez\u00e9st, "
+            "\u00e9s csak a val\u00f3ban sz\u00fcks\u00e9ges "
+            "els\u0151 k\u00e9rd\u00e9st tedd fel.",
         )
         if _enhanced(request):
-            orki_session = get_or_create_session(request, None)
+            orki_session = get_or_create_session(request, project)
             return JsonResponse(
                 {
                     "messages": messages,
                     "ok": messages[-1]["status"] != FactoryChatMessage.Status.FAILED,
                     "orki_availability": availability(orki_session),
+                    "project": {"id": project.project_id, "name": project.display_name},
                 }
             )
+        return redirect(
+            f"{reverse('factory-chat')}?project={project.project_id}&panel=chat&mode=planning"
+        )
     return redirect(f"{reverse('factory-chat')}?panel=chat&mode=planning")
