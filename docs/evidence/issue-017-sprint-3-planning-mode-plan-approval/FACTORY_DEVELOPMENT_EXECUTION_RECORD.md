@@ -3,6 +3,7 @@
 - Authority: Product Owner Factory Development Mode, Issue #17; Sprint 1 contract explicitly accepted on 2026-08-01.
 - Branch: `main`.
 - Baseline: `72aaf1aabbf79aea237bb3edcee69c1bfac4aa0a`.
+- Implementation commit: `b42fd2a` (`feat: add issue 17 planning mode and plan approval`).
 - Scope: Planning Mode, plan artifact, plan-only approval, candidate Roadmap/Memory outputs, and escalation separation.
 - Modified implementation: Factory Chat views, Planning service, `FactoryPlan` model and migration, UI routes/templates, and targeted tests.
 - Modified documentation: the Sprint definition, evidence package, and Issue #17 roadmap state.
