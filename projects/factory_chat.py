@@ -18,12 +18,23 @@ from django.views.decorators.http import require_http_methods
 
 from .factory_coding import coding_projection
 from .factory_memory import memory_projection
-from .factory_planning import approve_plan, create_plan, request_plan_changes
+from .factory_missions import begin_autonomous_delivery, human_projection, mission_for
+from .factory_orki import availability, get_or_create_session, messages_for
+from .factory_orki import reply as orki_reply
+from .factory_planning import (
+    approve_plan,
+    create_plan,
+    reject_plan,
+    request_plan_changes,
+)
+from .factory_repositories import RepositoryRemediationRequired, ensure_repository
 from .knowledge import review_candidate
 from .models import (
     ConversationOrchestration,
     ExecutableScope,
     ExecutionRun,
+    FactoryChatMessage,
+    FactoryChatSession,
     FactoryPlan,
     GovernanceApproval,
     KnowledgeContextPackage,
@@ -124,6 +135,16 @@ def _context(
         .order_by("-created_at")
         .first(),
         "deployment": deployment,
+        "mission": human_projection(
+            mission_for(session)
+            if (
+                session := FactoryChatSession.objects.filter(project=project)
+                .order_by("-updated_at")
+                .first()
+            )
+            is not None
+            else None
+        ),
     }
     context["artifact"] = (
         run
@@ -312,6 +333,7 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
     state.update({"mode": mode, "panel": panel})
     request.session.modified = True
     project = _selected_project(request)
+    orki_session = get_or_create_session(request, project)
     return render(
         request,
         "projects/factory_chat.html",
@@ -320,7 +342,8 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
             "context": _context(project, mode, str(state.get("memory_query", ""))),
             "mode": mode,
             "panel": panel,
-            "messages": state.get("messages", [])[-20:],
+            "messages": messages_for(orki_session)[-20:],
+            "orki_availability": availability(orki_session),
         },
     )
 
@@ -333,14 +356,16 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
         return HttpResponseBadRequest(
             "Az üzenet megadása kötelező és legfeljebb 1000 karakter lehet."
         )
-    state = _state(request)
-    reply = _reply_to_message(request, text)
-    added = _add_messages(
-        state, {"role": "owner", "text": text}, {"role": "orki", "text": reply}
-    )
-    request.session.modified = True
+    added = orki_reply(request, _selected_project(request), text)
     if _enhanced(request):
-        return JsonResponse({"messages": added})
+        orki_session = get_or_create_session(request, _selected_project(request))
+        return JsonResponse(
+            {
+                "messages": added,
+                "ok": added[-1]["status"] != FactoryChatMessage.Status.FAILED,
+                "orki_availability": availability(orki_session),
+            }
+        )
     return redirect("factory-chat")
 
 
@@ -378,6 +403,25 @@ def factory_plan_approve(request: HttpRequest, plan_id: int) -> HttpResponse:
     plan = get_object_or_404(FactoryPlan, pk=plan_id)
     try:
         approve_plan(plan.pk, plan.project, request.user.get_username())
+        session = (
+            FactoryChatSession.objects.filter(project=plan.project)
+            .order_by("-updated_at")
+            .first()
+        )
+        if session:
+            mission = mission_for(session)
+            mission.phase = mission.Phase.PLAN_APPROVED
+            mission.save(update_fields=["phase", "updated_at"])
+            mission = begin_autonomous_delivery(mission)
+            try:
+                ensure_repository(mission)
+            except RepositoryRemediationRequired as error:
+                mission.delivery_status = {
+                    "state": "repository_remediation",
+                    "next": "Orki biztonságosan javítja a repository előkészítését.",
+                    "reason": str(error)[:300],
+                }
+                mission.save(update_fields=["delivery_status", "updated_at"])
     except ValueError as exc:
         return HttpResponseBadRequest(str(exc))
     return _response(request, plan.project, "planning")
@@ -388,12 +432,20 @@ def factory_plan_approve(request: HttpRequest, plan_id: int) -> HttpResponse:
 def factory_plan_request_changes(request: HttpRequest, plan_id: int) -> HttpResponse:
     plan = get_object_or_404(FactoryPlan, pk=plan_id)
     try:
-        request_plan_changes(plan.pk, plan.project)
+        request_plan_changes(plan.pk, plan.project, request.POST.get("reason", ""))
     except ValueError as exc:
         return HttpResponseBadRequest(str(exc))
-    state = _state(request)
-    _add_messages(state, {"role": "orki", "text": _start_discovery(state)})
-    request.session.modified = True
+    return _response(request, plan.project, "planning")
+
+
+@login_required
+@require_http_methods(["POST"])
+def factory_plan_reject(request: HttpRequest, plan_id: int) -> HttpResponse:
+    plan = get_object_or_404(FactoryPlan, pk=plan_id)
+    try:
+        reject_plan(plan.pk, plan.project, request.POST.get("reason", ""))
+    except ValueError as exc:
+        return HttpResponseBadRequest(str(exc))
     return _response(request, plan.project, "planning")
 
 
@@ -451,7 +503,10 @@ def factory_chat_status(request: HttpRequest) -> HttpResponse:
                 _selected_project(request),
                 str(_state(request).get("mode", "planning")),
                 str(_state(request).get("memory_query", "")),
-            )
+            ),
+            "orki_availability": availability(
+                get_or_create_session(request, _selected_project(request))
+            ),
         },
     )
 
@@ -459,12 +514,17 @@ def factory_chat_status(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_http_methods(["POST", "GET"])
 def factory_chat_new_project(request: HttpRequest) -> HttpResponse:
-    state = _state(request)
     if request.method == "POST":
-        _add_messages(
-            state, {"role": "orki", "text": _start_discovery(state, "new_project")}
+        messages = orki_reply(
+            request, None, "\u00daj projektet szeretn\u00e9k ind\u00edtani."
         )
-        request.session.modified = True
         if _enhanced(request):
-            return JsonResponse({"messages": state["messages"][-1:]})
+            orki_session = get_or_create_session(request, None)
+            return JsonResponse(
+                {
+                    "messages": messages,
+                    "ok": messages[-1]["status"] != FactoryChatMessage.Status.FAILED,
+                    "orki_availability": availability(orki_session),
+                }
+            )
     return redirect(f"{reverse('factory-chat')}?panel=chat&mode=planning")

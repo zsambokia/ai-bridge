@@ -130,6 +130,15 @@ def credential_value(entry: ExecutionProvider) -> str:
     return value
 
 
+def model_identifier(entry: ExecutionProvider) -> str:
+    """Return the effective, non-secret model name used by a model adapter."""
+    defaults: dict[str, str] = {
+        ExecutionProvider.Kind.OPENAI: "gpt-4.1-mini",
+        ExecutionProvider.Kind.CLAUDE: "claude-3-5-haiku-latest",
+    }
+    return str(entry.configuration.get("model") or defaults.get(str(entry.kind), ""))
+
+
 def _post_json(
     url: str, headers: dict[str, str], body: dict[str, object]
 ) -> dict[str, object]:
@@ -154,7 +163,7 @@ class OpenAIAdapter:
 
     def invoke_model(self, entry: ExecutionProvider, prompt: str) -> dict[str, object]:
         token = credential_value(entry)
-        model = str(entry.configuration.get("model", "gpt-4.1-mini"))
+        model = model_identifier(entry)
         base_url = str(entry.configuration.get("base_url", "https://api.openai.com/v1"))
         return _post_json(
             f"{base_url.rstrip('/')}/responses",
@@ -168,7 +177,7 @@ class ClaudeAdapter:
 
     def invoke_model(self, entry: ExecutionProvider, prompt: str) -> dict[str, object]:
         token = credential_value(entry)
-        model = str(entry.configuration.get("model", "claude-3-5-haiku-latest"))
+        model = model_identifier(entry)
         base_url = str(entry.configuration.get("base_url", "https://api.anthropic.com"))
         return _post_json(
             f"{base_url.rstrip('/')}/v1/messages",
@@ -638,6 +647,33 @@ def structured_model_response(
     if not isinstance(decoded, dict):
         raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
     return decoded
+
+
+def model_text_response(entry: ExecutionProvider, response: dict[str, object]) -> str:
+    """Extract one provider response without retaining provider-specific payloads."""
+    if entry.kind == ExecutionProvider.Kind.OPENAI:
+        output_text = response.get("output_text")
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text
+        output = response.get("output")
+        if not isinstance(output, list):
+            raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
+        for message in output:
+            if not isinstance(message, dict):
+                continue
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for item in content:
+                if isinstance(item, dict) and isinstance(item.get("text"), str):
+                    return str(item["text"])
+    elif entry.kind == ExecutionProvider.Kind.CLAUDE:
+        content = response.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and isinstance(item.get("text"), str):
+                    return str(item["text"])
+    raise ValueError("MODEL_PROVIDER_RESPONSE_INVALID")
 
 
 def select_provider(

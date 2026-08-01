@@ -720,3 +720,12 @@ confirmation: it does not invoke a provider, bind execution authority, accept
 Roadmap changes, or activate Memory. Explicit business questions produce a
 separate decision-required state. Sprint 4 is the next approved implementation
 boundary.
+
+## Issue #19 - Orki COO mission ownership and repository creation
+
+Issue #19 evolves Factory Chat planning from a fixed questionnaire to a durable
+COO mission. It records requirement understanding and sufficiency, produces a
+canonical Plan artifact, accepts one Product Owner approval, and then performs
+safe server-side repository bootstrap and Project Registry linkage. Architecture
+and operational evidence: `docs/architecture/ORKI_COO_MISSION.md` and
+`docs/evidence/issue-019-orki-coo/`.

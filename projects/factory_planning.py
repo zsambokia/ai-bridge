@@ -141,13 +141,29 @@ def approve_plan(plan_id: int, project: Project, actor: str) -> FactoryPlan:
     return plan
 
 
-def request_plan_changes(plan_id: int, project: Project) -> FactoryPlan:
+def request_plan_changes(plan_id: int, project: Project, reason: str) -> FactoryPlan:
     """Retire an unapproved draft so a fresh conversation can prepare a revision."""
     with transaction.atomic():
         plan = FactoryPlan.objects.select_for_update().get(pk=plan_id, project=project)
         if plan.status != FactoryPlan.Status.PENDING_APPROVAL:
             raise ValueError("PLAN_CHANGES_NOT_AVAILABLE")
+        if not reason.strip():
+            raise ValueError("PLAN_CHANGE_REASON_REQUIRED")
         plan.status = FactoryPlan.Status.BUSINESS_DECISION_REQUIRED
-        plan.business_escalation = "A Product Owner változtatást kért a terven."
+        plan.business_escalation = reason.strip()
+        plan.save(update_fields=["status", "business_escalation", "updated_at"])
+    return plan
+
+
+def reject_plan(plan_id: int, project: Project, reason: str) -> FactoryPlan:
+    """Record a reasoned rejection; it cannot be mistaken for an approval."""
+    if not reason.strip():
+        raise ValueError("PLAN_REJECTION_REASON_REQUIRED")
+    with transaction.atomic():
+        plan = FactoryPlan.objects.select_for_update().get(pk=plan_id, project=project)
+        if plan.status != FactoryPlan.Status.PENDING_APPROVAL:
+            raise ValueError("PLAN_REJECTION_NOT_AVAILABLE")
+        plan.status = FactoryPlan.Status.REJECTED
+        plan.business_escalation = reason.strip()
         plan.save(update_fields=["status", "business_escalation", "updated_at"])
     return plan

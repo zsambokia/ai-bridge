@@ -564,6 +564,7 @@ class FactoryPlan(models.Model):
             "Business decision required",
         )
         APPROVED = "APPROVED", "Plan approved"
+        REJECTED = "REJECTED", "Plan rejected"
 
     project = models.ForeignKey(
         Project, on_delete=models.PROTECT, related_name="factory_plans"
@@ -572,6 +573,7 @@ class FactoryPlan(models.Model):
         ExecutableScope, on_delete=models.PROTECT, related_name="factory_plan"
     )
     questionnaire = models.JSONField(default=dict)
+    plan_document = models.JSONField(default=dict, blank=True)
     plan_hash = models.CharField(max_length=64)
     status = models.CharField(max_length=32, choices=Status.choices)
     business_escalation = models.TextField(blank=True)
@@ -594,6 +596,118 @@ class FactoryPlan(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class FactoryChatSession(models.Model):
+    """A Product Owner's durable, server-owned conversation boundary."""
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    project = models.ForeignKey(
+        Project,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="factory_chat_sessions",
+    )
+    actor_identity = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+
+class FactoryMission(models.Model):
+    """Durable, human-facing COO understanding for one Factory conversation."""
+
+    class Phase(models.TextChoices):
+        DISCOVERY = "DISCOVERY", "Discovery"
+        REQUIREMENTS_SUFFICIENT = "REQUIREMENTS_SUFFICIENT", "Requirements sufficient"
+        PLAN_READY = "PLAN_READY", "Plan ready"
+        AWAITING_PRODUCT_OWNER_APPROVAL = (
+            "AWAITING_PRODUCT_OWNER_APPROVAL",
+            "Awaiting approval",
+        )
+        PLAN_APPROVED = "PLAN_APPROVED", "Plan approved"
+        ORKI_OWNS_DELIVERY = "ORKI_OWNS_DELIVERY", "Orki owns delivery"
+        IMPLEMENTING = "IMPLEMENTING", "Implementing"
+        VALIDATING = "VALIDATING", "Validating"
+        DELIVERED = "DELIVERED", "Delivered"
+        AWAITING_PRODUCT_OWNER_ACCEPTANCE = (
+            "AWAITING_PRODUCT_OWNER_ACCEPTANCE",
+            "Awaiting acceptance",
+        )
+        ACCEPTED = "ACCEPTED", "Accepted"
+
+    session = models.OneToOneField(
+        FactoryChatSession, on_delete=models.CASCADE, related_name="mission"
+    )
+    objective = models.TextField(blank=True)
+    target_users = models.JSONField(default=list, blank=True)
+    primary_workflow = models.TextField(blank=True)
+    required_inputs = models.JSONField(default=list, blank=True)
+    required_outputs = models.JSONField(default=list, blank=True)
+    mvp_boundary = models.TextField(blank=True)
+    persistence_requirements = models.TextField(blank=True)
+    integrations = models.JSONField(default=list, blank=True)
+    cost_impacting_dependencies = models.JSONField(default=list, blank=True)
+    risks = models.JSONField(default=list, blank=True)
+    assumptions = models.JSONField(default=list, blank=True)
+    recommendations = models.JSONField(default=list, blank=True)
+    unresolved_decisions = models.JSONField(default=list, blank=True)
+    recommendation_confidence = models.FloatField(default=0)
+    requirements_sufficient = models.BooleanField(default=False)
+    phase = models.CharField(
+        max_length=48, choices=Phase.choices, default=Phase.DISCOVERY
+    )
+    repository_proposal = models.JSONField(default=dict, blank=True)
+    delivery_status = models.JSONField(default=dict, blank=True)
+    plan = models.OneToOneField(
+        FactoryPlan,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="mission",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+
+class FactoryChatMessage(models.Model):
+    """Persisted chat message plus non-secret model-call audit projection."""
+
+    class Role(models.TextChoices):
+        OWNER = "OWNER", "Product Owner"
+        ORKI = "ORKI", "Orki"
+
+    class Status(models.TextChoices):
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    session = models.ForeignKey(
+        FactoryChatSession, on_delete=models.CASCADE, related_name="messages"
+    )
+    role = models.CharField(max_length=16, choices=Role.choices)
+    body = models.TextField()
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.COMPLETED
+    )
+    correlation_id = models.CharField(max_length=128, blank=True)
+    provider_id = models.CharField(max_length=64, blank=True)
+    model = models.CharField(max_length=128, blank=True)
+    prompt_hash = models.CharField(max_length=64, blank=True)
+    response_hash = models.CharField(max_length=64, blank=True)
+    latency_ms = models.PositiveIntegerField(null=True, blank=True)
+    attempt_count = models.PositiveSmallIntegerField(default=1)
+    token_usage = models.JSONField(default=dict, blank=True)
+    error_code = models.CharField(max_length=128, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
 
 
 class McpAuditEvent(models.Model):
