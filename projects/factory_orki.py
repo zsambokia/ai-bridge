@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from collections.abc import Mapping
 from time import perf_counter
@@ -48,6 +49,7 @@ _LEGACY_UNCONFIGURED_MESSAGE = (
 )
 TEMPORARY_FAILURE_MESSAGE = "Az Orki átmenetileg nem érhető el. Kérlek, próbáld újra."
 MAX_RETRIES = 2
+logger = logging.getLogger(__name__)
 
 # Unicode escapes make the client-facing operational messages encoding-stable.
 UNCONFIGURED_MESSAGE = (
@@ -404,25 +406,71 @@ def get_or_create_session(request: Any, project: Project | None) -> FactoryChatS
     return session
 
 
-def messages_for(session: FactoryChatSession) -> list[dict[str, str]]:
+def _message_projection(row: FactoryChatMessage) -> dict[str, str | int]:
+    return {
+        "id": row.pk,
+        "role": "owner" if row.role == row.Role.OWNER else "orki",
+        "text": row.body,
+        "status": row.status,
+        "correlation_id": row.correlation_id,
+    }
+
+
+def messages_for(session: FactoryChatSession) -> list[dict[str, str | int]]:
+    return [_message_projection(row) for row in session.messages.all()]
+
+
+def _messages_for_correlation(
+    session: FactoryChatSession, correlation_id: str
+) -> list[dict[str, str | int]]:
     return [
-        {
-            "role": "owner" if row.role == row.Role.OWNER else "orki",
-            "text": row.body,
-            "status": row.status,
-        }
-        for row in session.messages.all()
+        _message_projection(row)
+        for row in session.messages.filter(correlation_id=correlation_id).order_by("pk")
     ]
 
 
-def reply(request: Any, project: Project | None, text: str) -> list[dict[str, str]]:
+def _log_failure(
+    *,
+    session: FactoryChatSession,
+    project: Project | None,
+    correlation_id: str,
+    reason: str,
+    provider_id: str = "",
+    latency_ms: int | None = None,
+) -> None:
+    """Record operational diagnostics without logging request or provider content."""
+    logger.warning(
+        "factory_chat_delivery_failed",
+        extra={
+            "factory_correlation_id": correlation_id,
+            "factory_reason": reason,
+            "factory_provider_id": provider_id,
+            "factory_latency_ms": latency_ms,
+            "factory_state_id": project.project_id if project else "",
+            "factory_conversation_id": str(session.token),
+        },
+    )
+
+
+def reply(
+    request: Any,
+    project: Project | None,
+    text: str,
+    correlation_id: str | None = None,
+) -> list[dict[str, str | int]]:
     """Persist owner input, one real model response, and safe audit metadata."""
     session = get_or_create_session(request, project)
+    correlation_id = correlation_id or str(uuid4())
+    prior = _messages_for_correlation(session, correlation_id)
+    if prior:
+        return prior
     with transaction.atomic():
         owner_message = FactoryChatMessage.objects.create(
-            session=session, role=FactoryChatMessage.Role.OWNER, body=text
+            session=session,
+            role=FactoryChatMessage.Role.OWNER,
+            body=text,
+            correlation_id=correlation_id,
         )
-    correlation_id = str(uuid4())
     try:
         entry, model = _provider()
     except ModelProviderSelectionUnavailable:
@@ -434,17 +482,29 @@ def reply(request: Any, project: Project | None, text: str) -> list[dict[str, st
             correlation_id=correlation_id,
             error_code="MODEL_PROVIDER_UNAVAILABLE",
         )
-        return messages_for(session)[-2:]
-    except ModelProviderAuthenticationUnavailable as exc:
+        _log_failure(
+            session=session,
+            project=project,
+            correlation_id=correlation_id,
+            reason="MODEL_PROVIDER_UNAVAILABLE",
+        )
+        return _messages_for_correlation(session, correlation_id)
+    except ModelProviderAuthenticationUnavailable:
         FactoryChatMessage.objects.create(
             session=session,
             role=FactoryChatMessage.Role.ORKI,
             body=TEMPORARY_FAILURE_MESSAGE,
             status=FactoryChatMessage.Status.FAILED,
             correlation_id=correlation_id,
-            error_code=str(exc),
+            error_code="PROVIDER_CREDENTIAL_UNAVAILABLE",
         )
-        return messages_for(session)[-2:]
+        _log_failure(
+            session=session,
+            project=project,
+            correlation_id=correlation_id,
+            reason="PROVIDER_CREDENTIAL_UNAVAILABLE",
+        )
+        return _messages_for_correlation(session, correlation_id)
     prompt = _prompt(_bounded_context(session), text)
     started = perf_counter()
     try:
@@ -591,7 +651,7 @@ def reply(request: Any, project: Project | None, text: str) -> list[dict[str, st
                     correlation_id=correlation_id,
                     role=FactoryChatMessage.Role.ORKI,
                 ).update(body=response, response_hash=_hash(response))
-        return messages_for(session)[-2:]
+        return _messages_for_correlation(session, correlation_id)
     except (ValueError, OSError, TimeoutError) as exc:
         FactoryChatMessage.objects.create(
             session=session,
@@ -606,4 +666,13 @@ def reply(request: Any, project: Project | None, text: str) -> list[dict[str, st
             attempt_count=MAX_RETRIES,
             error_code=_safe_failure_code(exc),
         )
-        return messages_for(session)[-2:]
+        latency_ms = round((perf_counter() - started) * 1000)
+        _log_failure(
+            session=session,
+            project=project,
+            correlation_id=correlation_id,
+            reason=_safe_failure_code(exc),
+            provider_id=entry.provider_id,
+            latency_ms=latency_ms,
+        )
+        return _messages_for_correlation(session, correlation_id)

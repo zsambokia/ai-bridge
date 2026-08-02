@@ -10,6 +10,8 @@ from projects.factory_coding import coding_projection
 from projects.factory_orki import availability
 from projects.knowledge import create_or_upsert_candidate, review_candidate
 from projects.models import (
+    CognitiveState,
+    CognitiveStateEntry,
     ExecutionProvider,
     FactoryChatMessage,
     FactoryChatSession,
@@ -123,6 +125,62 @@ class FactoryChatTests(TestCase):
         )
         self.assertEqual(message.status, FactoryChatMessage.Status.FAILED)
         self.assertEqual(message.error_code, "MODEL_PROVIDER_UNAVAILABLE")
+
+    def test_enhanced_invalid_message_never_reflects_technical_request_content(
+        self,
+    ) -> None:
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-chat-message"),
+            {"message": "", "request_id": "RuntimeError: internal diagnostic"},
+            HTTP_X_REQUESTED_WITH="FactoryChat",
+        )
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "MESSAGE_INVALID")
+        self.assertNotIn("RuntimeError", payload["error"]["message"])
+        self.assertNotIn("diagnostic", payload["error"]["message"])
+
+    def test_same_request_identifier_reuses_the_durable_chat_result(self) -> None:
+        self.client.force_login(self.user)
+        request_id = "fd077351-bb20-4b75-a6ec-a353719af496"
+        first = self.client.post(
+            reverse("factory-chat-message"),
+            {"message": "Készíts tervet.", "request_id": request_id},
+            HTTP_X_REQUESTED_WITH="FactoryChat",
+        )
+        second = self.client.post(
+            reverse("factory-chat-message"),
+            {"message": "Készíts tervet.", "request_id": request_id},
+            HTTP_X_REQUESTED_WITH="FactoryChat",
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.json()["messages"], second.json()["messages"])
+        self.assertEqual(
+            FactoryChatMessage.objects.filter(correlation_id=request_id).count(), 2
+        )
+
+    def test_unexpected_chat_exception_returns_only_a_safe_recovery_message(
+        self,
+    ) -> None:
+        self.client.force_login(self.user)
+        with patch(
+            "projects.factory_chat.orki_reply",
+            side_effect=RuntimeError("secret server stack trace"),
+        ):
+            response = self.client.post(
+                reverse("factory-chat-message"),
+                {"message": "Készíts tervet."},
+                HTTP_X_REQUESTED_WITH="FactoryChat",
+            )
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["error"]["retryable"])
+        self.assertNotIn("secret", payload["error"]["message"])
+        self.assertNotIn("stack", payload["error"]["message"])
 
     def test_chat_accepts_a_product_owner_brief_up_to_twelve_thousand_characters(
         self,
@@ -376,7 +434,7 @@ class FactoryChatTests(TestCase):
     def test_explicit_plan_request_closes_a_resolved_question_and_creates_plan(
         self,
     ) -> None:
-        """A short owner confirmation must not leave Orki in questionnaire mode."""
+        """A short confirmation must not return Orki to a question-by-question mode."""
         ExecutionProvider.objects.create(
             provider_id="plan-request-openai",
             name="Plan request OpenAI",
@@ -434,7 +492,7 @@ class FactoryChatTests(TestCase):
             "Már elegendő információm van a tervhez.",
         )
 
-    def test_plan_approval_continues_without_a_technical_question(self) -> None:
+    def test_plan_approval_stops_at_execution_preparation(self) -> None:
         self.client.force_login(self.user)
         self.client.post(
             reverse("factory-plan-create"),
@@ -454,12 +512,11 @@ class FactoryChatTests(TestCase):
             requirements_sufficient=True,
             repository_proposal={"mode": "create"},
         )
-        with patch("projects.factory_chat.ensure_repository") as ensure:
-            response = self.client.post(reverse("factory-plan-approve", args=[plan.pk]))
+        response = self.client.post(reverse("factory-plan-approve", args=[plan.pk]))
         self.assertEqual(response.status_code, 302)
-        ensure.assert_called_once()
         mission.refresh_from_db()
-        self.assertEqual(mission.phase, FactoryMission.Phase.ORKI_OWNS_DELIVERY)
+        self.assertEqual(mission.phase, FactoryMission.Phase.PLAN_APPROVED)
+        self.assertEqual(mission.delivery_status["state"], "execution_preparation")
 
     def test_natural_language_approval_uses_the_canonical_approval_path(self) -> None:
         self.client.force_login(self.user)
@@ -481,16 +538,14 @@ class FactoryChatTests(TestCase):
             requirements_sufficient=True,
             repository_proposal={"mode": "create"},
         )
-        with patch("projects.factory_chat.ensure_repository") as ensure:
-            response = self.client.post(
-                reverse("factory-chat-message"), {"message": "Jóváhagyom"}
-            )
+        response = self.client.post(
+            reverse("factory-chat-message"), {"message": "Jóváhagyom"}
+        )
         self.assertRedirects(response, reverse("factory-chat"))
-        ensure.assert_called_once()
         plan.refresh_from_db()
         mission.refresh_from_db()
         self.assertEqual(plan.status, FactoryPlan.Status.APPROVED)
-        self.assertEqual(mission.phase, FactoryMission.Phase.ORKI_OWNS_DELIVERY)
+        self.assertEqual(mission.phase, FactoryMission.Phase.PLAN_APPROVED)
         self.assertTrue(
             FactoryChatMessage.objects.filter(
                 session__project=self.project,
@@ -578,7 +633,7 @@ class FactoryChatTests(TestCase):
         self.assertTrue(action["required"])
         self.assertEqual(action["title"], "Termék Tulajdonos döntése szükséges")
 
-    def test_planning_questionnaire_creates_proposed_artifacts(self) -> None:
+    def test_planning_request_creates_proposed_artifacts(self) -> None:
         self.client.force_login(self.user)
         response = self.client.post(
             reverse("factory-plan-create"),
@@ -776,3 +831,64 @@ class FactoryChatTests(TestCase):
         response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
         self.assertContains(response, 'aria-label="A beszélgetés munkatérképe"')
         self.assertContains(response, "Mit javasol?")
+
+    def test_status_is_a_project_isolated_cognitive_state_projection(self) -> None:
+        another = Project.objects.create(
+            project_id="workspace-other-project",
+            display_name="Workspace Other",
+            repository_full_name="example/workspace-other",
+            definition_path="projects/workspace-other.yaml",
+        )
+        state = CognitiveState.objects.create(project=self.project)
+        CognitiveStateEntry.objects.create(
+            state=state,
+            kind=CognitiveStateEntry.Kind.FACT,
+            content={"value": "Inventory data is the verified source."},
+            provenance={"source": "test"},
+            confidence=0.91,
+        )
+        foreign_state = CognitiveState.objects.create(project=another)
+        CognitiveStateEntry.objects.create(
+            state=foreign_state,
+            kind=CognitiveStateEntry.Kind.FACT,
+            content={"value": "FOREIGN WORKSPACE FACT"},
+            provenance={"source": "test"},
+            confidence=0.91,
+        )
+        session = FactoryChatSession.objects.create(project=self.project)
+        FactoryChatMessage.objects.create(
+            session=session,
+            role=FactoryChatMessage.Role.OWNER,
+            body="TRANSCRIPT ONLY - NOT A STATE FACT",
+        )
+        self.client.force_login(self.user)
+        self.client.get(reverse("factory-chat"), {"project": self.project.project_id})
+        response = self.client.get(reverse("factory-chat-status"))
+
+        self.assertContains(response, "data-cognitive-state")
+        self.assertContains(response, "canonical-cognitive-state")
+        self.assertContains(response, "Inventory data is the verified source.")
+        self.assertNotContains(response, "FOREIGN WORKSPACE FACT")
+        self.assertNotContains(response, "TRANSCRIPT ONLY - NOT A STATE FACT")
+
+    def test_enhanced_chat_converts_operational_errors_to_retryable_message(
+        self,
+    ) -> None:
+        self.client.force_login(self.user)
+        request_id = "e3196b9d-c29a-4a98-99b2-640dedbdcb8a"
+        with patch(
+            "projects.factory_chat.orki_reply",
+            side_effect=OSError("database down"),
+        ):
+            response = self.client.post(
+                reverse("factory-chat-message"),
+                {"message": "Please prepare a plan.", "request_id": request_id},
+                HTTP_X_REQUESTED_WITH="FactoryChat",
+            )
+
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["error"]["retryable"])
+        self.assertEqual(payload["correlation_id"], request_id)
+        self.assertNotIn("database down", payload["error"]["message"])

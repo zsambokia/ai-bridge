@@ -4,9 +4,9 @@ The Orki Cognitive Operating System has a canonical [Orki Principles constitutio
 
 ## EPIC - Orki Cognitive Operating System
 
-**Current Orki position:** `ORKI-001 THROUGH ORKI-010 TECHNICAL EPIC OFFICIALLY ACCEPTED; ARCHITECTURAL FOUNDATION COMPLETE; DIGITAL COO VALIDATION NOT YET CERTIFIED; CVO-002 IMPROVEMENT LOOP ACTIVE WITH NO EXECUTED SCENARIO EVIDENCE; EXECUTIVE CHECKPOINTS A AND B ISSUED; HISTORICAL DCMI V2 66/100.`
+**Current Orki position:** `ORKI-001 THROUGH ORKI-010 TECHNICAL EPIC OFFICIALLY ACCEPTED; ORKI-011 FACTORY CHAT COMPLETION PASS — READY FOR PRODUCT OWNER REVIEW; ARCHITECTURAL FOUNDATION COMPLETE; DIGITAL COO VALIDATION NOT YET CERTIFIED; CVO-002 REMAINS A SEPARATE, UNEXECUTED IMPROVEMENT LOOP; EXECUTIVE CHECKPOINTS A AND B ISSUED; HISTORICAL DCMI V2 66/100.`
 
-**Next bounded work:** `CVO-002 DIGITAL COO IMPROVEMENT LOOP: EXECUTE AND INDEPENDENTLY ASSESS THE 100-SCENARIO GOLDEN CORPUS; CREATE FAILURE CARDS FOR REAL FAILURES; RERUN THE ORIGINAL CASE AFTER EACH BOUNDED CORRECTION. NO DCMI CHANGE WITHOUT EVIDENCE-WEIGHTED JUDGEMENT.`
+**Next bounded work:** `PRODUCT OWNER REVIEW OF ORKI-011, THEN CVO-002 DIGITAL COO IMPROVEMENT LOOP: EXECUTE AND INDEPENDENTLY ASSESS THE 100-SCENARIO GOLDEN CORPUS; CREATE FAILURE CARDS FOR REAL FAILURES; RERUN THE ORIGINAL CASE AFTER EACH BOUNDED CORRECTION. NO DCMI CHANGE WITHOUT EVIDENCE-WEIGHTED JUDGEMENT.`
 
 The Product Owner strategic adjustment inserted ORKI-008 before further
 Recommendation Intelligence expansion. It separates Mission, Project, Product
@@ -24,6 +24,15 @@ review in [ORKI-009 assessment](../evidence/sprint-orki-009-product-owner-model-
 **66/100**; no points are claimed merely for adding data or UI.
 
 ORKI-010 is the [Operational Reasoning Engine](../architecture/ORKI_OPERATIONAL_REASONING_ENGINE.md): the provider must propose a complete, state-validated reasoning cycle before a recommendation can be persisted from Factory Chat. The cycle carries mission, evidence, unknowns, at least three alternatives, trade-offs, counter-arguments, cost, risk, long-term effect, simplicity, expected impact, confidence and any required Product Owner decision. The Product Owner accepted its engineering, operational and architecture implementation. The subsequent [CVO-001 Digital COO Validation baseline](../evidence/orki-digital-coo-validation-20260802/VALIDATION_REPORT.md) finds that its 100 difficult Product Owner scenarios have not yet been independently executed: current evidence proves a structural pipeline, not mature Digital COO reasoning. The score remains the historical 66/100 and no increase is claimed.
+
+ORKI-011 completes Factory Chat as the operational workspace over canonical,
+project-scoped Cognitive State. Its safe recovery, idempotent retry, draft
+preservation, explainable state/document projections, explicit approval review
+and responsive Chromium evidence are [ready for Product Owner review](../evidence/sprint-orki-011-factory-chat-robustness-ux-hardening-20260802/ASSESSMENT.md).
+It does not change the Cognitive State contract, execute CVO scenarios or
+increase DCMI; the score remains 66/100. The authoritative Sprint closure is
+[required completion record](../sprints/SPRING_ORKI_011_FACTORY_CHAT_COMPLETION.md),
+with the detailed [SPRINT ORKI-011 Factory Chat Completion](../sprints/SPRINT_ORKI_011_FACTORY_CHAT_ROBUSTNESS_UX_HARDENING.md).
 
 [CVO-002 Digital COO Improvement Loop](../epics/CVO_002_DIGITAL_COO_IMPROVEMENT_LOOP.md)
 is active under the Product Owner-authorised Digital COO Program. Each

@@ -32,6 +32,8 @@
   Cognitive Operating System Epic.
 
 - [Orki Cognitive Operating System](ORKI_COGNITIVE_OPERATING_SYSTEM.md) — canonical cognitive architecture and implemented-capability status.
+- [Orki Factory Chat Operational Workspace](ORKI_FACTORY_CHAT_OPERATIONAL_WORKSPACE.md) — the Factory Chat projection, plan review, and failure-boundary contract.
+- [Orki Factory Chat UX Decisions](ORKI_FACTORY_CHAT_UX_DECISIONS.md) — ORKI-011 workspace interaction decisions.
 - [Orki COO Mission](ORKI_COO_MISSION.md) — existing Factory Mission and Plan flow; predecessor, not target design.
 - [Application Knowledge Base foundation](AKB_FOUNDATION.md) — existing governed knowledge lifecycle.
 

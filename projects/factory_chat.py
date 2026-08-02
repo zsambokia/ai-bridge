@@ -6,9 +6,10 @@ Project, plan, approval, execution and knowledge services retain authority.
 
 from __future__ import annotations
 
+import logging
 import unicodedata
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
@@ -19,7 +20,7 @@ from django.views.decorators.http import require_http_methods
 
 from .factory_coding import coding_projection
 from .factory_memory import memory_projection
-from .factory_missions import begin_autonomous_delivery, human_projection, mission_for
+from .factory_missions import human_projection, mission_for
 from .factory_orki import availability, get_or_create_session, messages_for
 from .factory_orki import reply as orki_reply
 from .factory_planning import (
@@ -28,7 +29,7 @@ from .factory_planning import (
     reject_plan,
     request_plan_changes,
 )
-from .factory_repositories import RepositoryRemediationRequired, ensure_repository
+from .factory_workspace import approval_projection, cognitive_workspace_projection
 from .knowledge import review_candidate
 from .models import (
     ConversationOrchestration,
@@ -47,15 +48,7 @@ SESSION_KEY = "factory_chat"
 MAX_MESSAGE_LENGTH = 12_000
 VALID_MODES = {"planning", "coding", "memory"}
 VALID_PANELS = {"context", "chat", "projects"}
-DISCOVERY_QUESTIONS = (
-    "Minek nevezzük ezt a projektet?",
-    "Kik fogják használni?",
-    "Mi legyen az első, legfontosabb dolog, amit meg tudnak benne csinálni?",
-    (
-        "Van olyan határidő vagy elvárás, amit mindenképpen tartsunk "
-        "szem előtt? (Kihagyható.)"
-    ),
-)
+logger = logging.getLogger(__name__)
 
 
 def _state(request: HttpRequest) -> dict[str, Any]:
@@ -120,6 +113,12 @@ def _context(
         .order_by("-updated_at")
         .first()
     )
+    session = (
+        FactoryChatSession.objects.filter(project=project)
+        .order_by("-updated_at")
+        .first()
+    )
+    mission_object = mission_for(session) if session is not None else None
     context: dict[str, object] = {
         "project": project,
         "scope": project.scopes.exclude(status=ExecutableScope.Status.ACCEPTED)
@@ -137,16 +136,7 @@ def _context(
         .order_by("-created_at")
         .first(),
         "deployment": deployment,
-        "mission": human_projection(
-            mission_for(session)
-            if (
-                session := FactoryChatSession.objects.filter(project=project)
-                .order_by("-updated_at")
-                .first()
-            )
-            is not None
-            else None
-        ),
+        "mission": human_projection(mission_object),
     }
     context["artifact"] = (
         run
@@ -160,6 +150,13 @@ def _context(
         memory_projection(project, memory_query) if mode == "memory" else None
     )
     plan = context["plan"]
+    workspace = cognitive_workspace_projection(
+        project, mission_object, plan if isinstance(plan, FactoryPlan) else None
+    )
+    context["workspace"] = workspace
+    context["approval"] = approval_projection(
+        workspace, plan if isinstance(plan, FactoryPlan) else None
+    )
     context["state_text"] = (
         _plain_run_state(run)
         if mode == "coding"
@@ -181,6 +178,63 @@ def _context(
 
 def _enhanced(request: HttpRequest) -> bool:
     return request.headers.get("X-Requested-With") == "FactoryChat"
+
+
+def _request_correlation(request: HttpRequest) -> str:
+    """Use the browser retry key when it is safe; never reflect arbitrary text."""
+    candidate = request.POST.get("request_id", "").strip()
+    try:
+        return str(uuid4() if not candidate else UUID(candidate))
+    except (AttributeError, ValueError):
+        return str(uuid4())
+
+
+def _safe_chat_error(
+    request: HttpRequest,
+    *,
+    correlation_id: str,
+    code: str = "CHAT_UNAVAILABLE",
+    status: int = 503,
+    message: str | None = None,
+) -> HttpResponse:
+    """Return only a plain-language recovery path to the Product Owner."""
+    message = (
+        message or "Most nem sikerült elküldeni az üzenetet. Kérlek, próbáld újra."
+    )
+    if _enhanced(request):
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": {"code": code, "message": message, "retryable": True},
+                "correlation_id": correlation_id,
+            },
+            status=status,
+        )
+    return HttpResponseBadRequest(message)
+
+
+def _safe_action_error(request: HttpRequest, error: ValueError) -> HttpResponse:
+    """Do not expose internal validation tokens through plan or memory controls."""
+    logger.warning(
+        "factory_chat_action_failed", extra={"factory_reason": type(error).__name__}
+    )
+    message = (
+        "Ezt a műveletet most nem lehet befejezni. "
+        "Frissítsd az állapotot, majd próbáld újra."
+    )
+    if _enhanced(request):
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": {
+                    "code": "ACTION_UNAVAILABLE",
+                    "message": message,
+                    "retryable": True,
+                },
+            },
+            status=400,
+        )
+    return HttpResponseBadRequest(message)
 
 
 def _response(request: HttpRequest, project: Project, mode: str) -> HttpResponse:
@@ -210,7 +264,7 @@ def _approval_phrase(text: str) -> bool:
 
 
 def _continue_after_plan_approval(plan: FactoryPlan, actor: str) -> FactoryPlan:
-    """Single server-owned approval path for buttons and natural language."""
+    """Record one plan approval without starting repository or execution work."""
     approved_plan = approve_plan(plan.pk, plan.project, actor)
     session = (
         FactoryChatSession.objects.filter(project=plan.project)
@@ -220,27 +274,34 @@ def _continue_after_plan_approval(plan: FactoryPlan, actor: str) -> FactoryPlan:
     if session:
         mission = mission_for(session)
         mission.phase = mission.Phase.PLAN_APPROVED
-        mission.save(update_fields=["phase", "updated_at"])
-        mission = begin_autonomous_delivery(mission)
-        try:
-            ensure_repository(mission)
-        except RepositoryRemediationRequired as error:
-            mission.delivery_status = {
-                "state": "repository_remediation",
-                "next": "Orki biztonságosan javítja a repository előkészítését.",
-                "reason": str(error)[:300],
-            }
-            mission.save(update_fields=["delivery_status", "updated_at"])
+        mission.delivery_status = {
+            "state": "execution_preparation",
+            "next": (
+                "A jóváhagyott terv és a dokumentum-projekciók elkészültek. "
+                "A végrehajtás külön, kanonikus szerződés alapján indítható."
+            ),
+        }
+        mission.save(update_fields=["phase", "delivery_status", "updated_at"])
     return approved_plan
 
 
 def _record_natural_language_approval(
-    request: HttpRequest, plan: FactoryPlan, text: str
-) -> list[dict[str, str]]:
+    request: HttpRequest, plan: FactoryPlan, text: str, correlation_id: str
+) -> list[dict[str, str | int]]:
     """Keep semantic approval in the transcript while bypassing provider inference."""
     session = get_or_create_session(request, plan.project)
+    prior = [
+        message
+        for message in messages_for(session)
+        if message.get("correlation_id") == correlation_id
+    ]
+    if prior:
+        return prior
     FactoryChatMessage.objects.create(
-        session=session, role=FactoryChatMessage.Role.OWNER, body=text
+        session=session,
+        role=FactoryChatMessage.Role.OWNER,
+        body=text,
+        correlation_id=correlation_id,
     )
     FactoryChatMessage.objects.create(
         session=session,
@@ -249,22 +310,13 @@ def _record_natural_language_approval(
             "A tervet jóváhagytad. Orki átvette a szállítást, és a "
             "jóváhagyott terv szerint folytatja a következő lépéssel."
         ),
+        correlation_id=correlation_id,
     )
-    return messages_for(session)[-2:]
-
-
-def _add_messages(
-    state: dict[str, Any], *messages: dict[str, str]
-) -> list[dict[str, str]]:
-    history = list(state.get("messages", []))[-16:]
-    history.extend(messages)
-    state["messages"] = history
-    return list(messages)
-
-
-def _start_discovery(state: dict[str, Any], kind: str = "plan") -> str:
-    state["discovery"] = {"kind": kind, "answers": [], "question": 0}
-    return DISCOVERY_QUESTIONS[0]
+    return [
+        message
+        for message in messages_for(session)
+        if message.get("correlation_id") == correlation_id
+    ]
 
 
 def _new_project_from_answers(answers: list[str]) -> Project:
@@ -289,101 +341,6 @@ def _new_project_from_answers(answers: list[str]) -> Project:
     )
 
 
-def _finish_discovery(
-    request: HttpRequest, state: dict[str, Any], discovery: dict[str, Any]
-) -> str:
-    answers = [str(answer) for answer in discovery["answers"]]
-    project = _selected_project(request)
-    if discovery["kind"] == "new_project":
-        project = _new_project_from_answers(answers)
-        state["project_id"] = project.project_id
-        state["mode"] = "planning"
-    if project is None:
-        return "Előbb indítsunk vagy válasszunk egy projektet."
-    outcome = answers[2] if len(answers) > 2 else answers[0]
-    title = f"{project.display_name}: első fejlesztési terv"
-    create_plan(
-        project,
-        {
-            "outcome": outcome,
-            "title": title,
-            "technical_constraints": answers[3] if len(answers) > 3 else "",
-            "acceptance_checks": "A Product Owner áttekinti a tervet.",
-        },
-        request.user.get_username(),
-    )
-    state.pop("discovery", None)
-    return (
-        "Elkészítettem az első, áttekinthető tervet. A jobb oldalon "
-        "egyetlen jóváhagyással folytathatod."
-    )
-
-
-def _reply_to_message(request: HttpRequest, text: str) -> str:
-    state = _state(request)
-    discovery = state.get("discovery")
-    if isinstance(discovery, dict):
-        answers = list(discovery.get("answers", []))
-        answers.append(text)
-        discovery["answers"] = answers
-        question = int(discovery.get("question", 0)) + 1
-        discovery["question"] = question
-        if question < len(DISCOVERY_QUESTIONS):
-            return DISCOVERY_QUESTIONS[question]
-        return _finish_discovery(request, state, discovery)
-    lowered = text.casefold()
-    if any(
-        token in lowered
-        for token in ("új projekt", "uj projekt", "új alkalmazás", "uj alkalmazas")
-    ):
-        return _start_discovery(state, "new_project")
-    if any(
-        token in lowered
-        for token in (
-            "hogyan érhető el",
-            "hogyan erheto el",
-            "elérhető az alkalmazás",
-            "elerheto az alkalmazas",
-            "url",
-            "preview",
-        )
-    ):
-        project = _selected_project(request)
-        deployment = (
-            RuntimeDeployment.objects.filter(delivery__run__contract__project=project)
-            .order_by("-updated_at")
-            .first()
-            if project
-            else None
-        )
-        preview = ""
-        if deployment and isinstance(deployment.receipt, dict):
-            preview = str(
-                deployment.receipt.get("url")
-                or deployment.receipt.get("preview_url")
-                or ""
-            )
-        url = preview or request.build_absolute_uri(reverse("factory-chat"))
-        target = f" A kiválasztott projekt: {project.display_name}." if project else ""
-        return f"Az alkalmazás most itt érhető el: {url}.{target}"
-    if any(
-        token in lowered
-        for token in (
-            "terv",
-            "fejlessz",
-            "készíts",
-            "keszits",
-            "szeretnék",
-            "szeretnek",
-        )
-    ):
-        return _start_discovery(state)
-    return (
-        "Értem. Írd le, milyen eredményt szeretnél, és néhány rövid kérdéssel "
-        "közösen összeállítjuk a tervet."
-    )
-
-
 @login_required
 @require_http_methods(["GET"])
 def factory_chat(request: HttpRequest) -> HttpResponse:
@@ -404,7 +361,9 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
             "context": _context(project, mode, str(state.get("memory_query", ""))),
             "mode": mode,
             "panel": panel,
-            "messages": messages_for(orki_session)[-20:],
+            # A generous display window keeps a long working conversation useful,
+            # while the transcript remains separate from canonical memory/state.
+            "messages": messages_for(orki_session)[-100:],
             "orki_availability": availability(orki_session),
         },
     )
@@ -415,9 +374,14 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
 def factory_chat_message(request: HttpRequest) -> HttpResponse:
     # Preserve multiline input exactly; reject only whitespace-only submissions.
     text = request.POST.get("message", "")
+    correlation_id = _request_correlation(request)
     if not text.strip() or len(text) > MAX_MESSAGE_LENGTH:
-        return HttpResponseBadRequest(
-            "Az üzenet megadása kötelező és legfeljebb 12 000 karakter lehet."
+        return _safe_chat_error(
+            request,
+            correlation_id=correlation_id,
+            code="MESSAGE_INVALID",
+            status=400,
+            message="Az üzenet megadása kötelező és legfeljebb 12 000 karakter lehet.",
         )
     project = _selected_project(request)
     pending_plan = (
@@ -430,14 +394,27 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
         if project
         else None
     )
-    if pending_plan and _approval_phrase(text):
-        try:
+    try:
+        if pending_plan and _approval_phrase(text):
             _continue_after_plan_approval(pending_plan, request.user.get_username())
-        except ValueError as exc:
-            return HttpResponseBadRequest(str(exc))
-        added = _record_natural_language_approval(request, pending_plan, text)
-    else:
-        added = orki_reply(request, project, text)
+            added = _record_natural_language_approval(
+                request, pending_plan, text, correlation_id
+            )
+        else:
+            added = orki_reply(request, project, text, correlation_id)
+    except (OSError, TimeoutError, ValueError, RuntimeError) as exc:
+        logger.warning(
+            "factory_chat_request_failed",
+            extra={
+                "factory_correlation_id": correlation_id,
+                "factory_reason": type(exc).__name__,
+                "factory_provider_id": "",
+                "factory_latency_ms": None,
+                "factory_state_id": project.project_id if project else "",
+                "factory_conversation_id": "",
+            },
+        )
+        return _safe_chat_error(request, correlation_id=correlation_id)
     if _enhanced(request):
         orki_session = get_or_create_session(request, project)
         return JsonResponse(
@@ -445,6 +422,7 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
                 "messages": added,
                 "ok": added[-1]["status"] != FactoryChatMessage.Status.FAILED,
                 "orki_availability": availability(orki_session),
+                "correlation_id": correlation_id,
             }
         )
     return redirect("factory-chat")
@@ -474,7 +452,7 @@ def factory_plan_create(request: HttpRequest) -> HttpResponse:
             request.user.get_username(),
         )
     except ValueError as exc:
-        return HttpResponseBadRequest(str(exc))
+        return _safe_action_error(request, exc)
     return _response(request, project, "planning")
 
 
@@ -485,7 +463,7 @@ def factory_plan_approve(request: HttpRequest, plan_id: int) -> HttpResponse:
     try:
         _continue_after_plan_approval(plan, request.user.get_username())
     except ValueError as exc:
-        return HttpResponseBadRequest(str(exc))
+        return _safe_action_error(request, exc)
     return _response(request, plan.project, "planning")
 
 
@@ -496,7 +474,7 @@ def factory_plan_request_changes(request: HttpRequest, plan_id: int) -> HttpResp
     try:
         request_plan_changes(plan.pk, plan.project, request.POST.get("reason", ""))
     except ValueError as exc:
-        return HttpResponseBadRequest(str(exc))
+        return _safe_action_error(request, exc)
     return _response(request, plan.project, "planning")
 
 
@@ -507,7 +485,7 @@ def factory_plan_reject(request: HttpRequest, plan_id: int) -> HttpResponse:
     try:
         reject_plan(plan.pk, plan.project, request.POST.get("reason", ""))
     except ValueError as exc:
-        return HttpResponseBadRequest(str(exc))
+        return _safe_action_error(request, exc)
     return _response(request, plan.project, "planning")
 
 
@@ -550,7 +528,7 @@ def factory_memory_review(request: HttpRequest, entry_id: int) -> HttpResponse:
             project, entry_id, decision, request.user.get_username(), approval_reference
         )
     except ValueError as exc:
-        return HttpResponseBadRequest(str(exc))
+        return _safe_action_error(request, exc)
     return _response(request, project, "memory")
 
 

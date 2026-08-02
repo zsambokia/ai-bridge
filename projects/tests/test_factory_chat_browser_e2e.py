@@ -131,6 +131,14 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
             "BREAK_GLASS_TERMINALIZED",
             "EXECUTION_QUEUED",
             "canonical server-owned approval card",
+            "Execution",
+            "Provider",
+            "Pipeline",
+            "correlation",
+            "OperationalError",
+            "stack trace",
+            "Questionnaire",
+            "FactoryPlan",
         ):
             self.assertNotIn(forbidden, body)
         self.assertIn("aktuális feladat", body.casefold())
@@ -265,6 +273,41 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         self.assertFalse(composer.is_disabled())
         desktop.close()
 
+    def test_failed_http_response_hides_raw_html_and_keeps_the_draft_retryable(
+        self,
+    ) -> None:
+        desktop = self._browser.new_page(viewport={"width": 1280, "height": 900})
+        self._login(desktop)
+        desktop.route(
+            "**/factory/message/",
+            lambda route: route.fulfill(
+                status=500,
+                content_type="text/html",
+                body="<h1>RuntimeError</h1><pre>secret internal stack trace</pre>",
+            ),
+        )
+        composer = desktop.locator("#message")
+        composer.fill("A retryable draft")
+        composer.press("Enter")
+        desktop.locator("#retry-message").wait_for(state="visible")
+        body = desktop.locator("body").inner_text()
+        self.assertNotIn("RuntimeError", body)
+        self.assertNotIn("secret internal stack trace", body)
+        self.assertEqual(composer.input_value(), "A retryable draft")
+        self.assertFalse(composer.is_disabled())
+        desktop.close()
+
+    def test_unsent_draft_survives_a_browser_refresh(self) -> None:
+        desktop = self._browser.new_page(viewport={"width": 1280, "height": 900})
+        self._login(desktop)
+        composer = desktop.locator("#message")
+        composer.fill("Refresh-resilient draft")
+        desktop.reload()
+        self.assertEqual(
+            desktop.locator("#message").input_value(), "Refresh-resilient draft"
+        )
+        desktop.close()
+
     def test_memory_candidate_can_be_reviewed_without_an_internal_reference(
         self,
     ) -> None:
@@ -300,7 +343,7 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         self.assertFalse(mobile.locator(".mission").is_visible())
         self.assertFalse(mobile.locator(".projects").is_visible())
         self.assertTrue(mobile.locator(".mobile-nav").is_visible())
-        mobile.get_by_role("button", name="Terv").click()
+        mobile.get_by_role("button", name="Állapot").click()
         self.assertTrue(mobile.locator(".mission").is_visible())
         self.assertFalse(mobile.locator(".conversation").is_visible())
         mobile.get_by_role("button", name="Chat").click()
@@ -314,3 +357,21 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
             1,
         )
         mobile.close()
+
+    def test_tablet_keeps_secondary_panels_reachable_without_horizontal_layout(
+        self,
+    ) -> None:
+        tablet = self._browser.new_page(viewport={"width": 900, "height": 1000})
+        self._login(tablet)
+        self.assertTrue(tablet.locator(".conversation").is_visible())
+        self.assertTrue(tablet.locator(".mobile-nav").is_visible())
+        tablet.get_by_role("button", name="Állapot").click()
+        self.assertTrue(tablet.locator(".mission").is_visible())
+        self.assertFalse(tablet.locator(".conversation").is_visible())
+        self.assertEqual(
+            tablet.locator("main").evaluate(
+                "node => getComputedStyle(node).gridTemplateColumns.split(' ').length"
+            ),
+            1,
+        )
+        tablet.close()

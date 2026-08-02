@@ -14,6 +14,23 @@ the 100-scenario, independently judged CVO work is separate, active under the
 Digital COO Program and not yet evidenced; its status is **DIGITAL COO
 VALIDATION: NOT YET CERTIFIED**.
 
+## ORKI-011 Factory Chat Completion — 2026-08-02
+
+ORKI-011 is a bounded Factory Development Mode completion sprint around the
+already accepted Cognitive Operating System foundation. Factory Chat now
+projects canonical, project-scoped Cognitive State and its mission, facts,
+assumptions, decisions, recommendations, plan, roadmap and document lifecycle
+without manual Product Owner synchronisation. It adds safe Hungarian error
+projection, correlation-bound idempotent retry, draft recovery across failure
+and refresh, optimistic pending feedback, explicit plan approval review, and
+responsive Factory Chat evidence without changing Cognitive State reasoning or
+treating transcript as memory. Its release evidence is [ready for Product Owner review](../evidence/sprint-orki-011-factory-chat-robustness-ux-hardening-20260802/ASSESSMENT.md), with the exact Sprint record at [SPRINT ORKI-011](../sprints/SPRINT_ORKI_011_FACTORY_CHAT_ROBUSTNESS_UX_HARDENING.md).
+The required [Factory Chat completion record](../sprints/SPRING_ORKI_011_FACTORY_CHAT_COMPLETION.md)
+binds the closure to the detailed Sprint evidence. The historical DCMI remains
+**66/100**. CVO-002 remains a separate, unexecuted
+Digital COO training and validation loop; ORKI-011 makes no certification or
+behavioural-maturity claim.
+
 ## Factory readiness maturity baseline — 2026-07-31
 
 The independent factory-readiness baseline is **NOT READY**: 40/100 maturity,
