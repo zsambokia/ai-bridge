@@ -1,12 +1,12 @@
 # CVO-002 — Digital COO Improvement Loop
 
-**Status:** Active training and validation Epic — no DCMI increase is implied.
+**Status:** Prepared; execution has not started. No DCMI increase is implied.
 **Authority:** Product Owner directive, 2026-08-02; Factory Development Mode remains active for AI Bridge self-development.
-**Baseline:** CVO-001, branch `agent/issue-17-conversational-po`, commit `0f8153ad1e790f40662d5701247e6c5681ddaaa5`.
+**Baseline:** the accepted technical Orki Cognitive Operating System reference on `main`, commit `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`.
 
 ## Purpose
 
-CVO-002 trains and validates observable Digital COO behaviour. It is not a feature roadmap, a new data model, an endpoint, or a reason to increase DCMI. Its unit of work is an executed Product Owner scenario with attributable input, output, reasoning projection, independent assessment, and—when needed—a Failure Card and regression rerun.
+CVO-002 will train and validate observable Digital COO behaviour after the technical Orki Cognitive Operating System Epic has received its final Product Owner acceptance. It is not a feature roadmap, a new data model, an endpoint, or a reason to increase DCMI. Its unit of work is an executed Product Owner scenario with attributable input, output, reasoning projection, independent assessment, and—when needed—a Failure Card and regression rerun.
 
 ```text
 Mission -> Orki reasoning -> response/recommendation -> independent assessment

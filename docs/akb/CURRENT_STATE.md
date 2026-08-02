@@ -2,14 +2,15 @@
 
 ## Orki Cognitive Operating System technical Epic closure — 2026-08-02
 
-ORKI-001 through ORKI-010 are formally closed as the accepted technical
-Cognitive Operating System Epic and are ready for Product Owner review. The
-canonical [closure package](../evidence/orki-cognitive-operating-system-closure-20260802/PRODUCT_OWNER_REVIEW_PACKAGE.md)
-contains the capability matrix, release gates, architecture review, and
-manifesto. The historical DCMI remains **66/100**. This is deliberately not a
-claim of completed live Digital COO behavioural certification: CVO-001 records
-that the independent semantic 100-scenario gate is not PASS, and CVO-002 is
-prepared but has not executed scenarios or raised DCMI.
+ORKI-001 through ORKI-010 are formally closed as the technical Cognitive
+Operating System Epic and have passed final
+[compliance certification](../evidence/orki-cognitive-operating-system-compliance-certification-20260802/CERTIFICATION_REPORT.md)
+on the official `main` reference `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`.
+They are ready for Product Owner final acceptance. The historical DCMI remains
+**66/100**, independently arithmetic- and provenance-validated. This is
+deliberately not a claim of completed Digital COO behavioural certification:
+the 100-scenario, independently judged CVO work is separate, prepared and not
+yet executed; its status is **DIGITAL COO VALIDATION: NOT YET CERTIFIED**.
 
 ## Factory readiness maturity baseline — 2026-07-31
 

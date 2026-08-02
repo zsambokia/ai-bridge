@@ -18,6 +18,9 @@
   - failure-driven behavioural training and independently judged DCMI evidence.
 - [Technical Epic Closure Package](../evidence/orki-cognitive-operating-system-closure-20260802/PRODUCT_OWNER_REVIEW_PACKAGE.md)
   - closure report, capability matrix, formal gates, and independent review.
+- [Epic Compliance Certification](../evidence/orki-cognitive-operating-system-compliance-certification-20260802/CERTIFICATION_REPORT.md)
+  - final-state traceability, architecture, DCMI, and scope-separation audit
+    for the technical Cognitive Operating System Epic.
 
 ## Cognitive and product architecture
 

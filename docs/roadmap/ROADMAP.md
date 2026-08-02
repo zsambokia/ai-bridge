@@ -1,10 +1,10 @@
 # AI Bridge Roadmap
 
-The Orki Cognitive Operating System has a canonical [Orki Principles constitution](../architecture/ORKI_PRINCIPLES.md), capability-based milestones, mandatory [COO Capability Acceptance](../architecture/ORKI_COO_CAPABILITY_ACCEPTANCE.md), canonical Product Owner scenarios, and mandatory [Executive Checkpoints](../architecture/ORKI_EXECUTIVE_CHECKPOINTS.md). Its technical Epic closure package is [ready for Product Owner review](../evidence/orki-cognitive-operating-system-closure-20260802/PRODUCT_OWNER_REVIEW_PACKAGE.md). The historical [DCMI scorecard](../architecture/ORKI_DCMI_SCORECARD.md) remains 66/100; 85/100 is a future behavioural-maturity target, not a score created by technical completion.
+The Orki Cognitive Operating System has a canonical [Orki Principles constitution](../architecture/ORKI_PRINCIPLES.md), capability-based milestones, mandatory [COO Capability Acceptance](../architecture/ORKI_COO_CAPABILITY_ACCEPTANCE.md), canonical Product Owner scenarios, and mandatory [Executive Checkpoints](../architecture/ORKI_EXECUTIVE_CHECKPOINTS.md). Its technical Epic is [compliance-certified and ready for Product Owner final acceptance](../evidence/orki-cognitive-operating-system-compliance-certification-20260802/CERTIFICATION_REPORT.md). The historical [DCMI scorecard](../architecture/ORKI_DCMI_SCORECARD.md) remains 66/100; 85/100 is a future behavioural-maturity target, not a score created by technical completion.
 
 ## EPIC - Orki Cognitive Operating System
 
-**Current Orki position:** `ORKI-001 THROUGH ORKI-010 TECHNICAL EPIC CLOSED — READY FOR PRODUCT OWNER REVIEW; CVO-001 BEHAVIOURAL CERTIFICATION NOT PASS; CVO-002 IMPROVEMENT LOOP PREPARED, NOT EXECUTED; EXECUTIVE CHECKPOINTS A AND B ISSUED; HISTORICAL DCMI V2 66/100.`
+**Current Orki position:** `ORKI-001 THROUGH ORKI-010 TECHNICAL EPIC COMPLIANCE-CERTIFIED — READY FOR PRODUCT OWNER FINAL ACCEPTANCE; DIGITAL COO VALIDATION NOT YET CERTIFIED; CVO-002 IMPROVEMENT LOOP PREPARED, NOT EXECUTED; EXECUTIVE CHECKPOINTS A AND B ISSUED; HISTORICAL DCMI V2 66/100.`
 
 **Next bounded work:** `CVO-002 DIGITAL COO IMPROVEMENT LOOP: EXECUTE AND INDEPENDENTLY ASSESS THE 100-SCENARIO GOLDEN CORPUS; CREATE FAILURE CARDS FOR REAL FAILURES; RERUN THE ORIGINAL CASE AFTER EACH BOUNDED CORRECTION. NO DCMI CHANGE WITHOUT EVIDENCE-WEIGHTED JUDGEMENT.`
 
