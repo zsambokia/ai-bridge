@@ -1,6 +1,6 @@
 # DCMI Validation — Orki Cognitive Operating System
 
-**Result:** **PASS — baseline validated, no score increase issued.**  
+**Result:** **PASS — baseline validated, no score increase issued.**
 **Audited reference:** `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`.
 
 The retained score is **66/100**. It is not accepted merely because it appears in a prior report. The scorecard records 73 earned points out of 110 possible points; `73 / 110 × 100 = 66.36`, rounded to **66**. Its dimension-level sources, targets and evidence links are retained in the [DCMI scorecard](../../architecture/ORKI_DCMI_SCORECARD.md).

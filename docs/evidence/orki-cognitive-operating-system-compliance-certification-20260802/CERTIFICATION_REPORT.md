@@ -1,8 +1,8 @@
 # Orki Cognitive Operating System Epic Compliance Certification
 
-**Certification date:** 2026-08-02  
-**Audited reference:** `main` / `origin/main` at `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`  
-**Audit method:** final-state evidence review, traceability reconstruction, static architectural boundary scan, and clean-worktree verification.  
+**Certification date:** 2026-08-02
+**Audited reference:** `main` / `origin/main` at `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`
+**Audit method:** final-state evidence review, traceability reconstruction, static architectural boundary scan, and clean-worktree verification.
 **Scope:** ORKI-001 through ORKI-010 only. CVO-002 is reviewed solely for separation of scope; it is not executed or certified here.
 
 ## Certification decision

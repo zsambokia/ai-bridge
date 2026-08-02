@@ -1,7 +1,7 @@
 # Final-State Validation Log
 
-**Worktree:** clean `main` worktree  
-**Reference under test:** `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`  
+**Worktree:** clean `main` worktree
+**Reference under test:** `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`
 **Date:** 2026-08-02
 
 | Validation | Result | Recorded outcome |
