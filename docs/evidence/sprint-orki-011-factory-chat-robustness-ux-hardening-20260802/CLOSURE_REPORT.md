@@ -45,10 +45,11 @@ The final-state evidence in [RELEASE_GATE.md](RELEASE_GATE.md) records:
 
 ## Release binding
 
-The implementation release commit and the post-push `main`/`origin/main`
-equality check are bound by the follow-up engineering-baseline documentation
-commit. No CVO scenario, new cognitive capability or DCMI claim is included in
-this closure.
+The ORKI-011 implementation release is
+`d60aac0124fca899c39983393402529f80f1c2bf`. The final post-push
+`main`/`origin/main` equality check is recorded in the engineering handoff. No
+CVO scenario, new cognitive capability or DCMI claim is included in this
+closure.
 
 ## Next action
 

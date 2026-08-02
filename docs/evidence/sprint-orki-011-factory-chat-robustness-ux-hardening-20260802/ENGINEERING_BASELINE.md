@@ -1,8 +1,9 @@
 # ORKI Cognitive Operating System — Engineering Baseline
 
-**Status:** prepared for final post-push binding
+**Status:** implementation release bound; pending remote-equality verification
 **Target branch:** `main`
 **Pre-release baseline:** `ffee4538df602c8327f43e0f7f68fd99002dac04`
+**ORKI-011 implementation revision:** `d60aac0124fca899c39983393402529f80f1c2bf`
 
 | Item | Result |
 | --- | --- |
@@ -14,6 +15,6 @@
 | Release worktree | Clean after the committed and pushed baseline is verified |
 | Next programme | Ready for a separately authorised Digital COO Training Epic; not started by this release |
 
-The final main revision and remote-equality evidence are recorded after the
-release push. The report does not imply that CVO-002 has begun or that Digital
+The final `main` revision and remote-equality result are verified after the
+release push. This report does not imply that CVO-002 has begun or that Digital
 COO behavioural certification has been obtained.
