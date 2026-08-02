@@ -1,10 +1,10 @@
 # AI Bridge Roadmap
 
-The Orki Cognitive Operating System has a canonical [Orki Principles constitution](../architecture/ORKI_PRINCIPLES.md), capability-based milestones, mandatory [COO Capability Acceptance](../architecture/ORKI_COO_CAPABILITY_ACCEPTANCE.md), canonical Product Owner scenarios, and mandatory [Executive Checkpoints](../architecture/ORKI_EXECUTIVE_CHECKPOINTS.md). Its technical Epic is [compliance-certified and ready for Product Owner final acceptance](../evidence/orki-cognitive-operating-system-compliance-certification-20260802/CERTIFICATION_REPORT.md). The historical [DCMI scorecard](../architecture/ORKI_DCMI_SCORECARD.md) remains 66/100; 85/100 is a future behavioural-maturity target, not a score created by technical completion.
+The Orki Cognitive Operating System has a canonical [Orki Principles constitution](../architecture/ORKI_PRINCIPLES.md), capability-based milestones, mandatory [COO Capability Acceptance](../architecture/ORKI_COO_CAPABILITY_ACCEPTANCE.md), canonical Product Owner scenarios, and mandatory [Executive Checkpoints](../architecture/ORKI_EXECUTIVE_CHECKPOINTS.md). Its technical Epic is [compliance-certified and officially accepted by the Product Owner](../evidence/orki-cognitive-operating-system-compliance-certification-20260802/PRODUCT_OWNER_FINAL_ACCEPTANCE.md). The historical [DCMI scorecard](../architecture/ORKI_DCMI_SCORECARD.md) remains 66/100; 85/100 is a future behavioural-maturity target, not a score created by technical completion.
 
 ## EPIC - Orki Cognitive Operating System
 
-**Current Orki position:** `ORKI-001 THROUGH ORKI-010 TECHNICAL EPIC COMPLIANCE-CERTIFIED — READY FOR PRODUCT OWNER FINAL ACCEPTANCE; DIGITAL COO VALIDATION NOT YET CERTIFIED; CVO-002 IMPROVEMENT LOOP PREPARED, NOT EXECUTED; EXECUTIVE CHECKPOINTS A AND B ISSUED; HISTORICAL DCMI V2 66/100.`
+**Current Orki position:** `ORKI-001 THROUGH ORKI-010 TECHNICAL EPIC OFFICIALLY ACCEPTED; ARCHITECTURAL FOUNDATION COMPLETE; DIGITAL COO VALIDATION NOT YET CERTIFIED; CVO-002 IMPROVEMENT LOOP ACTIVE WITH NO EXECUTED SCENARIO EVIDENCE; EXECUTIVE CHECKPOINTS A AND B ISSUED; HISTORICAL DCMI V2 66/100.`
 
 **Next bounded work:** `CVO-002 DIGITAL COO IMPROVEMENT LOOP: EXECUTE AND INDEPENDENTLY ASSESS THE 100-SCENARIO GOLDEN CORPUS; CREATE FAILURE CARDS FOR REAL FAILURES; RERUN THE ORIGINAL CASE AFTER EACH BOUNDED CORRECTION. NO DCMI CHANGE WITHOUT EVIDENCE-WEIGHTED JUDGEMENT.`
 
@@ -26,7 +26,8 @@ review in [ORKI-009 assessment](../evidence/sprint-orki-009-product-owner-model-
 ORKI-010 is the [Operational Reasoning Engine](../architecture/ORKI_OPERATIONAL_REASONING_ENGINE.md): the provider must propose a complete, state-validated reasoning cycle before a recommendation can be persisted from Factory Chat. The cycle carries mission, evidence, unknowns, at least three alternatives, trade-offs, counter-arguments, cost, risk, long-term effect, simplicity, expected impact, confidence and any required Product Owner decision. The Product Owner accepted its engineering, operational and architecture implementation. The subsequent [CVO-001 Digital COO Validation baseline](../evidence/orki-digital-coo-validation-20260802/VALIDATION_REPORT.md) finds that its 100 difficult Product Owner scenarios have not yet been independently executed: current evidence proves a structural pipeline, not mature Digital COO reasoning. The score remains the historical 66/100 and no increase is claimed.
 
 [CVO-002 Digital COO Improvement Loop](../epics/CVO_002_DIGITAL_COO_IMPROVEMENT_LOOP.md)
-is prepared for separately authorised execution. It converts the baseline into a failure-driven training and
+is active under the Product Owner-authorised Digital COO Program. Each
+execution remains governed by its bounded child-cycle contract. It converts the baseline into a failure-driven training and
 validation cycle: each real executed failure receives a durable Failure Card,
 the original scenario is rerun after a bounded improvement, and three
 independent disciplinary judges assess the result against a 100-case Golden

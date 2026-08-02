@@ -1,7 +1,7 @@
 # Product Owner Review Package — Orki Cognitive Operating System
 
-**Decision requested:** review the formal technical closure of the Orki
-Cognitive Operating System Epic.
+**Decision:** the Product Owner formally accepted the technical closure of the
+Orki Cognitive Operating System Epic on 2026-08-02.
 
 ## Reading order
 
@@ -15,10 +15,10 @@ Cognitive Operating System Epic.
 5. [Independent Architecture Review](INDEPENDENT_ARCHITECTURE_REVIEW.md) —
    consistency, residual limits, and closure rationale.
 
-## Product Owner conclusion presented by this package
+## Product Owner conclusion
 
-The ORKI-001–010 technical Epic is ready for Product Owner review. It has
-created the Cognitive Operating System foundation and preserved governance,
+The ORKI-001–010 technical Epic is officially accepted. It created the
+Cognitive Operating System foundation and preserved governance,
 explainability, project isolation, and model independence.
 
 The package does **not** ask the Product Owner to accept an unsupported claim
@@ -28,7 +28,7 @@ operational thinking.
 
 ## After closure
 
-No new capability implementation is started by this closure. The
-[roadmap](../../roadmap/ROADMAP.md) records only next-generation cognitive
-directions. Any future work must receive its own authorised scope and must use
-the CVO improvement loop for behavioural evidence where applicable.
+The next phase is the Digital COO Program and its
+[CVO improvement loop](../../epics/CVO_002_DIGITAL_COO_IMPROVEMENT_LOOP.md).
+Every execution or repair cycle remains bounded and evidence-led; no DCMI
+increase follows from this technical closure alone.

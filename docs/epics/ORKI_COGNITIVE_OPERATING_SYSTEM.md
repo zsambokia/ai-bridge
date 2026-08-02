@@ -1,10 +1,11 @@
 # Epic — Orki Cognitive Operating System
 
 **Status:** The technical Cognitive Operating System Epic, ORKI-001 through
-ORKI-010, is closed and ready for Product Owner review. The historical DCMI is
-66/100. Full live Digital COO behavioural certification is explicitly not
-claimed: it remains separate CVO validation work and cannot be inferred from
-the accepted technical architecture.
+ORKI-010, is officially accepted by the Product Owner. Its architectural
+foundation is complete. The historical DCMI is 66/100. Full live Digital COO
+behavioural certification is explicitly not claimed: it remains separate CVO
+validation work and cannot be inferred from the accepted technical
+architecture.
 
 ## Outcome
 

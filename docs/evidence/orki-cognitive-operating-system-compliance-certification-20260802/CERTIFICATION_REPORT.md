@@ -16,8 +16,8 @@
 | Epic Traceability | **PASS** | [Traceability matrix](TRACEABILITY_MATRIX.md) connects vision through closure evidence for every ORKI Sprint. |
 | Independent Audit | **PASS** | This is a separate final-state audit, not a repetition of Sprint self-claims; its limits are stated honestly in the audit artefacts. |
 | DCMI Validation | **PASS** | The retained 66/100 baseline is arithmetically and provenance-validated; no unsupported increase is issued. |
-| Digital COO Validation | **NOT YET CERTIFIED** | The 100-case independently judged behavioural corpus belongs to prepared CVO-002 and has not been executed. |
-| Technical Cognitive Operating System Epic | **PASS** | **READY FOR PRODUCT OWNER FINAL ACCEPTANCE** |
+| Digital COO Validation | **NOT YET CERTIFIED** | The 100-case independently judged behavioural corpus belongs to active CVO-002 and has not yet produced executed-scenario evidence. |
+| Technical Cognitive Operating System Epic | **PASS** | Officially accepted by the Product Owner; the architectural foundation is complete. |
 
 This is deliberately not a claim that Orki has already proved Digital COO behaviour in the field. It certifies that the technical Cognitive Operating System Epic is complete, evidence-backed, and ready to become the baseline for that separate validation work.
 
@@ -29,12 +29,26 @@ The ten Sprint evidence packages and their release-gate tests are present and ma
 
 The review found a legacy compatibility residue: `FactoryPlan.questionnaire` and its historical Factory Planning presentation remain in the wider platform. It is not imported or consumed by the Orki Cognitive State, mission, memory, Product Owner model, initiative, or operational-reasoning flow. The residue therefore does not make the audited Orki path questionnaire-driven, but it is a naming and architecture-clarity debt. A future bounded migration should rename or retire it after compatibility analysis; it must never become an Orki state or reasoning source.
 
+## Product Owner final acceptance
+
+The Product Owner formally accepted this Epic after the certification result.
+The durable decision record is [Product Owner Final
+Acceptance](PRODUCT_OWNER_FINAL_ACCEPTANCE.md). The acceptance closes the
+technical Cognitive Operating System Epic and authorizes transition to the
+Digital COO Program; it does not certify live Digital COO behaviour or alter
+the 66/100 DCMI baseline.
+
 ## Deliberate scope separation
 
-CVO-002 is **prepared, not started**. Its 100-scenario corpus, golden standards, independent Business/Architecture/Operations judging, Failure Cards, and evidence-weighted DCMI reassessment are separate work. No technical feature, documentation artefact, or test count may increase DCMI by itself. See [CVO-002](../../epics/CVO_002_DIGITAL_COO_IMPROVEMENT_LOOP.md) and [DCMI validation](DCMI_VALIDATION.md).
+CVO-002 is **active under the Digital COO Program, with no executed scenario
+evidence yet**. Its 100-scenario corpus, golden standards, independent
+Business/Architecture/Operations judging, Failure Cards, and evidence-weighted
+DCMI reassessment are separate work. No technical feature, documentation
+artefact, or test count may increase DCMI by itself. See
+[CVO-002](../../epics/CVO_002_DIGITAL_COO_IMPROVEMENT_LOOP.md) and [DCMI
+validation](DCMI_VALIDATION.md).
 
 ## Follow-up
 
-1. Obtain the Product Owner's final acceptance of this certified technical Epic.
-2. Start CVO-002 only under its own bounded execution cycle and evidence contract.
-3. Treat every future DCMI change as a behavioural claim requiring retained scenario and judge evidence.
+1. Execute CVO-002 only under its bounded child-cycle and evidence contract.
+2. Treat every future DCMI change as a behavioural claim requiring retained scenario and judge evidence.
