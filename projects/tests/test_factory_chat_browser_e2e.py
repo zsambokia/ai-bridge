@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 from typing import ClassVar
-from unittest import skip
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
@@ -94,46 +93,31 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
             ),
         )
 
-    def _complete_discovery(self, page: Page, name: str = "Demo17") -> None:
-        messages = page.locator("#chat-messages .message")
-        before = messages.count()
-        page.get_by_role("button", name="Új projekt").click()
-        messages.nth(before).wait_for()
-        self.assertIn("Minek nevezzük", messages.nth(before).inner_text())
-        for answer in (
-            name,
-            "Belső kollégák",
-            "Új bejegyzés felvétele és megőrzése",
-            "Kihagyom",
-        ):
-            self._send(page, answer)
-        page.get_by_text("Jóváhagyás szükséges.", exact=True).wait_for()
-
-    @skip("The scripted discovery flow was removed in favor of real Orki responses.")
-    def test_new_project_stays_in_factory_chat_and_is_approved(self) -> None:
+    def test_new_initiative_stays_in_factory_chat_and_starts_a_conversation(
+        self,
+    ) -> None:
         desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
         self._login(desktop)
-        self._complete_discovery(desktop, "Új Factory Chat projekt")
+        messages = desktop.locator("#chat-messages .message")
+        before = messages.count()
+        desktop.get_by_role("button", name="Új kezdeményezés").click()
+        messages.nth(before).wait_for()
         self.assertNotIn("admin", desktop.url)
         self.assertNotIn("registry", desktop.url)
-        desktop.get_by_role("button", name="Jóváhagyom a tervet").click()
-        desktop.get_by_text("A tervet jóváhagytad.", exact=False).wait_for()
-        self.assertTrue(
-            Project.objects.filter(display_name="Új Factory Chat projekt").exists()
-        )
+        self.assertIn("Kezdjük el.", messages.nth(before).inner_text())
+        self.assertEqual(Project.objects.count(), 2)
         self.assertEqual(
             desktop.locator("main").evaluate("node => getComputedStyle(node).display"),
             "grid",
         )
         desktop.close()
 
-    @skip("The scripted URL-answer flow was removed in favor of real Orki responses.")
-    def test_existing_project_question_returns_the_live_url(self) -> None:
+    def test_command_k_returns_focus_to_the_conversation_composer(self) -> None:
         desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
         self._login(desktop)
-        self._send(desktop, "Hogyan érhető el az alkalmazás?")
-        desktop.get_by_text(self.live_server_url, exact=False).wait_for()
-        self.assertIn("kanonikus munkakörnyezet", desktop.locator("body").inner_text())
+        desktop.locator("body").click(position={"x": 5, "y": 5})
+        desktop.keyboard.press("Control+K")
+        self.assertEqual(desktop.evaluate("document.activeElement.id"), "message")
         desktop.close()
 
     def test_default_state_uses_no_engineering_language(self) -> None:
@@ -155,9 +139,20 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
     def test_browser_sends_one_persisted_orki_response(self) -> None:
         desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
         self._login(desktop)
+        sent_bodies: list[str] = []
+        desktop.on(
+            "request",
+            lambda request: (
+                sent_bodies.append(request.post_data or "")
+                if request.url.endswith("/factory/message/")
+                else None
+            ),
+        )
         self._mock_message_response(desktop)
-        self._send(desktop, "K\u00e9sz\u00edts tervet.")
+        message = "K\u00e9sz\u00edts tervet."
+        self._send(desktop, message)
         self.assertGreaterEqual(desktop.locator("#chat-messages .message").count(), 2)
+        self.assertTrue(any(message in body for body in sent_bodies))
         self.assertIn("Orki", desktop.locator("#orki-status").inner_text())
         desktop.close()
 
@@ -192,7 +187,7 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
             desktop.locator(".projects").evaluate(
                 "node => getComputedStyle(node).overflowY"
             ),
-            "hidden",
+            "auto",
         )
         self.assertTrue(desktop.locator(".composer").is_visible())
         desktop.close()
@@ -296,16 +291,26 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         self.assertEqual(entry.status, "ACTIVE")
         desktop.close()
 
-    @skip("The scripted discovery flow was removed in favor of real Orki responses.")
-    def test_mobile_planning_and_approval_flow(self) -> None:
+    def test_mobile_keeps_chat_primary_and_opens_secondary_panels_on_demand(
+        self,
+    ) -> None:
         mobile = self._browser.new_page(viewport={"width": 390, "height": 844})
         self._login(mobile)
-        self._complete_discovery(mobile, "Mobil terv")
-        mobile.get_by_role("button", name="Jóváhagyom a tervet").click()
-        mobile.get_by_text("A tervet jóváhagytad.", exact=False).wait_for()
+        self.assertTrue(mobile.locator(".conversation").is_visible())
+        self.assertFalse(mobile.locator(".mission").is_visible())
+        self.assertFalse(mobile.locator(".projects").is_visible())
+        self.assertTrue(mobile.locator(".mobile-nav").is_visible())
+        mobile.get_by_role("button", name="Terv").click()
+        self.assertTrue(mobile.locator(".mission").is_visible())
+        self.assertFalse(mobile.locator(".conversation").is_visible())
+        mobile.get_by_role("button", name="Chat").click()
+        self.assertTrue(mobile.locator(".conversation").is_visible())
+        mobile.get_by_role("button", name="Projektek").click()
+        self.assertTrue(mobile.locator(".projects").is_visible())
         self.assertEqual(
-            mobile.locator("main").evaluate("node => getComputedStyle(node).display"),
-            "block",
+            mobile.locator("main").evaluate(
+                "node => getComputedStyle(node).gridTemplateColumns.split(' ').length"
+            ),
+            1,
         )
-        self.assertTrue(mobile.locator(".mobile-tabs").is_visible())
         mobile.close()

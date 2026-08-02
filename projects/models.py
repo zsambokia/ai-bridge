@@ -676,6 +676,82 @@ class FactoryMission(models.Model):
         ordering = ["-updated_at"]
 
 
+class CognitiveState(models.Model):
+    """Project-owned canonical working state for Orki; never execution authority."""
+
+    project = models.OneToOneField(
+        Project, on_delete=models.PROTECT, related_name="cognitive_state"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["project__project_id"]
+
+
+class CognitiveStateEntry(models.Model):
+    """An attributable, correctable item in a project Cognitive State."""
+
+    class Kind(models.TextChoices):
+        MISSION = "MISSION", "Mission"
+        BUSINESS_CONTEXT = "BUSINESS_CONTEXT", "Business context"
+        GOAL = "GOAL", "Goal"
+        CONSTRAINT = "CONSTRAINT", "Constraint"
+        FACT = "FACT", "Fact"
+        INFERENCE = "INFERENCE", "Inference"
+        EVIDENCE = "EVIDENCE", "Evidence"
+        ASSUMPTION = "ASSUMPTION", "Assumption"
+        RISK = "RISK", "Risk"
+        OPPORTUNITY = "OPPORTUNITY", "Opportunity"
+        RECOMMENDATION = "RECOMMENDATION", "Recommendation"
+        ALTERNATIVE = "ALTERNATIVE", "Alternative"
+        TRADE_OFF = "TRADE_OFF", "Trade-off"
+        OPEN_DECISION = "OPEN_DECISION", "Open decision"
+        ACCEPTED_DECISION = "ACCEPTED_DECISION", "Accepted decision"
+        PLAN = "PLAN", "Plan"
+        MEMORY = "MEMORY", "Memory"
+        INITIATIVE = "INITIATIVE", "Initiative"
+        PRODUCT_OWNER_PROFILE = "PRODUCT_OWNER_PROFILE", "Product Owner profile"
+        OPERATIONAL_REASONING = "OPERATIONAL_REASONING", "Operational reasoning"
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        CORRECTED = "CORRECTED", "Corrected"
+        SUPERSEDED = "SUPERSEDED", "Superseded"
+        DISMISSED = "DISMISSED", "Dismissed"
+
+    state = models.ForeignKey(
+        CognitiveState, on_delete=models.PROTECT, related_name="entries"
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    content = models.JSONField(default=dict)
+    provenance = models.JSONField(default=dict)
+    confidence = models.FloatField(null=True, blank=True)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.ACTIVE
+    )
+    corrects = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="corrections",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="supersessions",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        indexes = [models.Index(fields=["state", "kind", "status"])]
+
+
 class FactoryChatMessage(models.Model):
     """Persisted chat message plus non-secret model-call audit projection."""
 

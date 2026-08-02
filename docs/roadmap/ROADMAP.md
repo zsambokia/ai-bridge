@@ -1,5 +1,83 @@
 # AI Bridge Roadmap
 
+The Orki Cognitive Operating System has a canonical [Orki Principles constitution](../architecture/ORKI_PRINCIPLES.md), capability-based milestones, mandatory [COO Capability Acceptance](../architecture/ORKI_COO_CAPABILITY_ACCEPTANCE.md), canonical Product Owner scenarios, and mandatory [Executive Checkpoints](../architecture/ORKI_EXECUTIVE_CHECKPOINTS.md). Its technical Epic closure package is [ready for Product Owner review](../evidence/orki-cognitive-operating-system-closure-20260802/PRODUCT_OWNER_REVIEW_PACKAGE.md). The historical [DCMI scorecard](../architecture/ORKI_DCMI_SCORECARD.md) remains 66/100; 85/100 is a future behavioural-maturity target, not a score created by technical completion.
+
+## EPIC - Orki Cognitive Operating System
+
+**Current Orki position:** `ORKI-001 THROUGH ORKI-010 TECHNICAL EPIC CLOSED — READY FOR PRODUCT OWNER REVIEW; CVO-001 BEHAVIOURAL CERTIFICATION NOT PASS; CVO-002 IMPROVEMENT LOOP PREPARED, NOT EXECUTED; EXECUTIVE CHECKPOINTS A AND B ISSUED; HISTORICAL DCMI V2 66/100.`
+
+**Next bounded work:** `CVO-002 DIGITAL COO IMPROVEMENT LOOP: EXECUTE AND INDEPENDENTLY ASSESS THE 100-SCENARIO GOLDEN CORPUS; CREATE FAILURE CARDS FOR REAL FAILURES; RERUN THE ORIGINAL CASE AFTER EACH BOUNDED CORRECTION. NO DCMI CHANGE WITHOUT EVIDENCE-WEIGHTED JUDGEMENT.`
+
+The Product Owner strategic adjustment inserted ORKI-008 before further
+Recommendation Intelligence expansion. It separates Mission, Project, Product
+Owner, and Factory Models within Cognitive State. The Product Owner Model is
+limited to evidence-linked, correctable, reviewable, versioned, project-aware
+operational collaboration patterns; it may guide a safe default but never
+creates a decision, approval, or execution. Its independent release gate is
+PASS; the final [ORKI-008 assessment](../evidence/sprint-orki-008-product-owner-cognitive-model-20260802/ASSESSMENT.md) records the behavioural evidence.
+
+ORKI-009 evolves that bounded model with deterministic confidence weighting,
+numeric-evidence fallback disclosure, append-only profile history and
+evidence-backed cognitive-drift projection. It remains a non-authoritative,
+project-scoped working model. Its release evidence is ready for Product Owner
+review in [ORKI-009 assessment](../evidence/sprint-orki-009-product-owner-model-evolution-20260802/ASSESSMENT.md). It is Product Owner accepted. DCMI remains
+**66/100**; no points are claimed merely for adding data or UI.
+
+ORKI-010 is the [Operational Reasoning Engine](../architecture/ORKI_OPERATIONAL_REASONING_ENGINE.md): the provider must propose a complete, state-validated reasoning cycle before a recommendation can be persisted from Factory Chat. The cycle carries mission, evidence, unknowns, at least three alternatives, trade-offs, counter-arguments, cost, risk, long-term effect, simplicity, expected impact, confidence and any required Product Owner decision. The Product Owner accepted its engineering, operational and architecture implementation. The subsequent [CVO-001 Digital COO Validation baseline](../evidence/orki-digital-coo-validation-20260802/VALIDATION_REPORT.md) finds that its 100 difficult Product Owner scenarios have not yet been independently executed: current evidence proves a structural pipeline, not mature Digital COO reasoning. The score remains the historical 66/100 and no increase is claimed.
+
+[CVO-002 Digital COO Improvement Loop](../epics/CVO_002_DIGITAL_COO_IMPROVEMENT_LOOP.md)
+is prepared for separately authorised execution. It converts the baseline into a failure-driven training and
+validation cycle: each real executed failure receives a durable Failure Card,
+the original scenario is rerun after a bounded improvement, and three
+independent disciplinary judges assess the result against a 100-case Golden
+Scenario Corpus. CVO-002 creates no maturity points by itself; only rerun,
+traceable, evidence-weighted behavioural improvement can change DCMI.
+
+**Product Owner acceptance:** `ORKI-007 ACCEPTED AT INITIATIVE LEVEL 1 — OBSERVATION.`
+
+**Status:** `ORKI-001 ACCEPTED — ORKI-002 THROUGH ORKI-009 CAPABILITY RELEASE GATES PASS — ORKI-010 IMPLEMENTATION ACCEPTED — CVO-001 BEHAVIOURAL GATE NOT PASS — DCMI SCORECARD UNCHANGED`
+
+**Latest capability result:** `ORKI-007 INITIATIVE ENGINE PASS — PROACTIVE, STATE-DERIVED OBSERVATIONS PROVEN`
+
+This Epic supersedes previous conversational-UX direction. It rebuilds Orki as
+AI Bridge's Cognitive Operating System and Digital COO: a persistent,
+evidence-driven, provider-independent intelligence layer, with conversation as
+one interface only. The Epic is decomposed into ten gated Sprints in
+[`docs/epics/ORKI_COGNITIVE_OPERATING_SYSTEM.md`](../epics/ORKI_COGNITIVE_OPERATING_SYSTEM.md).
+
+Implementation starts with Cognitive State and evidence foundations, then
+recommendation, decision, planning, memory, initiative, governance, experience,
+and scenario certification. No Sprint may advance without its documented
+Release Gate PASS, operational validation, independent audit, and fresh
+evidence. The Product Owner has authorised autonomous execution through
+ORKI-006; Executive Checkpoint B was accepted and ORKI-007 then completed
+under the same Factory Development Mode authority. Checkpoints remain
+informational and do not pause an authorised sequence.
+
+The next Initiative direction is a behavioural maturity path, not a component
+checklist: Level 1 Observation (accepted), Level 2 Recommendation, Level 3
+Alternative proposal, and Level 4 Cross-project strategic initiative. DCMI
+increases only after independently evidenced behaviour improves; the later
+levels require separately authorized, bounded Sprints. See
+[Orki Initiative Maturity](../architecture/ORKI_INITIATIVE_MATURITY.md).
+
+## Next Generation Cognitive Capabilities
+
+This is directional architecture, not implementation authority. No item below
+starts work or changes DCMI without a separately authorised scope and
+behavioural evidence.
+
+| Direction | Cognitive outcome |
+| --- | --- |
+| Strategic reasoning | Compare longer-term strategic options, uncertainty, and organisational consequences |
+| Portfolio reasoning | Balance multiple initiatives, dependencies, capacity, risk, and expected value |
+| Multi-project coordination | Identify shared risks, duplication, and sequencing opportunities across isolated project models |
+| Organisational memory | Reuse corrected, governed knowledge without converting transcripts into memory |
+| Reflection and learning | Diagnose reasoning failures, retain failure cards, and prove regression improvements |
+| COO behavioural benchmarking | Independently judge realistic scenarios against weak, average, and excellent COO behaviour |
+| Cross-project initiative | Mature from observation to evidence-bound strategic proposals while preserving isolation and governance |
+| Operational and decision simulation | Evaluate alternatives, impact, recovery paths, cost, simplicity, and risk before a recommendation |
+
 ## Issue #17 — Factory Chat UI: Sprint 1 UX contract
 
 **Status:** `PASS — ACCEPTED`.
@@ -150,8 +228,8 @@ not yet been deployed to staging; deployment process identity and a fresh
 actual ChatGPT Business UI proposal/approval remain mandatory Operational
 Acceptance evidence.
 
-**Status:** ACTIVE PROJECT ROADMAP  
-**Scope:** AI Bridge project  
+**Status:** ACTIVE PROJECT ROADMAP
+**Scope:** AI Bridge project
 **Execution authority:** this roadmap remains directional; the bounded Sprint
 016 Factory Development Mode instruction is the implementation authority
 **Project definition:** `.bridge/project.yaml`

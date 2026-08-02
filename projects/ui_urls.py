@@ -9,8 +9,8 @@ from .factory_chat import (
     factory_memory_search,
     factory_plan_approve,
     factory_plan_create,
-    factory_plan_request_changes,
     factory_plan_reject,
+    factory_plan_request_changes,
 )
 
 urlpatterns = [

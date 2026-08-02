@@ -44,6 +44,7 @@ from .models import (
 )
 
 SESSION_KEY = "factory_chat"
+MAX_MESSAGE_LENGTH = 12_000
 VALID_MODES = {"planning", "coding", "memory"}
 VALID_PANELS = {"context", "chat", "projects"}
 DISCOVERY_QUESTIONS = (
@@ -414,9 +415,9 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
 def factory_chat_message(request: HttpRequest) -> HttpResponse:
     # Preserve multiline input exactly; reject only whitespace-only submissions.
     text = request.POST.get("message", "")
-    if not text.strip() or len(text) > 1000:
+    if not text.strip() or len(text) > MAX_MESSAGE_LENGTH:
         return HttpResponseBadRequest(
-            "Az üzenet megadása kötelező és legfeljebb 1000 karakter lehet."
+            "Az üzenet megadása kötelező és legfeljebb 12 000 karakter lehet."
         )
     project = _selected_project(request)
     pending_plan = (
@@ -580,14 +581,17 @@ def factory_chat_new_project(request: HttpRequest) -> HttpResponse:
         state = _state(request)
         state.update({"project_id": project.project_id, "mode": "planning"})
         request.session.modified = True
-        messages = orki_reply(
-            request,
-            project,
-            "\u00daj projektet szeretn\u00e9k ind\u00edtani. "
-            "Vezesd a felfedez\u00e9st, "
-            "\u00e9s csak a val\u00f3ban sz\u00fcks\u00e9ges "
-            "els\u0151 k\u00e9rd\u00e9st tedd fel.",
+        session = get_or_create_session(request, project)
+        FactoryChatMessage.objects.create(
+            session=session,
+            role=FactoryChatMessage.Role.ORKI,
+            body=(
+                "Kezdjük el. Egy mondatban mondd el, milyen eredményt "
+                "szeretnél elérni; én összerakom az első javaslatot és jelzem, "
+                "ha valódi döntésre lesz szükség."
+            ),
         )
+        messages = messages_for(session)
         if _enhanced(request):
             orki_session = get_or_create_session(request, project)
             return JsonResponse(

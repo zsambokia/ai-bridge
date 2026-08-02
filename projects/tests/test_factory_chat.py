@@ -1,4 +1,4 @@
-from unittest import skip
+from typing import Any
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -44,7 +44,7 @@ class FactoryChatTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"))
         self.assertContains(response, "Factory Chat Test")
-        self.assertContains(response, 'aria-label="Orki küldetése"')
+        self.assertContains(response, 'aria-label="A beszélgetés munkatérképe"')
         self.assertContains(response, "Mit &#233;rtett meg Orki?")
         self.assertContains(response, reverse("factory-chat-status"))
 
@@ -59,7 +59,12 @@ class FactoryChatTests(TestCase):
         project = Project.objects.get(project_id=project_id)
         self.assertEqual(project.onboarding_status, Project.OnboardingStatus.PENDING)
         session = FactoryChatSession.objects.get(project=project)
-        self.assertEqual(session.messages.first().role, FactoryChatMessage.Role.OWNER)
+        first_message = session.messages.first()
+        self.assertIsNotNone(first_message)
+        assert first_message is not None
+        self.assertEqual(first_message.role, FactoryChatMessage.Role.ORKI)
+        self.assertEqual(first_message.status, FactoryChatMessage.Status.COMPLETED)
+        self.assertIn("Kezdjük el.", first_message.body)
 
     def test_mode_panel_and_project_selection_are_restored(self) -> None:
         another = Project.objects.create(
@@ -76,21 +81,29 @@ class FactoryChatTests(TestCase):
         response = self.client.get(reverse("factory-chat"))
         self.assertContains(response, "Second Project")
         self.assertContains(response, 'id="chat-messages"')
-        self.assertContains(response, "Orki, a digitális COO")
+        self.assertContains(response, "digitális COO")
 
-    @skip(
-        "The former scripted discovery flow is intentionally no longer "
-        "runtime behavior."
-    )
-    def test_message_is_retained_in_session_without_provider_call(self) -> None:
-        self.client.force_login(self.user)
-        response = self.client.post(
-            reverse("factory-chat-message"), {"message": "Készíts tervet."}
+    def test_project_switch_restores_its_durable_chat_history(self) -> None:
+        another = Project.objects.create(
+            project_id="history-project",
+            display_name="History Project",
+            repository_full_name="example/history-project",
+            definition_path="projects/history-project.yaml",
         )
-        self.assertRedirects(response, reverse("factory-chat"))
-        response = self.client.get(reverse("factory-chat"))
-        self.assertContains(response, "Készíts tervet.")
-        self.assertContains(response, "Minek nevezzük ezt a projektet?")
+        self.client.force_login(self.user)
+        self.client.get(reverse("factory-chat"), {"project": self.project.project_id})
+        self.client.post(
+            reverse("factory-chat-message"),
+            {"message": "Keep this project history."},
+            HTTP_X_REQUESTED_WITH="FactoryChat",
+        )
+
+        self.client.get(reverse("factory-chat"), {"project": another.project_id})
+        response = self.client.get(
+            reverse("factory-chat"), {"project": self.project.project_id}
+        )
+
+        self.assertContains(response, "Keep this project history.")
 
     def test_chat_reports_exact_unconfigured_provider_message_and_persists_it(
         self,
@@ -105,11 +118,33 @@ class FactoryChatTests(TestCase):
         ).latest("pk")
         self.assertEqual(
             message.body,
-            "Az Orki jelenleg nem \u00e9rhet\u0151 el, mert nincs akt\u00edv "
-            "LLM-szolg\u00e1ltat\u00f3 be\u00e1ll\u00edtva.",
+            "Orki most nem tud válaszolni. A kapcsolat előkészítése folyamatban "
+            "van; kérlek, próbáld meg rövidesen újra.",
         )
         self.assertEqual(message.status, FactoryChatMessage.Status.FAILED)
         self.assertEqual(message.error_code, "MODEL_PROVIDER_UNAVAILABLE")
+
+    def test_chat_accepts_a_product_owner_brief_up_to_twelve_thousand_characters(
+        self,
+    ) -> None:
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-chat-message"),
+            {"message": "a" * 12_000},
+            HTTP_X_REQUESTED_WITH="FactoryChat",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["messages"][0]["text"], "a" * 12_000)
+
+    def test_chat_rejects_a_product_owner_brief_over_twelve_thousand_characters(
+        self,
+    ) -> None:
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("factory-chat-message"), {"message": "a" * 12_001}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "12 000 karakter", status_code=400)
 
     def test_configured_provider_without_credential_is_not_reported_as_unconfigured(
         self,
@@ -257,7 +292,7 @@ class FactoryChatTests(TestCase):
             patch("projects.factory_orki.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.return_value = {
-                "output_text": "```json\n{\"reply\":\"Rendben.\",\"plan\":null}\n```",
+                "output_text": '```json\n{"reply":"Rendben.","plan":null}\n```',
             }
             response = self.client.post(
                 reverse("factory-chat-message"), {"message": "Kezdj\u00fck."}
@@ -281,7 +316,7 @@ class FactoryChatTests(TestCase):
             capabilities=["MODEL_INFERENCE"],
             credential_binding="OPENAI_API_KEY",
         )
-        payload = {
+        payload: dict[str, Any] = {
             "reply": "Már elegendő információm van a tervhez.",
             "plan": None,
             "understanding": {
@@ -362,7 +397,7 @@ class FactoryChatTests(TestCase):
             primary_workflow="A beszerző megadja a méreteket, majd számítást kér.",
             unresolved_decisions=["Kell export?"],
         )
-        payload = {
+        payload: dict[str, Any] = {
             "reply": "Rendben, nekilátok.",
             "plan": None,
             "understanding": {"unresolved_decisions": []},
@@ -488,11 +523,11 @@ class FactoryChatTests(TestCase):
         response = self.client.get(reverse("factory-chat"))
         plan = FactoryPlan.objects.get(project=self.project)
 
-        self.assertContains(response, 'data-plan-approval')
-        self.assertContains(response, 'data-quick-action')
-        self.assertContains(response, f'/factory/plans/{plan.pk}/approve/')
-        self.assertContains(response, f'/factory/plans/{plan.pk}/changes/')
-        self.assertContains(response, f'/factory/plans/{plan.pk}/reject/')
+        self.assertContains(response, "data-plan-approval")
+        self.assertContains(response, "data-quick-action")
+        self.assertContains(response, f"/factory/plans/{plan.pk}/approve/")
+        self.assertContains(response, f"/factory/plans/{plan.pk}/changes/")
+        self.assertContains(response, f"/factory/plans/{plan.pk}/reject/")
 
     def test_context_refresh_is_authenticated_and_server_rendered(self) -> None:
         self.client.force_login(self.user)
@@ -502,7 +537,7 @@ class FactoryChatTests(TestCase):
     def test_coding_mode_without_run_explains_that_no_execution_exists(self) -> None:
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"), {"mode": "coding"})
-        self.assertContains(response, 'aria-label="Orki küldetése"')
+        self.assertContains(response, 'aria-label="A beszélgetés munkatérképe"')
 
     def test_coding_projection_requires_product_owner_for_business_blocker(
         self,
@@ -652,7 +687,7 @@ class FactoryChatTests(TestCase):
         )
         self.assertEqual(response.status_code, 204)
         response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
-        self.assertContains(response, 'aria-label="Orki küldetése"')
+        self.assertContains(response, 'aria-label="A beszélgetés munkatérképe"')
         package = KnowledgeContextPackage.objects.get(project=self.project)
         self.assertEqual(package.retrieval_query, "governed")
         self.assertEqual(package.work_context_id, "factory-chat:memory")
@@ -739,5 +774,5 @@ class FactoryChatTests(TestCase):
         second.save(update_fields=["conflict_key"])
         self.client.force_login(self.user)
         response = self.client.get(reverse("factory-chat"), {"mode": "memory"})
-        self.assertContains(response, 'aria-label="Orki küldetése"')
+        self.assertContains(response, 'aria-label="A beszélgetés munkatérképe"')
         self.assertContains(response, "Mit javasol?")

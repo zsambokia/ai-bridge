@@ -149,6 +149,8 @@ class McpRequestContext:
     caller: str
     conversation_context: str | None = None
     remote: bool = False
+
+
 _PRODUCT_OWNER_CONFIRMATION_PREFIXES = (
     "i approve",
     "i confirm",

@@ -10,17 +10,30 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
 from django.db import transaction
+from django.db.models import Max
 
+from .cognitive_state import record_factory_mission_state
+from .decision_engine import decision_projection, open_decision
 from .factory_missions import (
     apply_understanding,
     create_plan_when_sufficient,
 )
+from .initiative_engine import derive_initiatives, initiative_projection
+from .memory_engine import memory_projection, record_memory
+from .mission_understanding import mission_projection, record_mission_understanding
 from .models import FactoryChatMessage, FactoryChatSession, Project
+from .operational_reasoning import (
+    operational_reasoning_projection,
+    record_operational_reasoning,
+)
+from .planning_engine import planning_projection, record_plan
+from .product_owner_model import product_owner_projection, record_product_owner_profile
 from .providers import (
     credential_value,
     model_adapter_for,
@@ -28,6 +41,7 @@ from .providers import (
     model_text_response,
     select_model_provider,
 )
+from .recommendation_engine import recommendation_projection
 
 _LEGACY_UNCONFIGURED_MESSAGE = (
     "Az Orki jelenleg nem érhető el, mert nincs aktív LLM-szolgáltató beállítva."
@@ -37,9 +51,8 @@ MAX_RETRIES = 2
 
 # Unicode escapes make the client-facing operational messages encoding-stable.
 UNCONFIGURED_MESSAGE = (
-    "Az Orki jelenleg nem "
-    "\u00e9rhet\u0151 el, mert nincs akt\u00edv LLM-szolg\u00e1ltat\u00f3 "
-    "be\u00e1ll\u00edtva."
+    "Orki most nem tud v\u00e1laszolni. A kapcsolat el\u0151k\u00e9sz\u00edt\u00e9se "
+    "folyamatban van; k\u00e9rlek, pr\u00f3b\u00e1ld meg r\u00f6videsen \u00fajra."
 )
 TEMPORARY_FAILURE_MESSAGE = (
     "Az Orki \u00e1tmenetileg nem \u00e9rhet\u0151 el. "
@@ -78,7 +91,7 @@ def _legacy_availability() -> dict[str, str]:
     try:
         entry, _model = _provider()
     except ValueError:
-        return {"state": "unconfigured", "label": "Orki: nincs beállítva"}
+        return {"state": "unconfigured", "label": "Orki előkészítés alatt"}
     return {"state": "online", "label": f"Orki online ({entry.name})"}
 
 
@@ -87,11 +100,11 @@ def availability(session: FactoryChatSession | None = None) -> dict[str, str]:
     try:
         entry, _model = _provider()
     except ModelProviderSelectionUnavailable:
-        return {"state": "unconfigured", "label": "Orki: nincs be\u00e1ll\u00edtva"}
+        return {"state": "unconfigured", "label": "Orki előkészítés alatt"}
     except ModelProviderAuthenticationUnavailable:
         return {
             "state": "temporary",
-            "label": "Orki: hiteles\u00edt\u00e9sre v\u00e1r",
+            "label": "Orki kapcsolódásra vár",
         }
     if session:
         latest = session.messages.order_by("-created_at", "-pk").first()
@@ -123,7 +136,7 @@ def _bounded_context(session: FactoryChatSession) -> dict[str, object]:
     recent_messages = list(
         session.messages.filter(status=FactoryChatMessage.Status.COMPLETED).order_by(
             "-created_at"
-        )[:12]
+        )[:20]
     )
     history = [
         {"role": message.role.lower(), "text": message.body[:1000]}
@@ -143,18 +156,48 @@ def _bounded_context(session: FactoryChatSession) -> dict[str, object]:
         "roadmap_title": roadmap.title if roadmap else "",
         "approved_memory_titles": memory_titles,
         "conversation": history,
+        # These projections are structured Cognitive State, never transcript
+        # memory. They let a provider propose references by stable attribute.
+        "mission_state": mission_projection(project) if project else {},
+        "recommendation_state": recommendation_projection(project) if project else {},
+        "decision_state": decision_projection(project) if project else {},
+        "planning_state": planning_projection(project) if project else {},
+        "memory_state": memory_projection(project) if project else [],
+        "initiative_state": initiative_projection(project) if project else [],
+        "product_owner_state": product_owner_projection(project) if project else {},
+        "operational_reasoning_state": (
+            operational_reasoning_projection(project) if project else {}
+        ),
     }
 
 
 def _prompt(context: dict[str, object], message: str) -> str:
     return json.dumps(
         {
-            "role": "Orki, a Hungarian-speaking Product Owner planning assistant",
+            "role": "Orki, the Hungarian-speaking digital COO of AI Bridge Factory",
             "rules": [
-                "Reply in Hungarian, concise and helpful.",
                 (
-                    "Ask only the most useful next question; adapt to the "
-                    "conversation and context."
+                    "Reply in Hungarian with calm operational ownership and "
+                    "plain language."
+                ),
+                (
+                    "Conversation is the primary interface. Do not behave as a "
+                    "questionnaire or enumerate discovery questions."
+                ),
+                (
+                    "First summarize the useful understanding and recommend a "
+                    "safe default when one is available. Ask at most one question, "
+                    "and only when its answer materially changes the next step."
+                ),
+                (
+                    "For a concrete request, move the work forward with a proposed "
+                    "outcome, boundary, risk, or next action instead of asking for "
+                    "more form-like details."
+                ),
+                (
+                    "initiative_state contains deterministic, state-derived "
+                    "observations. Do not fabricate them, approve them, or treat "
+                    "them as execution authority."
                 ),
                 (
                     "Never claim an action, deployment, approval, or provider "
@@ -175,8 +218,89 @@ def _prompt(context: dict[str, object], message: str) -> str:
                     "mvp_boundary, persistence_requirements, integrations, "
                     "cost_impacting_dependencies, "
                     "risks, assumptions, recommendations, unresolved_decisions, "
-                    "recommendation_confidence, repository_proposal. "
+                    "recommendation_confidence, repository_proposal, "
+                    "mission_understanding, operational_reasoning, decision, planning, "
+                    "memory, and product_owner_profile. "
+                    "mission_understanding is either null or "
+                    "an object with stated_intent, inferred_business_goal, "
+                    "inference_confidence, stated_constraints, solution_proposals, "
+                    "technology_preferences, safe_assumptions, material_unknowns, "
+                    "and question. question is null unless one answer materially "
+                    "changes the next step; when present it has text, purpose, and "
+                    "material_effect. "
                     "Use unresolved_decisions only for a real business decision."
+                ),
+                (
+                    "recommendation must always be null. The only Factory Chat "
+                    "path that may create a recommendation is operational_reasoning. "
+                    "A recommendation never claims to approve, plan, govern, or "
+                    "execute work."
+                ),
+                (
+                    "operational_reasoning is null unless active Cognitive State is "
+                    "sufficient for a complete evidence-driven reasoning cycle. When "
+                    "present it is an object with reasoning_key, mission_attributes, "
+                    "evidence_attributes, assumption_attributes, unknowns, "
+                    "alternatives, "
+                    "trade_offs, counter_arguments, recommendation, reasoning, "
+                    "expected_impact, priority, dependencies, next_safe_action, "
+                    "required_decision, product_owner_profile_dimensions, and "
+                    "confidence. mission_attributes, evidence_attributes, and "
+                    "assumption_attributes must name active canonical state "
+                    "attributes. "
+                    "alternatives contains "
+                    "at least three distinct objects with option, summary, cost, risk, "
+                    "long_term_effect, and simplicity_score from 1 to 10. trade_offs "
+                    "and counter_arguments each cover every alternative exactly once. "
+                    "required_decision has required plus question and "
+                    "materiality_reason when required is true. Recommendation names "
+                    "one "
+                    "alternative and is "
+                    "the final outcome of the reasoning, never its starting point."
+                ),
+                (
+                    "decision is null unless a material recommendation requires "
+                    "a Product Owner choice. When present it is an object with "
+                    "decision_key, recommendation_key, question, materiality_reason, "
+                    "options, recommended_option, impact_if_decided, and "
+                    "impact_if_deferred. options contains at least two objects with "
+                    "option and summary. A decision only opens an explainable "
+                    "Product Owner decision; it never accepts an option, creates a "
+                    "plan, grants governance approval, or executes work."
+                ),
+                (
+                    "planning is null unless mission and recommendation evidence "
+                    "support an explainable plan. When present it is an object with "
+                    "plan_key, objective, business_value, architecture, alternatives, "
+                    "chosen_strategy, rejected_strategy, risks, dependencies, "
+                    "acceptance, release_strategy, operational_strategy, "
+                    "recovery_strategy, future_evolution, evidence_attributes, and "
+                    "confidence. alternatives contains at least two objects with "
+                    "option and summary; chosen_strategy and rejected_strategy name "
+                    "different alternatives. A plan is a reasoning artefact only: it "
+                    "never creates a FactoryPlan, governance approval, or execution."
+                ),
+                (
+                    "memory is null unless active evidence supports reusable "
+                    "knowledge. When present it is an object with memory_key, "
+                    "statement, tags, evidence_attributes, and confidence. "
+                    "A memory cites canonical state attributes, evolves by "
+                    "supersession, and never grants governance or execution authority."
+                ),
+                (
+                    "product_owner_profile is null unless at least two active "
+                    "project Cognitive State attributes support an operational "
+                    "working preference. When present it is an object with "
+                    "dimension, preference, rationale, evidence_attributes, and "
+                    "confidence. dimension is one of decision_style, "
+                    "risk_tolerance, planning_depth, documentation_preference, "
+                    "sprint_size_preference, architecture_preference, "
+                    "governance_preference, evidence_preference, "
+                    "communication_style, or preferred_technologies. Never infer "
+                    "personal data and never use it as authority. "
+                    "evidence_attributes must name active non-profile state; "
+                    "the latest owner message and conversation transcript are not "
+                    "profile evidence."
                 ),
                 (
                     "When the owner explicitly authorizes plan preparation "
@@ -232,18 +356,49 @@ def _safe_failure_code(exc: Exception) -> str:
         "PROVIDER_REMOTE_RESPONSE_INVALID",
         "MODEL_PROVIDER_RESPONSE_INVALID",
         "MODEL_PROVIDER_ADAPTER_UNAVAILABLE",
+        "OPERATIONAL_REASONING_REQUIRED",
     }
     return value if value in known else "ORKI_MODEL_REQUEST_FAILED"
 
 
 def get_or_create_session(request: Any, project: Project | None) -> FactoryChatSession:
+    """Return the owner's durable conversation for the selected project.
+
+    A browser only has one currently selected project, so its session token is
+    necessarily replaced on a project switch. The transcript itself is
+    project-owned and durable, however: returning to a project must reconnect
+    the owner to that project's previous conversation instead of creating an
+    empty session.
+    """
     key = "factory_orki_session"
     token = request.session.get(key)
     session = FactoryChatSession.objects.filter(token=token).first() if token else None
-    if session is None or session.project_id != (project.pk if project else None):
-        session = FactoryChatSession.objects.create(
-            project=project, actor_identity=request.user.get_username()
+    actor_identity = request.user.get_username()
+    if (
+        session is None
+        or session.project_id != (project.pk if project else None)
+        or session.actor_identity != actor_identity
+    ):
+        # Prefer a transcript-bearing session so conversations created before
+        # this repair are restored too; otherwise retain the newest empty one.
+        owner_sessions = FactoryChatSession.objects.filter(
+            actor_identity=actor_identity
         )
+        owner_sessions = (
+            owner_sessions.filter(project=project)
+            if project is not None
+            else owner_sessions.filter(project__isnull=True)
+        )
+        session = (
+            owner_sessions.annotate(latest_message_at=Max("messages__created_at"))
+            .order_by("-latest_message_at", "-updated_at", "-pk")
+            .first()
+        )
+    if session is None:
+        session = FactoryChatSession.objects.create(
+            project=project, actor_identity=actor_identity
+        )
+    if request.session.get(key) != str(session.token):
         request.session[key] = str(session.token)
         request.session.modified = True
     return session
@@ -264,7 +419,7 @@ def reply(request: Any, project: Project | None, text: str) -> list[dict[str, st
     """Persist owner input, one real model response, and safe audit metadata."""
     session = get_or_create_session(request, project)
     with transaction.atomic():
-        FactoryChatMessage.objects.create(
+        owner_message = FactoryChatMessage.objects.create(
             session=session, role=FactoryChatMessage.Role.OWNER, body=text
         )
     correlation_id = str(uuid4())
@@ -327,10 +482,104 @@ def reply(request: Any, project: Project | None, text: str) -> list[dict[str, st
         if project:
             if plan and not understanding:
                 understanding = dict(plan)
-            mission = apply_understanding(session, understanding, text)
-            before = mission.plan_id
-            mission = create_plan_when_sufficient(mission, request.user.get_username())
-            if not before and mission.plan_id:
+            with transaction.atomic():
+                mission_observation = understanding.get("mission_understanding")
+                recommendation_observation = understanding.get("recommendation")
+                operational_reasoning_observation = understanding.get(
+                    "operational_reasoning"
+                )
+                decision_observation = understanding.get("decision")
+                planning_observation = understanding.get("planning")
+                memory_observation = understanding.get("memory")
+                product_owner_observation = understanding.get("product_owner_profile")
+                structured_route = (
+                    isinstance(mission_observation, Mapping)
+                    or isinstance(recommendation_observation, Mapping)
+                    or isinstance(operational_reasoning_observation, Mapping)
+                    or isinstance(decision_observation, Mapping)
+                    or isinstance(planning_observation, Mapping)
+                    or isinstance(memory_observation, Mapping)
+                    or isinstance(product_owner_observation, Mapping)
+                )
+                mission = None
+                before = None
+                if structured_route:
+                    # ORKI-002 owns only proposed Mission State.  Do not let the
+                    # legacy mission/planning workflow turn this observation into
+                    # a plan in the same turn.
+                    provenance = {
+                        "source_type": "FACTORY_CHAT_COGNITIVE_OBSERVATION",
+                        "conversation_message_id": owner_message.pk,
+                        "conversation_message_sha256": _hash(owner_message.body),
+                        "correlation_id": correlation_id,
+                        "provider_id": entry.provider_id,
+                        "model": model,
+                    }
+                    if isinstance(mission_observation, Mapping):
+                        record_mission_understanding(
+                            project,
+                            observation=mission_observation,
+                            provenance=provenance,
+                        )
+                    if isinstance(recommendation_observation, Mapping):
+                        # ORKI-010 prohibits a chat/provider shortcut from creating
+                        # an unreasoned recommendation. Direct service use remains
+                        # backward-compatible for older governed artefacts; the
+                        # public conversation boundary is intentionally stricter.
+                        raise ValueError("OPERATIONAL_REASONING_REQUIRED")
+                    if isinstance(operational_reasoning_observation, Mapping):
+                        record_operational_reasoning(
+                            project,
+                            observation=operational_reasoning_observation,
+                            provenance=provenance,
+                        )
+                    if isinstance(decision_observation, Mapping):
+                        open_decision(
+                            project,
+                            observation=decision_observation,
+                            provenance=provenance,
+                        )
+                    if isinstance(planning_observation, Mapping):
+                        record_plan(
+                            project,
+                            observation=planning_observation,
+                            provenance=provenance,
+                        )
+                    if isinstance(memory_observation, Mapping):
+                        record_memory(
+                            project,
+                            observation=memory_observation,
+                            provenance=provenance,
+                        )
+                    if isinstance(product_owner_observation, Mapping):
+                        record_product_owner_profile(
+                            project,
+                            observation=product_owner_observation,
+                            provenance=provenance,
+                        )
+                else:
+                    # Compatibility path for the pre-ORKI-002 Factory workflow.
+                    mission = apply_understanding(session, understanding, text)
+                    record_factory_mission_state(
+                        project,
+                        mission,
+                        understanding=understanding,
+                        provenance={
+                            "source_type": "FACTORY_CHAT_STRUCTURED_UNDERSTANDING",
+                            "conversation_message_id": owner_message.pk,
+                            "conversation_message_sha256": _hash(owner_message.body),
+                            "factory_mission_id": mission.pk,
+                            "correlation_id": correlation_id,
+                            "provider_id": entry.provider_id,
+                            "model": model,
+                        },
+                    )
+                    before = mission.plan_id
+                    mission = create_plan_when_sufficient(
+                        mission, request.user.get_username()
+                    )
+                derive_initiatives(project)
+            if mission and not before and mission.plan_id:
                 # Keep this system-generated transition message encoding-stable.
                 response = (
                     "M\u00e1r elegend\u0151 inform\u00e1ci\u00f3m van a tervhez. "

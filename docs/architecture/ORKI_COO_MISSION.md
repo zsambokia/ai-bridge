@@ -20,10 +20,14 @@ recommendations, unresolved decisions, confidence and lifecycle.  Provider
 reasoning can enrich it, but requirement sufficiency is calculated and stored
 by the server so the plan transition is auditable and cannot loop forever.
 
-The right-side mission projection maps lifecycle values to Hungarian,
-Product-Owner-facing language.  Raw enum values are not part of the default
-Factory Chat UI.  Desktop uses a fixed projects panel, a fixed mission panel,
-and a fixed multiline composer; only the message list scrolls.
+Conversation is the primary Factory work surface. The mission projection and
+initiative rail are secondary, independently scrollable reference surfaces;
+they must never turn the primary journey into a dashboard or questionnaire.
+On desktop, the conversation receives the dominant column and its composer
+remains available while the message history scrolls. On narrow screens, chat
+is shown first and the plan and initiatives open only on explicit request from
+the mobile navigation. Raw enum values are not part of the default
+Product-Owner-facing UI.
 
 After one approval, repository creation is idempotent and server-owned.  The
 service authenticates with the configured server environment, checks for

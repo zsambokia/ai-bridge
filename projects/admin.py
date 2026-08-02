@@ -10,6 +10,8 @@ from django.utils.html import format_html
 
 from projects.execution_activity import activity_summary, events_for_view
 from projects.models import (
+    CognitiveState,
+    CognitiveStateEntry,
     ConversationOrchestration,
     ExecutableScope,
     ExecutionContract,
@@ -69,6 +71,25 @@ class KnowledgeEntryAdmin(ReadOnlyAdmin):
     search_fields = ("entry_key", "title", "project__project_id")
     readonly_fields: ClassVar[tuple[str, ...]] = tuple(
         field.name for field in KnowledgeEntry._meta.fields
+    )
+
+
+@admin.register(CognitiveState)
+class CognitiveStateAdmin(ReadOnlyAdmin):
+    list_display = ("project", "created_at", "updated_at")
+    search_fields = ("project__project_id", "project__name")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in CognitiveState._meta.fields
+    )
+
+
+@admin.register(CognitiveStateEntry)
+class CognitiveStateEntryAdmin(ReadOnlyAdmin):
+    list_display = ("state", "kind", "status", "confidence", "created_at")
+    list_filter = ("kind", "status")
+    search_fields = ("state__project__project_id",)
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in CognitiveStateEntry._meta.fields
     )
 
 

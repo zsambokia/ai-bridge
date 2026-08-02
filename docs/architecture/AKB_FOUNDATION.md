@@ -1,8 +1,34 @@
 # Application Knowledge Base foundation
 
-Sprint 1 establishes the first durable, governed AKB layer for AI Bridge. It
-does not introduce vector search, autonomous learning, deployment knowledge,
-or a replacement governance lifecycle.
+## Orki Cognitive Operating System integration
+
+The approved Orki Cognitive Operating System Epic establishes evolutionary
+knowledge as a governed platform capability. Conversation transcripts are not
+Application Knowledge Base entries. Future Cognitive State and memory work must
+create attributable, confidence-scored, correctable, reusable knowledge that
+remains subject to the existing governance and evidence lifecycle.
+
+The design boundary and phased implementation sequence are recorded in
+[`ORKI_COGNITIVE_OPERATING_SYSTEM.md`](ORKI_COGNITIVE_OPERATING_SYSTEM.md) and
+the associated ADRs. ORKI-001 implements project-scoped Cognitive State
+persistence with provenance, confidence, correction history, and a
+deterministic projection. It is working memory, not an accepted AKB entry:
+it cannot publish, approve, or overwrite governed knowledge. The completed
+ORKI-001 Cognitive State Release Gate additionally proves this boundary across
+a 25-turn Factory Chat conversation, including source evidence, state
+evolution, and project isolation. Its evidence is recorded in
+[`COGNITIVE_STATE_RELEASE_GATE.md`](../evidence/sprint-orki-001-cognitive-state-foundation-20260801/COGNITIVE_STATE_RELEASE_GATE.md).
+
+ORKI-008 and ORKI-009 extend this working-memory boundary with a separate,
+project-scoped Product Owner operational working model. Its evidence weighting,
+confidence explanation, revision history and cognitive-drift projection are
+Cognitive State metadata, not reusable AKB knowledge. They cannot publish,
+approve, transfer across projects, or alter the governed AKB lifecycle. The
+model exposes only bounded provenance identifiers and never transcript content.
+
+Sprint 1 does not introduce vector search, autonomous learning, deployment
+knowledge, cross-project reuse, or a replacement governance lifecycle. Those
+capabilities require their own evidence and acceptance in later Sprints.
 
 ## Sprint 3 durable feedback loop
 

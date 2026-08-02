@@ -76,8 +76,6 @@ def apply_understanding(
     proposal = data.get("repository_proposal")
     if isinstance(proposal, dict):
         mission.repository_proposal = proposal
-    if not mission.objective:
-        mission.objective = message[:2000]
     concrete = len(message.split()) >= 8
     plan_requested = _owner_authorized_plan_generation(message)
     mission.requirements_sufficient = bool(
