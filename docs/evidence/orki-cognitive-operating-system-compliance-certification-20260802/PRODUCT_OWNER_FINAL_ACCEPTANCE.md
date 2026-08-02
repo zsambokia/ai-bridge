@@ -1,7 +1,9 @@
 # Product Owner Final Acceptance - Orki Cognitive Operating System Epic
 
-**Decision date:** 2026-08-02  
-**Technical implementation reference:** `main` at `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`  
+**Decision date:** 2026-08-02
+
+**Technical implementation reference:** `main` at `4b2ddf2f3ab81993691f6319d645d12b9c8acd5e`
+
 **Certification reference:** [Epic Compliance Certification](CERTIFICATION_REPORT.md)
 
 ## Final decision
