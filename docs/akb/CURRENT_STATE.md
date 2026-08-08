@@ -1,5 +1,21 @@
 # AI Bridge – Current State
 
+## Orki Orchestrator Runtime Foundation — 2026-08-07
+
+The approved Runtime baseline is implemented in Factory Development Mode as a
+provider-independent coordination layer. Its canonical model is
+[Orki Orchestrator Runtime](../architecture/ORKI_ORCHESTRATOR_RUNTIME.md):
+`Goal -> Plan -> OrkiExecution`, with an append-only Runtime Event Stream and
+an OESM lifecycle. It separates the execution question ("what am I doing?")
+from the existing Cognitive State knowledge question ("what do I know?").
+
+The Foundation is Shadow Mode only. Factory Chat creates an existing
+`FactoryPlan`, then Runtime records `CREATED -> PLANNING -> WAITING_APPROVAL`;
+after the existing approval it observes `WAITING_GOVERNANCE`. It does not create
+an Execution Contract, `ExecutionRun`, `ExecutionJob`, queue item, provider
+call, or Cognitive State copy. Release evidence is under
+`docs/evidence/bridge-ai-bridge-sprint-712aef15-2426-4f57-88b6-8b1389807b3e/`.
+
 ## Orki Cognitive Operating System technical Epic closure — 2026-08-02
 
 ORKI-001 through ORKI-010 are formally closed as the technical Cognitive

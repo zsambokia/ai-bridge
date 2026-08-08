@@ -12,11 +12,8 @@ import json
 import logging
 import os
 from collections.abc import Mapping
-from time import perf_counter
 from typing import Any
-from uuid import uuid4
 
-from django.db import transaction
 from django.db.models import Max
 
 from .cognitive_state import record_factory_mission_state
@@ -37,29 +34,12 @@ from .planning_engine import planning_projection, record_plan
 from .product_owner_model import product_owner_projection, record_product_owner_profile
 from .providers import (
     credential_value,
-    model_adapter_for,
     model_identifier,
-    model_text_response,
     select_model_provider,
 )
 from .recommendation_engine import recommendation_projection
 
-_LEGACY_UNCONFIGURED_MESSAGE = (
-    "Az Orki jelenleg nem érhető el, mert nincs aktív LLM-szolgáltató beállítva."
-)
-TEMPORARY_FAILURE_MESSAGE = "Az Orki átmenetileg nem érhető el. Kérlek, próbáld újra."
-MAX_RETRIES = 2
 logger = logging.getLogger(__name__)
-
-# Unicode escapes make the client-facing operational messages encoding-stable.
-UNCONFIGURED_MESSAGE = (
-    "Orki most nem tud v\u00e1laszolni. A kapcsolat el\u0151k\u00e9sz\u00edt\u00e9se "
-    "folyamatban van; k\u00e9rlek, pr\u00f3b\u00e1ld meg r\u00f6videsen \u00fajra."
-)
-TEMPORARY_FAILURE_MESSAGE = (
-    "Az Orki \u00e1tmenetileg nem \u00e9rhet\u0151 el. "
-    "K\u00e9rlek, pr\u00f3b\u00e1ld \u00fajra."
-)
 
 
 def _hash(value: str) -> str:
@@ -89,38 +69,24 @@ def _provider() -> tuple[Any, str]:
     return entry, model_identifier(entry)
 
 
-def _legacy_availability() -> dict[str, str]:
-    try:
-        entry, _model = _provider()
-    except ValueError:
-        return {"state": "unconfigured", "label": "Orki előkészítés alatt"}
-    return {"state": "online", "label": f"Orki online ({entry.name})"}
-
-
 def availability(session: FactoryChatSession | None = None) -> dict[str, str]:
-    """Return the current configuration and latest-session health without calls."""
-    try:
-        entry, _model = _provider()
-    except ModelProviderSelectionUnavailable:
-        return {"state": "unconfigured", "label": "Orki előkészítés alatt"}
-    except ModelProviderAuthenticationUnavailable:
-        return {
-            "state": "temporary",
-            "label": "Orki kapcsolódásra vár",
-        }
+    """Expose the latest durable Runtime state; never probe a provider here."""
     if session:
-        latest = session.messages.order_by("-created_at", "-pk").first()
-        if (
-            latest
-            and latest.role == FactoryChatMessage.Role.ORKI
-            and latest.status == FactoryChatMessage.Status.FAILED
-            and latest.error_code == "ORKI_MODEL_REQUEST_FAILED"
-        ):
+        from .models import OrkiExecution
+        from .orki_runtime import execution_projection
+
+        execution = (
+            OrkiExecution.objects.filter(plan__goal__source_session=session)
+            .order_by("-created_at")
+            .first()
+        )
+        if execution:
+            presentation = execution_projection(execution)["presentation"]
             return {
-                "state": "temporary",
-                "label": "Orki: \u00e1tmenetileg nem \u00e9rhet\u0151 el",
+                "state": str(presentation["runtime_state"]).lower(),
+                "label": str(presentation["human_message"]),
             }
-    return {"state": "online", "label": f"Orki online ({entry.name})"}
+    return {"state": "runtime", "label": "Orki Runtime ready"}
 
 
 def _bounded_context(session: FactoryChatSession) -> dict[str, object]:
@@ -452,227 +418,107 @@ def _log_failure(
     )
 
 
-def reply(
-    request: Any,
-    project: Project | None,
-    text: str,
-    correlation_id: str | None = None,
-) -> list[dict[str, str | int]]:
-    """Persist owner input, one real model response, and safe audit metadata."""
-    session = get_or_create_session(request, project)
-    correlation_id = correlation_id or str(uuid4())
-    prior = _messages_for_correlation(session, correlation_id)
-    if prior:
-        return prior
-    with transaction.atomic():
-        owner_message = FactoryChatMessage.objects.create(
-            session=session,
-            role=FactoryChatMessage.Role.OWNER,
-            body=text,
-            correlation_id=correlation_id,
+def record_runtime_cognitive_observation(
+    *,
+    project: Project,
+    session: FactoryChatSession,
+    owner_message: FactoryChatMessage,
+    understanding: Mapping[str, object],
+    plan: Mapping[str, object] | None,
+    correlation_id: str,
+    provider_id: str,
+    model: str,
+    actor: str,
+) -> str | None:
+    """Hand a Runtime provider observation to the existing Cognitive State owners.
+
+    The Runtime coordinates this hand-off but does not own or duplicate Cognitive
+    State transitions.  The return value is an optional canonical chat response
+    replacement created by the established Factory Mission workflow.
+    """
+    observation = dict(understanding)
+    if plan and not observation:
+        observation = dict(plan)
+    mission_observation = observation.get("mission_understanding")
+    recommendation_observation = observation.get("recommendation")
+    operational_reasoning_observation = observation.get("operational_reasoning")
+    decision_observation = observation.get("decision")
+    planning_observation = observation.get("planning")
+    memory_observation = observation.get("memory")
+    product_owner_observation = observation.get("product_owner_profile")
+    structured_route = any(
+        isinstance(item, Mapping)
+        for item in (
+            mission_observation,
+            recommendation_observation,
+            operational_reasoning_observation,
+            decision_observation,
+            planning_observation,
+            memory_observation,
+            product_owner_observation,
         )
-    try:
-        entry, model = _provider()
-    except ModelProviderSelectionUnavailable:
-        FactoryChatMessage.objects.create(
-            session=session,
-            role=FactoryChatMessage.Role.ORKI,
-            body=UNCONFIGURED_MESSAGE,
-            status=FactoryChatMessage.Status.FAILED,
-            correlation_id=correlation_id,
-            error_code="MODEL_PROVIDER_UNAVAILABLE",
-        )
-        _log_failure(
-            session=session,
-            project=project,
-            correlation_id=correlation_id,
-            reason="MODEL_PROVIDER_UNAVAILABLE",
-        )
-        return _messages_for_correlation(session, correlation_id)
-    except ModelProviderAuthenticationUnavailable:
-        FactoryChatMessage.objects.create(
-            session=session,
-            role=FactoryChatMessage.Role.ORKI,
-            body=TEMPORARY_FAILURE_MESSAGE,
-            status=FactoryChatMessage.Status.FAILED,
-            correlation_id=correlation_id,
-            error_code="PROVIDER_CREDENTIAL_UNAVAILABLE",
-        )
-        _log_failure(
-            session=session,
-            project=project,
-            correlation_id=correlation_id,
-            reason="PROVIDER_CREDENTIAL_UNAVAILABLE",
-        )
-        return _messages_for_correlation(session, correlation_id)
-    prompt = _prompt(_bounded_context(session), text)
-    started = perf_counter()
-    try:
-        adapter = model_adapter_for(entry)
-        raw: dict[str, object] | None = None
-        attempts = 0
-        for attempts in range(1, MAX_RETRIES + 1):
-            try:
-                raw = adapter.invoke_model(entry, prompt)
-                break
-            except (OSError, TimeoutError):
-                if attempts == MAX_RETRIES:
-                    raise
-        if raw is None:
-            raise OSError("ORKI_MODEL_REQUEST_FAILED")
-        response_text = model_text_response(entry, raw)
-        response, plan, understanding = _decode(response_text)
-        usage = raw.get("usage", {}) if isinstance(raw.get("usage", {}), dict) else {}
-        with transaction.atomic():
-            FactoryChatMessage.objects.create(
-                session=session,
-                role=FactoryChatMessage.Role.ORKI,
-                body=response,
-                correlation_id=correlation_id,
-                provider_id=entry.provider_id,
-                model=model,
-                prompt_hash=_hash(prompt),
-                response_hash=_hash(response_text),
-                latency_ms=round((perf_counter() - started) * 1000),
-                attempt_count=attempts,
-                token_usage=usage,
+    )
+    if structured_route:
+        provenance = {
+            "source_type": "FACTORY_CHAT_COGNITIVE_OBSERVATION",
+            "conversation_message_id": owner_message.pk,
+            "conversation_message_sha256": _hash(owner_message.body),
+            "correlation_id": correlation_id,
+            "provider_id": provider_id,
+            "model": model,
+        }
+        if isinstance(mission_observation, Mapping):
+            record_mission_understanding(
+                project, observation=mission_observation, provenance=provenance
             )
-        # The provider can recommend; canonical state decides whether it is safe
-        # to create the review artifact.  This prevents endless questioning.
-        if project:
-            if plan and not understanding:
-                understanding = dict(plan)
-            with transaction.atomic():
-                mission_observation = understanding.get("mission_understanding")
-                recommendation_observation = understanding.get("recommendation")
-                operational_reasoning_observation = understanding.get(
-                    "operational_reasoning"
-                )
-                decision_observation = understanding.get("decision")
-                planning_observation = understanding.get("planning")
-                memory_observation = understanding.get("memory")
-                product_owner_observation = understanding.get("product_owner_profile")
-                structured_route = (
-                    isinstance(mission_observation, Mapping)
-                    or isinstance(recommendation_observation, Mapping)
-                    or isinstance(operational_reasoning_observation, Mapping)
-                    or isinstance(decision_observation, Mapping)
-                    or isinstance(planning_observation, Mapping)
-                    or isinstance(memory_observation, Mapping)
-                    or isinstance(product_owner_observation, Mapping)
-                )
-                mission = None
-                before = None
-                if structured_route:
-                    # ORKI-002 owns only proposed Mission State.  Do not let the
-                    # legacy mission/planning workflow turn this observation into
-                    # a plan in the same turn.
-                    provenance = {
-                        "source_type": "FACTORY_CHAT_COGNITIVE_OBSERVATION",
-                        "conversation_message_id": owner_message.pk,
-                        "conversation_message_sha256": _hash(owner_message.body),
-                        "correlation_id": correlation_id,
-                        "provider_id": entry.provider_id,
-                        "model": model,
-                    }
-                    if isinstance(mission_observation, Mapping):
-                        record_mission_understanding(
-                            project,
-                            observation=mission_observation,
-                            provenance=provenance,
-                        )
-                    if isinstance(recommendation_observation, Mapping):
-                        # ORKI-010 prohibits a chat/provider shortcut from creating
-                        # an unreasoned recommendation. Direct service use remains
-                        # backward-compatible for older governed artefacts; the
-                        # public conversation boundary is intentionally stricter.
-                        raise ValueError("OPERATIONAL_REASONING_REQUIRED")
-                    if isinstance(operational_reasoning_observation, Mapping):
-                        record_operational_reasoning(
-                            project,
-                            observation=operational_reasoning_observation,
-                            provenance=provenance,
-                        )
-                    if isinstance(decision_observation, Mapping):
-                        open_decision(
-                            project,
-                            observation=decision_observation,
-                            provenance=provenance,
-                        )
-                    if isinstance(planning_observation, Mapping):
-                        record_plan(
-                            project,
-                            observation=planning_observation,
-                            provenance=provenance,
-                        )
-                    if isinstance(memory_observation, Mapping):
-                        record_memory(
-                            project,
-                            observation=memory_observation,
-                            provenance=provenance,
-                        )
-                    if isinstance(product_owner_observation, Mapping):
-                        record_product_owner_profile(
-                            project,
-                            observation=product_owner_observation,
-                            provenance=provenance,
-                        )
-                else:
-                    # Compatibility path for the pre-ORKI-002 Factory workflow.
-                    mission = apply_understanding(session, understanding, text)
-                    record_factory_mission_state(
-                        project,
-                        mission,
-                        understanding=understanding,
-                        provenance={
-                            "source_type": "FACTORY_CHAT_STRUCTURED_UNDERSTANDING",
-                            "conversation_message_id": owner_message.pk,
-                            "conversation_message_sha256": _hash(owner_message.body),
-                            "factory_mission_id": mission.pk,
-                            "correlation_id": correlation_id,
-                            "provider_id": entry.provider_id,
-                            "model": model,
-                        },
-                    )
-                    before = mission.plan_id
-                    mission = create_plan_when_sufficient(
-                        mission, request.user.get_username()
-                    )
-                derive_initiatives(project)
-            if mission and not before and mission.plan_id:
-                # Keep this system-generated transition message encoding-stable.
-                response = (
-                    "M\u00e1r elegend\u0151 inform\u00e1ci\u00f3m van a tervhez. "
-                    "Elk\u00e9sz\u00edtettem a javasolt megold\u00e1st \u00e9s a "
-                    "Sprint-feloszt\u00e1st a jobb oldali tervben."
-                )
-                FactoryChatMessage.objects.filter(
-                    session=session,
-                    correlation_id=correlation_id,
-                    role=FactoryChatMessage.Role.ORKI,
-                ).update(body=response, response_hash=_hash(response))
-        return _messages_for_correlation(session, correlation_id)
-    except (ValueError, OSError, TimeoutError) as exc:
-        FactoryChatMessage.objects.create(
-            session=session,
-            role=FactoryChatMessage.Role.ORKI,
-            body=TEMPORARY_FAILURE_MESSAGE,
-            status=FactoryChatMessage.Status.FAILED,
-            correlation_id=correlation_id,
-            provider_id=entry.provider_id,
-            model=model,
-            prompt_hash=_hash(prompt),
-            latency_ms=round((perf_counter() - started) * 1000),
-            attempt_count=MAX_RETRIES,
-            error_code=_safe_failure_code(exc),
+        if isinstance(recommendation_observation, Mapping):
+            raise ValueError("OPERATIONAL_REASONING_REQUIRED")
+        if isinstance(operational_reasoning_observation, Mapping):
+            record_operational_reasoning(
+                project,
+                observation=operational_reasoning_observation,
+                provenance=provenance,
+            )
+        if isinstance(decision_observation, Mapping):
+            open_decision(
+                project, observation=decision_observation, provenance=provenance
+            )
+        if isinstance(planning_observation, Mapping):
+            record_plan(
+                project, observation=planning_observation, provenance=provenance
+            )
+        if isinstance(memory_observation, Mapping):
+            record_memory(
+                project, observation=memory_observation, provenance=provenance
+            )
+        if isinstance(product_owner_observation, Mapping):
+            record_product_owner_profile(
+                project, observation=product_owner_observation, provenance=provenance
+            )
+        derive_initiatives(project)
+        return None
+
+    mission = apply_understanding(session, observation, owner_message.body)
+    record_factory_mission_state(
+        project,
+        mission,
+        understanding=observation,
+        provenance={
+            "source_type": "FACTORY_CHAT_STRUCTURED_UNDERSTANDING",
+            "conversation_message_id": owner_message.pk,
+            "conversation_message_sha256": _hash(owner_message.body),
+            "factory_mission_id": mission.pk,
+            "correlation_id": correlation_id,
+            "provider_id": provider_id,
+            "model": model,
+        },
+    )
+    before_plan_id = mission.plan_id
+    mission = create_plan_when_sufficient(mission, actor)
+    derive_initiatives(project)
+    if not before_plan_id and mission.plan_id:
+        return (
+            "Már elegendő információm van a tervhez. Elkészítettem a javasolt "
+            "megoldást és a Sprint-felosztást a jobb oldali tervben."
         )
-        latency_ms = round((perf_counter() - started) * 1000)
-        _log_failure(
-            session=session,
-            project=project,
-            correlation_id=correlation_id,
-            reason=_safe_failure_code(exc),
-            provider_id=entry.provider_id,
-            latency_ms=latency_ms,
-        )
-        return _messages_for_correlation(session, correlation_id)
+    return None

@@ -62,8 +62,7 @@ class CognitiveStateReleaseGateTests(TestCase):
             "output_text": json.dumps(
                 {
                     "reply": (
-                        "Rögzítettem az állapotot és a következő biztonságos "
-                        "lépést."
+                        "Rögzítettem az állapotot és a következő biztonságos lépést."
                     ),
                     "plan": None,
                     "understanding": understanding,
@@ -106,8 +105,7 @@ class CognitiveStateReleaseGateTests(TestCase):
             **initial,
             "assumptions": ["A historikus adatok minőségét még validálni kell"],
             "recommendations": [
-                "Kezdjünk adatminőségi felméréssel, majd olvasható ERP "
-                "integrációval"
+                "Kezdjünk adatminőségi felméréssel, majd olvasható ERP integrációval"
             ],
             "unresolved_decisions": [],
             "recommendation_confidence": 0.83,
@@ -132,7 +130,7 @@ class CognitiveStateReleaseGateTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "cognitive-state-gate-provider",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+            patch("projects.orki_runtime.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.side_effect = responses
             self._send(

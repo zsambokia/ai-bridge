@@ -118,11 +118,8 @@ class FactoryChatTests(TestCase):
         message = FactoryChatMessage.objects.filter(
             role=FactoryChatMessage.Role.ORKI
         ).latest("pk")
-        self.assertEqual(
-            message.body,
-            "Orki most nem tud válaszolni. A kapcsolat előkészítése folyamatban "
-            "van; kérlek, próbáld meg rövidesen újra.",
-        )
+        self.assertIn("Runtime", message.body)
+        self.assertIn("modellprovider", message.body)
         self.assertEqual(message.status, FactoryChatMessage.Status.FAILED)
         self.assertEqual(message.error_code, "MODEL_PROVIDER_UNAVAILABLE")
 
@@ -167,7 +164,7 @@ class FactoryChatTests(TestCase):
     ) -> None:
         self.client.force_login(self.user)
         with patch(
-            "projects.factory_chat.orki_reply",
+            "projects.factory_chat.dispatch_factory_chat_execution",
             side_effect=RuntimeError("secret server stack trace"),
         ):
             response = self.client.post(
@@ -175,10 +172,10 @@ class FactoryChatTests(TestCase):
                 {"message": "Készíts tervet."},
                 HTTP_X_REQUESTED_WITH="FactoryChat",
             )
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 409)
         payload = response.json()
         self.assertFalse(payload["ok"])
-        self.assertTrue(payload["error"]["retryable"])
+        self.assertFalse(payload["error"]["retryable"])
         self.assertNotIn("secret", payload["error"]["message"])
         self.assertNotIn("stack", payload["error"]["message"])
 
@@ -235,7 +232,7 @@ class FactoryChatTests(TestCase):
             self.assertEqual(message.status, FactoryChatMessage.Status.FAILED)
             self.assertEqual(message.error_code, "PROVIDER_CREDENTIAL_UNAVAILABLE")
             self.assertNotEqual(message.error_code, "MODEL_PROVIDER_UNAVAILABLE")
-            self.assertEqual(availability()["state"], "temporary")
+            self.assertEqual(availability()["state"], "runtime")
 
     def test_mocked_model_round_trip_is_persisted_with_safe_audit_metadata(
         self,
@@ -262,7 +259,7 @@ class FactoryChatTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "factory-chat-openai",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+            patch("projects.orki_runtime.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.return_value = {
                 "output_text": payload,
@@ -313,7 +310,7 @@ class FactoryChatTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "factory-chat-default-openai",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+            patch("projects.orki_runtime.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.return_value = {
                 "output_text": '{"reply":"Rendben.","plan":null}',
@@ -347,7 +344,7 @@ class FactoryChatTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "fenced-json-openai",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+            patch("projects.orki_runtime.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.return_value = {
                 "output_text": '```json\n{"reply":"Rendben.","plan":null}\n```',
@@ -407,7 +404,7 @@ class FactoryChatTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "mission-openai",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+            patch("projects.orki_runtime.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.return_value = {
                 "output_text": __import__("json").dumps(payload)
@@ -472,7 +469,7 @@ class FactoryChatTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "plan-request-openai",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+            patch("projects.orki_runtime.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.return_value = {
                 "output_text": __import__("json").dumps(payload)
@@ -655,9 +652,8 @@ class FactoryChatTests(TestCase):
         self.assertEqual(plan.scope.status, "PROPOSED")
         self.assertEqual(plan.scope.record["execution_authorization"], "NONE")
         assert plan.roadmap_candidate is not None
-        assert plan.memory_candidate is not None
         self.assertEqual(plan.roadmap_candidate.status, "CANDIDATE")
-        self.assertEqual(plan.memory_candidate.status, "CANDIDATE")
+        self.assertIsNone(plan.memory_candidate)
 
     def test_plan_approval_is_once_only_and_does_not_authorize_execution(self) -> None:
         self.client.force_login(self.user)
@@ -877,7 +873,7 @@ class FactoryChatTests(TestCase):
         self.client.force_login(self.user)
         request_id = "e3196b9d-c29a-4a98-99b2-640dedbdcb8a"
         with patch(
-            "projects.factory_chat.orki_reply",
+            "projects.factory_chat.dispatch_factory_chat_execution",
             side_effect=OSError("database down"),
         ):
             response = self.client.post(
@@ -886,9 +882,9 @@ class FactoryChatTests(TestCase):
                 HTTP_X_REQUESTED_WITH="FactoryChat",
             )
 
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 409)
         payload = response.json()
         self.assertFalse(payload["ok"])
-        self.assertTrue(payload["error"]["retryable"])
+        self.assertFalse(payload["error"]["retryable"])
         self.assertEqual(payload["correlation_id"], request_id)
         self.assertNotIn("database down", payload["error"]["message"])

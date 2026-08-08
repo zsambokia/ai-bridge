@@ -6,6 +6,14 @@
 </section>
 
 <section class="status-card"><h2>Hol tart a tervez&#233;s?</h2><p>{{ context.mission.phase }}</p></section>
+{% if context.runtime %}
+<section class="status-card" data-orki-runtime>
+  <h2>Orki Runtime</h2>
+  <p>{{ context.runtime.state }} &middot; {{ context.runtime.mode }}</p>
+  {% if context.runtime.waiting_reason %}<p>{{ context.runtime.waiting_reason }}</p>{% endif %}
+  <small>A Runtime a v&eacute;grehajt&aacute;st koordin&aacute;lja; a Cognitive State a tud&aacute;s forr&aacute;sa marad.</small>
+</section>
+{% endif %}
 <section class="status-card"><h2>Mit javasol?</h2><ul>{% for item in context.mission.recommendations %}<li>{{ item }}</li>{% empty %}<li>Orki a c&#233;lhoz ill&#337; biztons&#225;gos alap&#233;rtelmez&#233;seket k&#233;sz&#237;t el&#337;.</li>{% endfor %}</ul></section>
 
 <section class="status-card" data-cognitive-state data-state-origin="canonical-cognitive-state" aria-label="Élő Cognitive State">

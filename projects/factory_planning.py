@@ -10,9 +10,7 @@ from uuid import uuid4
 from django.db import transaction
 from django.utils import timezone
 
-from .knowledge import create_or_upsert_candidate
 from .models import FactoryPlan, GovernanceApproval, Project
-from .orchestration_context import project_context_id
 from .roadmap import create_item, propose_update
 from .scopes import propose_scope, review_scope
 
@@ -73,30 +71,9 @@ def create_plan(
                 "source_reference": scope.identifier,
             },
         )
-        # A new project is deliberately only registered after its single plan
-        # approval.  AKB candidates require a ready project context, so defer
-        # that optional review item until registration/bootstrap has completed.
+        # Planning is intentionally read/strategy-only.  Runtime learning may
+        # enter the AKB solely via OrkiKnowledgeIntegration after Reflection.
         memory_candidate = None
-        try:
-            project_context_id(project)
-        except ValueError:
-            pass
-        else:
-            memory_candidate = create_or_upsert_candidate(
-                project,
-                {
-                    "entry_key": f"factory-plan:{scope.pk}",
-                    "scope": "PROJECT",
-                    "knowledge_type": "GENERAL",
-                    "title": f"Plan candidate: {title}",
-                    "content": json.dumps(artifact, ensure_ascii=False, sort_keys=True),
-                    "source_type": "FACTORY_PLAN",
-                    "source_reference": scope.identifier,
-                    "evidence_references": [scope.identifier],
-                    "work_context_id": scope.identifier,
-                },
-                actor,
-            )
         return FactoryPlan.objects.create(
             project=project,
             scope=scope,

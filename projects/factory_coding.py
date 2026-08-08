@@ -20,8 +20,7 @@ _CLASSIFICATIONS: dict[str, tuple[str, str]] = {
     ),
     ExecutionRun.Lifecycle.STARTING: (
         "Indítás és előkészítés",
-        "A Bridge ellenőrzi és előkészíti a kanonikus végrehajtási "
-        "környezetet.",
+        "A Bridge ellenőrzi és előkészíti a kanonikus végrehajtási környezetet.",
     ),
     ExecutionRun.Lifecycle.RUNNING: (
         "Megvalósítás folyamatban",
@@ -38,8 +37,7 @@ _CLASSIFICATIONS: dict[str, tuple[str, str]] = {
     ),
     ExecutionRun.Lifecycle.DOCUMENTING: (
         "Dokumentálás folyamatban",
-        "A végrehajtás bizonyítékainak és dokumentációjának rögzítése "
-        "folyamatban van.",
+        "A végrehajtás bizonyítékainak és dokumentációjának rögzítése folyamatban van.",
     ),
     ExecutionRun.Lifecycle.CLOSING: (
         "Lezárás folyamatban",
@@ -89,8 +87,7 @@ def _action(run: ExecutionRun) -> dict[str, object]:
             "required": False,
             "title": "Nincs böngészős tulajdonosi teendő",
             "detail": (
-                "A Bridge külső bemenetre vár; ez a képernyő nem "
-                "helyettesíti azt."
+                "A Bridge külső bemenetre vár; ez a képernyő nem helyettesíti azt."
             ),
         }
     return {
@@ -116,17 +113,14 @@ def _progress(checklist: list[dict[str, Any]]) -> dict[str, object]:
 def _epic_progress(run: ExecutionRun, epic_reference: str) -> dict[str, object]:
     """Aggregate only durable executions explicitly bound to this Epic."""
     runs = []
-    candidates = ExecutionRun.objects.filter(
-        contract__project=run.contract.project
-    )
+    candidates = ExecutionRun.objects.filter(contract__project=run.contract.project)
     for candidate in candidates:
         payload = candidate.contract.payload
         scope = payload.get("scope", {}) if isinstance(payload, dict) else {}
         if scope.get("epic_reference") == epic_reference:
             runs.append(candidate)
     completed = sum(
-        candidate.lifecycle == ExecutionRun.Lifecycle.COMPLETED
-        for candidate in runs
+        candidate.lifecycle == ExecutionRun.Lifecycle.COMPLETED for candidate in runs
     )
     total = len(runs)
     return {

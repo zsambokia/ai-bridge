@@ -120,7 +120,7 @@ class PlanningIntelligenceReleaseGateTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "planning-gate-provider",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter,
+            patch("projects.orki_runtime.model_adapter_for") as adapter,
         ):
             adapter.return_value.invoke_model.return_value = {
                 "output_text": json.dumps(

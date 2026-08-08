@@ -1,5 +1,17 @@
 # AI Bridge Roadmap
 
+## Orki Orchestrator Runtime Foundation
+
+The Product Owner approved the canonical
+[Orki Orchestrator Runtime](../architecture/ORKI_ORCHESTRATOR_RUNTIME.md) and
+authorized its bootstrap implementation in Factory Development Mode. The
+Foundation introduces provider-independent Goal -> Plan -> Execution references,
+OESM state/event persistence, Factory Chat Shadow Mode and a Runtime read/control
+API. It explicitly preserves Cognitive State, Governance, approvals,
+`ExecutionRun`, `ExecutionJob`, queueing, evidence ownership and existing
+recovery. Persona, Multi-Agent, Reflection, learning and autonomous planning
+remain separate future Epics.
+
 The Orki Cognitive Operating System has a canonical [Orki Principles constitution](../architecture/ORKI_PRINCIPLES.md), capability-based milestones, mandatory [COO Capability Acceptance](../architecture/ORKI_COO_CAPABILITY_ACCEPTANCE.md), canonical Product Owner scenarios, and mandatory [Executive Checkpoints](../architecture/ORKI_EXECUTIVE_CHECKPOINTS.md). Its technical Epic is [compliance-certified and officially accepted by the Product Owner](../evidence/orki-cognitive-operating-system-compliance-certification-20260802/PRODUCT_OWNER_FINAL_ACCEPTANCE.md). The historical [DCMI scorecard](../architecture/ORKI_DCMI_SCORECARD.md) remains 66/100; 85/100 is a future behavioural-maturity target, not a score created by technical completion.
 
 ## EPIC - Orki Cognitive Operating System
