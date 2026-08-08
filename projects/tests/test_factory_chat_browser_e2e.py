@@ -213,7 +213,7 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         self.assertEqual(composer.input_value(), "első sor\nmásodik sor")
         messages_before = desktop.locator("#chat-messages .message").count()
         composer.press("Enter")
-        desktop.locator("#chat-messages .message").nth(messages_before).wait_for()
+        desktop.locator("#chat-messages .message").nth(messages_before + 1).wait_for()
         self.assertEqual(
             desktop.locator("#chat-messages .message").count(), messages_before + 2
         )
