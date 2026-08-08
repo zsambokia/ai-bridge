@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import Any
 
 from django.db import transaction
 
@@ -87,7 +88,10 @@ def _source(provenance: Mapping[str, object]) -> dict[str, object]:
 
 
 def _references(
-    project: Project, attributes: list[str], allowed_kinds: set[str], error: str
+    project: Project,
+    attributes: list[str],
+    allowed_kinds: set[CognitiveStateEntry.Kind],
+    error: str,
 ) -> list[CognitiveStateEntry]:
     try:
         state = project.cognitive_state
@@ -207,7 +211,7 @@ def _profile_influences(
     return influences
 
 
-def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
+def _entry_view(entry: CognitiveStateEntry) -> dict[str, Any]:
     return {
         "id": entry.pk,
         "kind": entry.kind,
@@ -219,14 +223,14 @@ def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
     }
 
 
-def operational_reasoning_projection(project: Project) -> dict[str, dict[str, object]]:
+def operational_reasoning_projection(project: Project) -> dict[str, dict[str, Any]]:
     """Return active reasoning cycles and their state-derived recommendation."""
     try:
         state = project.cognitive_state
     except CognitiveState.DoesNotExist:
         return {}
     recommendations = recommendation_projection(project)
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for entry in state.entries.filter(
         kind=CognitiveStateEntry.Kind.OPERATIONAL_REASONING,
         status=CognitiveStateEntry.Status.ACTIVE,
@@ -259,7 +263,9 @@ def operational_reasoning_projection(project: Project) -> dict[str, dict[str, ob
                 for item in value.get("assumption_entry_ids", [])
                 if item in sources
             ],
-            "recommendation": recommendations.get(recommendation_attribute),
+            "recommendation": recommendations.get(recommendation_attribute)
+            if isinstance(recommendation_attribute, str)
+            else None,
         }
     return result
 
@@ -269,7 +275,7 @@ def record_operational_reasoning(
     *,
     observation: Mapping[str, object],
     provenance: Mapping[str, object],
-) -> dict[str, dict[str, object]]:
+) -> dict[str, dict[str, Any]]:
     """Validate a full reasoning cycle and derive its recommendation atomically."""
     source = _source(provenance)
     key = _text(
@@ -307,7 +313,10 @@ def record_operational_reasoning(
         "OPERATIONAL_REASONING_ASSUMPTION_UNAVAILABLE",
     )
     alternatives = _alternatives(observation.get("alternatives"))
-    options = {item["option"].casefold() for item in alternatives}
+    options = {
+        _text(item.get("option"), "alternative_option", required=True).casefold()
+        for item in alternatives
+    }
     trade_offs = _per_option_items(
         observation.get("trade_offs"),
         "trade_offs",

@@ -9,6 +9,7 @@ mutating its source evidence.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from django.db import transaction
 
@@ -58,7 +59,7 @@ def _summary(entry: CognitiveStateEntry) -> str:
     return str(entry.content.get("attribute", entry.kind))[:500]
 
 
-def _view(entry: CognitiveStateEntry) -> dict[str, object]:
+def _view(entry: CognitiveStateEntry) -> dict[str, Any]:
     return {
         "id": entry.pk,
         "attribute": entry.content.get("attribute"),
@@ -71,7 +72,7 @@ def _view(entry: CognitiveStateEntry) -> dict[str, object]:
 
 def initiative_projection(
     project: Project, *, include_dismissed: bool = False
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     """Return prioritised initiative artefacts with source state, never transcript."""
     try:
         state = project.cognitive_state
@@ -83,27 +84,33 @@ def initiative_projection(
     entries = state.entries.filter(
         kind=CognitiveStateEntry.Kind.INITIATIVE, status__in=statuses
     ).order_by("-created_at", "-pk")
-    result: list[dict[str, object]] = []
+    result: list[dict[str, Any]] = []
     for entry in entries:
         value = entry.content.get("value")
         if not isinstance(value, Mapping):
             continue
         source_id = value.get("source_entry_id")
-        source = state.entries.filter(pk=source_id).first()
+        source = (
+            state.entries.filter(pk=source_id).first()
+            if isinstance(source_id, (int, str))
+            else None
+        )
+        priority = value.get("priority", 0)
+        priority_value = priority if isinstance(priority, int) else 0
         result.append(
             {
                 "initiative": _view(entry),
                 "source": _view(source) if source is not None else None,
-                "priority": value.get("priority", 0),
+                "priority": priority_value,
             }
         )
     return sorted(
         result,
-        key=lambda item: (-int(item["priority"]), -item["initiative"]["id"]),
+        key=lambda item: (-item["priority"], -(item["initiative"]["id"] or 0)),
     )
 
 
-def derive_initiatives(project: Project) -> list[dict[str, object]]:
+def derive_initiatives(project: Project) -> list[dict[str, Any]]:
     """Derive de-duplicated initiatives from active state without an owner prompt.
 
     Each rule is intentionally narrow and deterministic. It cannot infer a new
@@ -179,7 +186,7 @@ def derive_initiatives(project: Project) -> list[dict[str, object]]:
 
 def dismiss_initiative(
     project: Project, *, initiative_entry_id: int, actor_id: str, reason: str
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     """Dismiss an active initiative with an attributable Product Owner action."""
     normalized_actor = " ".join(actor_id.split())
     normalized_reason = " ".join(reason.split())

@@ -14,7 +14,7 @@ from projects.recommendation_engine import record_recommendation
 
 
 class PlanningIntelligenceReleaseGateTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.owner = get_user_model().objects.create_user(
             "planning-owner", password="test"
         )
@@ -89,7 +89,7 @@ class PlanningIntelligenceReleaseGateTests(TestCase):
 
     def test_provider_creates_explainable_cognitive_plan_without_delivery_side_effect(
         self,
-    ):
+    ) -> None:
         plan = {
             "plan_key": "pilot",
             "objective": "Deliver a read-only pilot",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import Any
 
 from .cognitive_state import record_entry
 from .models import CognitiveState, CognitiveStateEntry, Project
@@ -125,7 +126,7 @@ def record_memory(
     return memory
 
 
-def memory_projection(project: Project, query: str = "") -> list[dict[str, object]]:
+def memory_projection(project: Project, query: str = "") -> list[dict[str, Any]]:
     """Retrieve active memories deterministically, never from transcript."""
     try:
         entries = project.cognitive_state.entries.filter(

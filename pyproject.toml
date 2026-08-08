@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 dependencies = ["Django>=5.2,<5.3", "PyYAML>=6.0,<7.0"]
 
 [tool.setuptools]
-packages = ["bridge", "bridge.settings", "codingproviderproof", "codingproviderproof.migrations", "confirmationproof", "confirmationproof.migrations", "core", "core.tests", "projects", "projects.management", "projects.management.commands", "projects.migrations", "projects.tests", "scripts", "storybook", "storybook.migrations"]
+packages = ["bridge", "bridge.settings", "codingproviderproof", "codingproviderproof.migrations", "confirmationproof", "confirmationproof.migrations", "core", "core.tests", "projects", "projects.management", "projects.management.commands", "projects.migrations", "projects.semantic", "projects.tests", "scripts", "storybook", "storybook.migrations"]
 
 [project.optional-dependencies]
 dev = ["django-stubs[compatible-mypy]>=5.2,<5.3", "mypy>=1.13,<2.0", "playwright>=1.55,<2.0", "pytest>=8.3,<9.0", "pytest-django>=4.9,<5.0", "ruff>=0.8,<1.0"]

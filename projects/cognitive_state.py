@@ -53,10 +53,10 @@ def record_entry(
     return entry
 
 
-def projection(project: Project) -> dict[str, list[dict[str, object]]]:
+def projection(project: Project) -> dict[str, list[dict[str, Any]]]:
     """Return stable, type-separated active state suitable for any interface."""
     state = state_for(project)
-    result: dict[str, list[dict[str, object]]] = {
+    result: dict[str, list[dict[str, Any]]] = {
         kind: [] for kind in CognitiveStateEntry.Kind.values
     }
     entries = state.entries.filter(status=CognitiveStateEntry.Status.ACTIVE)

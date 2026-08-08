@@ -320,9 +320,10 @@ def observe_factory_plan_approval(
         if execution is None:
             execution = start_shadow_for_factory_plan(factory_plan, actor=actor)
             execution = OrkiExecution.objects.select_for_update().get(pk=execution.pk)
-        return _observe_approval_locked(
-            execution, execution.plan.factory_plan, actor=actor
-        )
+        observed_plan = execution.plan.factory_plan
+        if observed_plan is None:
+            raise RuntimeTransitionError("RUNTIME_APPROVAL_PLAN_REQUIRED")
+        return _observe_approval_locked(execution, observed_plan, actor=actor)
 
 
 def _explicit_plan_approval(text: str) -> bool:
@@ -402,7 +403,7 @@ def _complete_factory_plan_approval(
             "evidence_references": [
                 f"factory-chat-message:{reply.pk}",
                 approved_plan.scope.identifier,
-                approved_plan.approval.reference,
+                approved_plan.approval.reference if approved_plan.approval else "",
             ],
         }
         _event(execution, "verification.completed", actor=actor, payload=verification)
@@ -1099,10 +1100,9 @@ def _validate_goal_integrity(
     execution: OrkiExecution, result: Mapping[str, Any]
 ) -> dict[str, object]:
     """Deterministically compare the observed execution result to the original Goal."""
-    questionnaire = (
-        execution.plan.factory_plan.questionnaire
-        if execution.plan.factory_plan_id
-        else {}
+    factory_plan = execution.plan.factory_plan
+    questionnaire: Mapping[str, Any] = (
+        factory_plan.questionnaire if factory_plan else {}
     )
     expected = str(questionnaire.get("outcome", "")).strip()
     raw_checks = questionnaire.get("acceptance_checks", [])
@@ -1110,15 +1110,13 @@ def _validate_goal_integrity(
         checks = [str(check).strip() for check in raw_checks if str(check).strip()]
     else:
         checks = [line.strip() for line in str(raw_checks).splitlines() if line.strip()]
-    verification = (
-        result.get("verification")
-        if isinstance(result.get("verification"), Mapping)
-        else {}
+    raw_verification = result.get("verification")
+    verification: Mapping[str, Any] = (
+        raw_verification if isinstance(raw_verification, Mapping) else {}
     )
-    check_results = (
-        verification.get("checks")
-        if isinstance(verification.get("checks"), Mapping)
-        else {}
+    raw_checks_result = verification.get("checks")
+    check_results: Mapping[str, Any] = (
+        raw_checks_result if isinstance(raw_checks_result, Mapping) else {}
     )
     failures: list[str] = []
     if not expected or result.get("observed_goal") != expected:
@@ -1301,7 +1299,8 @@ def runtime_presentation(
             "Nincs további végrehajtási lépés.",
         ),
     }
-    human_message, estimated_next_step = state_copy[execution.state]
+    state = OrkiExecution.State(execution.state)
+    human_message, estimated_next_step = state_copy[state]
     waiting_message = execution.waiting_reason.get("message")
     if execution.state.startswith("WAITING_") and isinstance(waiting_message, str):
         human_message = waiting_message
@@ -1322,7 +1321,7 @@ def runtime_presentation(
     }
 
 
-def execution_projection(execution: OrkiExecution) -> dict[str, object]:
+def execution_projection(execution: OrkiExecution) -> dict[str, Any]:
     """Stable, provider-neutral read projection suitable for UI/API/audit consumers."""
     execution = OrkiExecution.objects.select_related(
         "plan__goal", "execution_run", "reflection__knowledge_integration"
@@ -1345,7 +1344,7 @@ def execution_projection(execution: OrkiExecution) -> dict[str, object]:
         OrkiExecution.State.FAILED: 100,
         OrkiExecution.State.CANCELLED: 100,
     }
-    progress_percent = progress_by_state[execution.state]
+    progress_percent = progress_by_state[OrkiExecution.State(execution.state)]
     presentation = {
         **runtime_presentation(execution, progress_percent=progress_percent),
         # The monitor consumes only server-owned Runtime fields.  These are

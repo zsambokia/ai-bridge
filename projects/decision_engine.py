@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import Any
 
 from .cognitive_state import record_entry
 from .models import CognitiveState, CognitiveStateEntry, Project
@@ -87,7 +88,7 @@ def _options(value: object) -> list[dict[str, str]]:
     return result[:10]
 
 
-def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
+def _entry_view(entry: CognitiveStateEntry) -> dict[str, Any]:
     return {
         "id": entry.pk,
         "kind": entry.kind,
@@ -99,13 +100,13 @@ def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
     }
 
 
-def decision_projection(project: Project) -> dict[str, dict[str, object]]:
+def decision_projection(project: Project) -> dict[str, dict[str, Any]]:
     """Return active, explainable decision state without transcript content."""
     try:
         state = project.cognitive_state
     except CognitiveState.DoesNotExist:
         return {}
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, dict[str, Any]] = {}
     entries = state.entries.filter(
         status=CognitiveStateEntry.Status.ACTIVE,
         kind__in=(
@@ -129,7 +130,7 @@ def open_decision(
     *,
     observation: Mapping[str, object],
     provenance: Mapping[str, object],
-) -> dict[str, dict[str, object]]:
+) -> dict[str, dict[str, Any]]:
     """Open a material decision from an active recommendation, never accept it."""
     source = _source(provenance)
     key = _text(
@@ -239,7 +240,7 @@ def accept_decision(
     open_decision_entry_id: int,
     selected_option: str,
     provenance: Mapping[str, object],
-) -> dict[str, dict[str, object]]:
+) -> dict[str, dict[str, Any]]:
     """Accept an active option only from explicit Product Owner confirmation."""
     source = _product_owner_source(provenance)
     key = _text(decision_key, field="decision_key", required=True).casefold()

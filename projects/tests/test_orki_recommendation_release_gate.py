@@ -146,7 +146,7 @@ class RecommendationEngineReleaseGateTests(TestCase):
             "confidence": confidence,
         }
 
-    def _send(self, project: Project, response: dict[str, object]):
+    def _send(self, project: Project, response: dict[str, object]) -> None:
         self.client.get(reverse("factory-chat"), {"project": project.project_id})
         with (
             patch.dict(
@@ -168,7 +168,6 @@ class RecommendationEngineReleaseGateTests(TestCase):
                 HTTP_X_REQUESTED_WITH="FactoryChat",
             )
         self.assertEqual(result.status_code, 200)
-        return result
 
     def test_recommendation_engine_release_gate(self) -> None:
         self._send(

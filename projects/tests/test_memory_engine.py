@@ -8,7 +8,7 @@ from projects.models import CognitiveStateEntry, Project
 
 
 class MemoryEngineTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.project = self._project("memory-primary")
         self.other = self._project("memory-isolated")
         record_mission_understanding(
@@ -28,7 +28,7 @@ class MemoryEngineTests(TestCase):
         )
 
     @staticmethod
-    def _project(project_id):
+    def _project(project_id: str) -> Project:
         return Project.objects.create(
             project_id=project_id,
             display_name=project_id,
@@ -37,7 +37,7 @@ class MemoryEngineTests(TestCase):
         )
 
     @staticmethod
-    def _source(identifier):
+    def _source(identifier: int) -> dict[str, object]:
         return {
             "source_type": "TEST_MEMORY",
             "conversation_message_id": identifier,
@@ -45,7 +45,9 @@ class MemoryEngineTests(TestCase):
         }
 
     @staticmethod
-    def _memory(statement="Use a read-only pilot before write-back."):
+    def _memory(
+        statement: str = "Use a read-only pilot before write-back.",
+    ) -> dict[str, object]:
         return {
             "memory_key": "erp-rollout",
             "statement": statement,
@@ -54,11 +56,12 @@ class MemoryEngineTests(TestCase):
             "confidence": 0.8,
         }
 
-    def test_memory_is_evidence_bound_retrievable_and_evolves(self):
+    def test_memory_is_evidence_bound_retrievable_and_evolves(self) -> None:
         first = record_memory(
             self.project, observation=self._memory(), provenance=self._source(2)
         )
         view = memory_projection(self.project, "ERP risk")
+        assert first is not None
         self.assertEqual(view[0]["id"], first.pk)
         self.assertEqual(view[0]["content"]["evidence_attributes"], ["stated_intent"])
         record_memory(
@@ -78,7 +81,7 @@ class MemoryEngineTests(TestCase):
 
     def test_memory_rejects_missing_or_foreign_evidence_and_isolated_project_is_empty(
         self,
-    ):
+    ) -> None:
         invalid = self._memory()
         invalid["evidence_attributes"] = ["missing"]
         with self.assertRaisesMessage(ValueError, "MEMORY_EVIDENCE_UNAVAILABLE"):

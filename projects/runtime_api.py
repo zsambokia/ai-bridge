@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterator
+from typing import Any
 
 from django.contrib.auth.decorators import login_required
 from django.http import (
@@ -30,21 +32,22 @@ def _actor(request: HttpRequest) -> str:
     return request.user.get_username()
 
 
-def _projection_with_chat_messages(execution: OrkiExecution) -> dict[str, object]:
+def _projection_with_chat_messages(execution: OrkiExecution) -> dict[str, Any]:
     """Add the UI transcript only for the Factory Chat Runtime adapter."""
     projection = execution_projection(execution)
     context = execution.provider_context or {}
     if context.get("channel") == "FACTORY_CHAT":
         from .factory_orki import messages_for
 
-        if context.get("correlation_id"):
-            projection["messages"] = messages_for(execution.plan.goal.source_session)
+        session = execution.plan.goal.source_session
+        if context.get("correlation_id") and session is not None:
+            projection["messages"] = messages_for(session)
     return projection
 
 
 def _runtime_event_payload(
-    projection: dict[str, object], event: dict[str, object] | None = None
-) -> dict[str, object]:
+    projection: dict[str, Any], event: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Emit a self-contained Runtime presentation contract for every SSE event."""
     payload = dict(projection)
     payload["event"] = event
@@ -94,7 +97,7 @@ def runtime_execution_event_stream(
     """Server-Sent Event projection of the append-only Runtime Event Stream."""
     get_object_or_404(OrkiExecution, token=token)
 
-    def events():
+    def events() -> Iterator[str]:
         sequence = 0
         for _ in range(120):  # bounded connection; browser reconnects if needed
             execution = get_object_or_404(OrkiExecution, token=token)

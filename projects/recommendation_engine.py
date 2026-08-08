@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import Any
 
 from .cognitive_state import record_entry, record_snapshot
 from .models import CognitiveState, CognitiveStateEntry, Project
@@ -108,7 +109,7 @@ def _references(
     project: Project,
     *,
     attributes: list[str],
-    allowed_kinds: set[str],
+    allowed_kinds: set[CognitiveStateEntry.Kind],
     error: str,
 ) -> list[CognitiveStateEntry]:
     try:
@@ -131,7 +132,7 @@ def _references(
     return resolved
 
 
-def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
+def _entry_view(entry: CognitiveStateEntry) -> dict[str, Any]:
     return {
         "id": entry.pk,
         "kind": entry.kind,
@@ -143,7 +144,7 @@ def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
     }
 
 
-def recommendation_projection(project: Project) -> dict[str, dict[str, object]]:
+def recommendation_projection(project: Project) -> dict[str, dict[str, Any]]:
     """Return active recommendations with their durable explainability data."""
     try:
         state = project.cognitive_state
@@ -160,7 +161,7 @@ def recommendation_projection(project: Project) -> dict[str, dict[str, object]]:
         for entry in active.filter(kind=CognitiveStateEntry.Kind.TRADE_OFF)
         if isinstance(entry.content.get("attribute"), str)
     }
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for entry in active.filter(kind=CognitiveStateEntry.Kind.RECOMMENDATION):
         attribute = entry.content.get("attribute")
         value = entry.content.get("value")
@@ -201,7 +202,7 @@ def record_recommendation(
     *,
     observation: Mapping[str, object],
     provenance: Mapping[str, object],
-) -> dict[str, dict[str, object]]:
+) -> dict[str, dict[str, Any]]:
     """Validate and evolve one evidence-based recommendation without authority."""
     source = _source(provenance)
     key = _text(

@@ -13,7 +13,7 @@ from projects.models import ExecutionProvider, FactoryPlan, Project
 
 
 class MemoryIntelligenceReleaseGateTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.owner = get_user_model().objects.create_user(
             "memory-owner", password="test"
         )
@@ -57,7 +57,9 @@ class MemoryIntelligenceReleaseGateTests(TestCase):
         )
         self.client.force_login(self.owner)
 
-    def test_provider_creates_reusable_memory_without_delivery_side_effects(self):
+    def test_provider_creates_reusable_memory_without_delivery_side_effects(
+        self,
+    ) -> None:
         memory = {
             "memory_key": "stockout-rule",
             "statement": "Keep ERP integration read-only until pilot evidence exists.",

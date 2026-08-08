@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Mapping
+from typing import Any
 
 from .cognitive_state import record_entry
 from .models import CognitiveState, CognitiveStateEntry, Project
@@ -127,7 +128,7 @@ def _attributes(value: object) -> list[str]:
     return attributes[:20]
 
 
-def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
+def _entry_view(entry: CognitiveStateEntry) -> dict[str, Any]:
     return {
         "id": entry.pk,
         "attribute": entry.content.get("attribute"),
@@ -138,7 +139,7 @@ def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
     }
 
 
-def _evidence_view(entries: list[CognitiveStateEntry]) -> list[dict[str, object]]:
+def _evidence_view(entries: list[CognitiveStateEntry]) -> list[dict[str, Any]]:
     """Expose state evidence, never conversation text, for profile review."""
     return [
         {
@@ -153,7 +154,7 @@ def _evidence_view(entries: list[CognitiveStateEntry]) -> list[dict[str, object]
 
 def _weighted_confidence(
     declared: float, evidence: list[CognitiveStateEntry]
-) -> tuple[float, dict[str, object]]:
+) -> tuple[float, dict[str, Any]]:
     scored_evidence = [
         entry.confidence for entry in evidence if entry.confidence is not None
     ]
@@ -176,7 +177,7 @@ def _weighted_confidence(
     }
 
 
-def product_owner_history(project: Project) -> dict[str, object]:
+def product_owner_history(project: Project) -> dict[str, Any]:
     """Return revision history and explicit drift, without selecting a winner."""
     try:
         entries = project.cognitive_state.entries.filter(
@@ -184,8 +185,8 @@ def product_owner_history(project: Project) -> dict[str, object]:
         ).order_by("created_at", "pk")
     except CognitiveState.DoesNotExist:
         return {"history": {}, "drift": []}
-    history: dict[str, list[dict[str, object]]] = defaultdict(list)
-    drift: list[dict[str, object]] = []
+    history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    drift: list[dict[str, Any]] = []
     for entry in entries:
         attribute = entry.content.get("attribute")
         value = entry.content.get("value")
@@ -219,7 +220,7 @@ def product_owner_history(project: Project) -> dict[str, object]:
     return {"history": dict(history), "drift": drift}
 
 
-def product_owner_projection(project: Project) -> dict[str, object]:
+def product_owner_projection(project: Project) -> dict[str, Any]:
     """Return explainable active preferences and fail closed on a conflict."""
     try:
         entries = project.cognitive_state.entries.filter(
@@ -233,8 +234,8 @@ def product_owner_projection(project: Project) -> dict[str, object]:
         attribute = entry.content.get("attribute")
         if isinstance(attribute, str) and attribute.startswith(_PROFILE_PREFIX):
             grouped[attribute].append(entry)
-    profiles: dict[str, dict[str, object]] = {}
-    conflicts: list[dict[str, object]] = []
+    profiles: dict[str, dict[str, Any]] = {}
+    conflicts: list[dict[str, Any]] = []
     for attribute, candidates in grouped.items():
         values = {
             str(entry.content.get("value", {}).get("preference", ""))
@@ -277,7 +278,7 @@ def record_product_owner_profile(
     *,
     observation: Mapping[str, object],
     provenance: Mapping[str, object],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Record one evidence-backed operational preference revision.
 
     A provider may propose it, but it is admitted only when at least two active
@@ -347,7 +348,7 @@ def correct_product_owner_profile(
     preference: object,
     reason: object,
     provenance: Mapping[str, object],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Apply an attributable Product Owner correction without erasing evidence."""
     source = _correction_source(provenance)
     try:

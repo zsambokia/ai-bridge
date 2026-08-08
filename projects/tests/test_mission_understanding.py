@@ -132,9 +132,10 @@ class MissionUnderstandingTests(TestCase):
             self.primary, observation=evolved, provenance=self._provenance(2)
         )
         self.assertEqual(result["inferred_business_goal"]["confidence"], 0.91)
+        question = evolved["question"]
+        assert isinstance(question, dict)
         self.assertEqual(
-            result["mission_question"]["value"]["purpose"],
-            evolved["question"]["purpose"],
+            result["mission_question"]["value"]["purpose"], question["purpose"]
         )
         prior = self.primary.cognitive_state.entries.get(
             kind=CognitiveStateEntry.Kind.INFERENCE,

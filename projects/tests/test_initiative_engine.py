@@ -33,7 +33,9 @@ class InitiativeEngineTests(TestCase):
             "conversation_message_sha256": f"source-{identifier}",
         }
 
-    def _entry(self, kind: str, attribute: str, value: object, identifier: int):
+    def _entry(
+        self, kind: str, attribute: str, value: object, identifier: int
+    ) -> CognitiveStateEntry:
         return record_entry(
             self.project,
             kind=kind,
@@ -42,7 +44,7 @@ class InitiativeEngineTests(TestCase):
             confidence=0.8,
         )
 
-    def test_initiative_is_proactive_explainable_isolated_and_dismissible(self):
+    def test_initiative_is_proactive_explainable_isolated_and_dismissible(self) -> None:
         source = self._entry(
             CognitiveStateEntry.Kind.RISK,
             "integration_risk",
@@ -82,7 +84,9 @@ class InitiativeEngineTests(TestCase):
             ).exists()
         )
 
-    def test_priority_is_deterministic_and_never_uses_conversation_transcript(self):
+    def test_priority_is_deterministic_and_never_uses_conversation_transcript(
+        self,
+    ) -> None:
         self._entry(
             CognitiveStateEntry.Kind.ASSUMPTION,
             "data_availability",
@@ -114,7 +118,7 @@ class InitiativeEngineTests(TestCase):
             ).exists()
         )
 
-    def test_active_observations_are_rate_limited(self):
+    def test_active_observations_are_rate_limited(self) -> None:
         for identifier in range(1, 7):
             self._entry(
                 CognitiveStateEntry.Kind.RISK,

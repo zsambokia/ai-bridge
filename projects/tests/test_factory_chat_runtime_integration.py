@@ -5,10 +5,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from types import SimpleNamespace
-from unittest.mock import patch
+from typing import cast
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
+from django.http import StreamingHttpResponse
 from django.test import TestCase
 from django.urls import reverse
 
@@ -34,7 +37,7 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
     @patch("projects.orki_runtime.model_adapter_for")
     @patch("projects.orki_runtime.model_text_response")
     def test_chat_message_completes_through_runtime_and_provider_adapter(
-        self, model_text_response, model_adapter_for, provider
+        self, model_text_response: Mock, model_adapter_for: Mock, provider: Mock
     ) -> None:
         """External provider is mocked; Runtime, its events and state machine are real."""
         entry = SimpleNamespace(provider_id="test-openai")
@@ -91,7 +94,9 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
             reverse("runtime-execution-event-stream", args=[token])
         )
         self.assertEqual(stream.status_code, 200)
-        payload = b"".join(stream.streaming_content).decode()
+        payload = b"".join(
+            cast(Iterator[bytes], cast(StreamingHttpResponse, stream).streaming_content)
+        ).decode()
         self.assertIn("event: runtime", payload)
         self.assertIn("reflection.completed", payload)
         self.assertIn("event: snapshot", payload)

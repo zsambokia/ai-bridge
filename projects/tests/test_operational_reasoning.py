@@ -229,14 +229,14 @@ class OperationalReasoningTests(TestCase):
         )
 
     def test_incomplete_or_foreign_reasoning_is_rejected(self) -> None:
+        alternatives = self._observation()["alternatives"]
+        assert isinstance(alternatives, list)
         with self.assertRaisesMessage(
             ValueError, "OPERATIONAL_REASONING_ALTERNATIVES_INSUFFICIENT"
         ):
             record_operational_reasoning(
                 self.primary,
-                observation=self._observation(
-                    alternatives=self._observation()["alternatives"][:2]
-                ),
+                observation=self._observation(alternatives=alternatives[:2]),
                 provenance=self._provenance(2),
             )
         with self.assertRaisesMessage(

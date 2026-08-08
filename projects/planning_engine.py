@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import Any
 
 from .cognitive_state import record_entry
 from .models import CognitiveState, CognitiveStateEntry, Project
@@ -121,7 +122,7 @@ def _references(project: Project, attributes: list[str]) -> list[CognitiveStateE
     return result
 
 
-def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
+def _entry_view(entry: CognitiveStateEntry) -> dict[str, Any]:
     return {
         "id": entry.pk,
         "kind": entry.kind,
@@ -133,13 +134,13 @@ def _entry_view(entry: CognitiveStateEntry) -> dict[str, object]:
     }
 
 
-def planning_projection(project: Project) -> dict[str, dict[str, object]]:
+def planning_projection(project: Project) -> dict[str, dict[str, Any]]:
     """Return active plans with only durable explainability references."""
     try:
         state = project.cognitive_state
     except CognitiveState.DoesNotExist:
         return {}
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for entry in state.entries.filter(
         kind=CognitiveStateEntry.Kind.PLAN, status=CognitiveStateEntry.Status.ACTIVE
     ):
@@ -168,7 +169,7 @@ def record_plan(
     *,
     observation: Mapping[str, object],
     provenance: Mapping[str, object],
-) -> dict[str, dict[str, object]]:
+) -> dict[str, dict[str, Any]]:
     """Validate and evolve an evidence-backed plan; never create delivery work."""
     source = _source(provenance)
     key = _text(observation.get("plan_key"), field="plan_key").casefold()

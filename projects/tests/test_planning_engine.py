@@ -9,13 +9,13 @@ from projects.recommendation_engine import record_recommendation
 
 
 class PlanningEngineTests(TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.primary = self._project("planning-primary")
         self.isolated = self._project("planning-isolated")
         self._seed(self.primary)
 
     @staticmethod
-    def _project(project_id):
+    def _project(project_id: str) -> Project:
         return Project.objects.create(
             project_id=project_id,
             display_name=project_id,
@@ -24,14 +24,14 @@ class PlanningEngineTests(TestCase):
         )
 
     @staticmethod
-    def _source(identifier):
+    def _source(identifier: int) -> dict[str, object]:
         return {
             "source_type": "TEST_PLANNING_OBSERVATION",
             "conversation_message_id": identifier,
             "conversation_message_sha256": f"sha-{identifier}",
         }
 
-    def _seed(self, project):
+    def _seed(self, project: Project) -> None:
         record_mission_understanding(
             project,
             observation={
@@ -74,7 +74,7 @@ class PlanningEngineTests(TestCase):
         )
 
     @staticmethod
-    def _plan(objective="Deliver read-only pilot"):
+    def _plan(objective: str = "Deliver read-only pilot") -> dict[str, object]:
         return {
             "plan_key": "stockout-pilot",
             "objective": objective,
@@ -103,7 +103,7 @@ class PlanningEngineTests(TestCase):
             "confidence": 0.84,
         }
 
-    def test_plan_is_complete_explainable_and_revision_preserves_history(self):
+    def test_plan_is_complete_explainable_and_revision_preserves_history(self) -> None:
         first = record_plan(
             self.primary, observation=self._plan(), provenance=self._source(3)
         )
@@ -128,7 +128,7 @@ class PlanningEngineTests(TestCase):
 
     def test_plan_rejects_missing_evidence_or_invalid_strategy_and_isolates_projects(
         self,
-    ):
+    ) -> None:
         invalid = self._plan()
         invalid["chosen_strategy"] = "Unknown"
         with self.assertRaisesMessage(ValueError, "PLAN_STRATEGY_ALTERNATIVE_INVALID"):

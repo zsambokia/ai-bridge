@@ -8,6 +8,7 @@ normalisation, project isolation, lifecycle evolution and explainability.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from .cognitive_state import record_entry, record_snapshot
 from .models import CognitiveState, CognitiveStateEntry, Project
@@ -72,7 +73,7 @@ def _source(provenance: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def mission_projection(project: Project) -> dict[str, object]:
+def mission_projection(project: Project) -> dict[str, Any]:
     """Return only the active, explainable proposed Mission State."""
     try:
         state = project.cognitive_state
@@ -88,7 +89,7 @@ def mission_projection(project: Project) -> dict[str, object]:
             CognitiveStateEntry.Kind.MISSION,
         ),
     ).order_by("created_at", "pk")
-    result: dict[str, object] = {}
+    result: dict[str, Any] = {}
     for entry in entries:
         attribute = entry.content.get("attribute")
         if isinstance(attribute, str):
@@ -106,7 +107,7 @@ def record_mission_understanding(
     *,
     observation: Mapping[str, object],
     provenance: Mapping[str, object],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Validate and evolve an attributable proposed Mission State.
 
     This creates neither a recommendation, an accepted decision nor a plan.
