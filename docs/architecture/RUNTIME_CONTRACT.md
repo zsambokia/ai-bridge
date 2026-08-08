@@ -35,16 +35,12 @@ production, and knowledge-candidate production. It does not generate embeddings,
 write vectors, mutate AKB, activate knowledge, or construct KnowledgeEntry objects
 on the canonical structured-decision path.
 
-The legacy OrkiKnowledgeIntegration path is a separate compatibility adapter:
+The active legacy OrkiKnowledgeIntegration adapter was removed by the Post-MVP
+Runtime Cleanup. Historical integration rows remain readable audit data only;
+no active Runtime path creates or updates them.
 
-> Deprecated compatibility adapter.
->
-> Maintained only during Runtime → Knowledge Pipeline migration.
-> New Runtime implementations MUST NOT depend on this component.
-> Scheduled for removal after Sprint 06.
-
-This adapter is isolated from the canonical Runtime flow and is not extended by new
-Runtime functionality.
+The removed adapter is retained only in historical evidence and migration records;
+it is not part of the current Runtime contract.
 
 ## Validation and evidence
 
@@ -54,3 +50,12 @@ confidence/tag constraints before a candidate is stored. Regression tests prove
 explicit field persistence without generic payload; rejection of embedding,
 knowledge_entry_id, vector_id, and activation; no KnowledgeEntry creation on the
 canonical Runtime path; and immutable candidates after creation.
+
+## Sprint 06 consumption boundary
+
+Sprint 06 consumes `RuntimeKnowledgeCandidate.v1` through the independent
+[Knowledge Pipeline](KNOWLEDGE_PIPELINE.md). The Pipeline validates,
+normalizes, mechanically classifies and deduplicates candidates, then creates a
+governed `KnowledgeEntry` candidate. It can activate and index an entry only
+after an explicit AKB governance approval. This is a downstream consumer
+boundary: the canonical Runtime does not change as part of that Pipeline.

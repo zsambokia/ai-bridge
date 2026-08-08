@@ -223,21 +223,20 @@ class CanonicalFactoryAcceptanceSuiteTests(TestCase):
             )
 
         execution.refresh_from_db()
-        entry = KnowledgeEntry.objects.get(
-            entry_key="factory-acceptance-repair-pattern"
-        )
         event_types = list(
             execution.events.order_by("sequence").values_list("event_type", flat=True)
         )
         self.assertEqual(execution.state, OrkiExecution.State.COMPLETED)
-        self.assertEqual(entry.status, KnowledgeEntry.Status.CANDIDATE)
+        # Runtime completes reflection but never mutates AKB.  Promotion is
+        # owned by the separately governed Knowledge Pipeline.
+        self.assertFalse(KnowledgeEntry.objects.filter(project=self.project).exists())
         self.assertEqual(CognitiveStateEntry.objects.count(), 0)
         self.assertIsNotNone(execution.reflection)
         self.assertLess(
             event_types.index("reflection.completed"),
-            event_types.index("knowledge.candidate.created"),
+            event_types.index("GOAL_ACHIEVED"),
         )
-        self.assertNotIn("embedding.generated", event_types)
+        self.assertNotIn("knowledge.candidate.created", event_types)
         self.assertTrue(
             all(event.evidence_references for event in execution.events.all())
         )

@@ -1,5 +1,16 @@
 # AI Bridge – Current State
 
+## AI Bridge 2.0 Sprint 07 — Cognitive & Behaviour Evolution
+
+Sprint 07 adds a project-isolated, governed learning loop above the frozen
+Runtime, Semantic Layer, Reasoning Framework and Knowledge Pipeline:
+verified `RuntimeReflectionCandidate` → immutable `CognitiveExperience` →
+non-active `BehaviourCandidate` → explicit governance outcome →
+`CognitiveGuidancePackage`. Only approved patterns can appear in guidance;
+the layer cannot execute, decide, index, mutate AKB, or select by semantic
+relevance. See `docs/architecture/COGNITIVE_EVOLUTION.md` and the Sprint 07
+evidence record for the binding contract and validation evidence.
+
 ## Sprint 05 Orki Runtime Orchestrator — 2026-08-08
 
 The Runtime now has a canonical, provider-neutral structured-decision path:
@@ -897,5 +908,17 @@ The canonical Runtime emits only immutable `RuntimeCandidate.v1` reflection and
 knowledge candidates after verification. Candidate schemas are explicit and reject
 embedding, vector, index, activation, AKB, and `KnowledgeEntry` ownership fields
 recursively. The legacy Runtime-to-AKB integration remains an isolated deprecated
-compatibility adapter until the Sprint 06 Knowledge Pipeline migration; it is not
-part of canonical structured-decision execution.
+compatibility adapter; it is not part of canonical structured-decision execution.
+
+## AI Bridge 2.0 Sprint 06 Knowledge Pipeline and AKB Evolution
+
+The independent Knowledge Pipeline consumes immutable
+`RuntimeKnowledgeCandidate.v1` records without changing Runtime, Reasoning or
+the Semantic Layer. It records durable, idempotent `KnowledgePipelineReceipt`
+evidence for validation, normalization, declared-type classification,
+deduplication and governed promotion. A candidate is only an AKB
+`KnowledgeEntry` in review until the existing `akb.review_candidate` governance
+approval activates it. Only after activation does the existing vector-store
+contract create a `SemanticEmbedding`; vector retrieval then persists an
+evidence-bearing `KnowledgeContextPackage`. The legacy compatibility adapter is
+unchanged and its removal is deferred to the Runtime Cleanup migration.

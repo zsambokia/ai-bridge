@@ -965,6 +965,57 @@ class SemanticEmbedding(models.Model):
         ]
 
 
+class KnowledgePipelineReceipt(models.Model):
+    """Durable, idempotent evidence for one RuntimeKnowledgeCandidate.v1 intake."""
+
+    class Status(models.TextChoices):
+        VALIDATED = "VALIDATED", "Validated"
+        IN_REVIEW = "IN_REVIEW", "In review"
+        PROMOTED = "PROMOTED", "Promoted"
+        REJECTED = "REJECTED", "Rejected"
+        DUPLICATE = "DUPLICATE", "Duplicate"
+
+    candidate = models.OneToOneField(
+        "RuntimeKnowledgeCandidate",
+        on_delete=models.PROTECT,
+        related_name="knowledge_pipeline_receipt",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="knowledge_pipeline_receipts"
+    )
+    knowledge_entry = models.ForeignKey(
+        KnowledgeEntry,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="knowledge_pipeline_receipts",
+    )
+    embedding = models.ForeignKey(
+        SemanticEmbedding,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="knowledge_pipeline_receipts",
+    )
+    context_package = models.ForeignKey(
+        KnowledgeContextPackage,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="knowledge_pipeline_receipts",
+    )
+    fingerprint = models.CharField(max_length=64)
+    classification = models.CharField(max_length=64)
+    normalized_payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=16, choices=Status.choices)
+    audit_trail = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class KnowledgeContextUse(models.Model):
     """Records which durable Orki decision/execution consumed a package."""
 
@@ -2162,4 +2213,119 @@ class RuntimeKnowledgeCandidate(models.Model):
         if not self._state.adding:
             raise RuntimeCandidateImmutableError("RUNTIME_CANDIDATE_IMMUTABLE")
         self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class CognitiveExperience(models.Model):
+    """Immutable, evidence-bound learning input derived from a verified reflection."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="cognitive_experiences"
+    )
+    reflection_candidate = models.OneToOneField(
+        RuntimeReflectionCandidate,
+        on_delete=models.PROTECT,
+        related_name="cognitive_experience",
+    )
+    experience_key = models.CharField(max_length=96)
+    fingerprint = models.CharField(max_length=64)
+    outcome = models.JSONField(default=dict)
+    reflection_quality = models.FloatField()
+    evidence_references = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "experience_key"],
+                name="unique_cognitive_experience_key",
+            )
+        ]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("COGNITIVE_EXPERIENCE_IMMUTABLE")
+        super().save(*args, **kwargs)
+
+
+class BehaviourCandidate(models.Model):
+    """A governed behaviour improvement proposal; never an execution instruction."""
+
+    class Status(models.TextChoices):
+        CANDIDATE = "CANDIDATE", "Candidate"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="behaviour_candidates"
+    )
+    experience = models.ForeignKey(
+        CognitiveExperience,
+        on_delete=models.PROTECT,
+        related_name="behaviour_candidates",
+    )
+    candidate_key = models.CharField(max_length=96)
+    strategy_key = models.CharField(max_length=128)
+    guidance = models.TextField()
+    applicability = models.JSONField(default=list)
+    reflection_quality = models.FloatField()
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.CANDIDATE
+    )
+    approval_reference = models.CharField(max_length=128, blank=True)
+    audit_trail = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "candidate_key"],
+                name="unique_behaviour_candidate_key",
+            )
+        ]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Keep proposed behaviour immutable while allowing its governed outcome."""
+        if not self._state.adding:
+            original = BehaviourCandidate.objects.get(pk=self.pk)
+            immutable_fields = (
+                "project_id",
+                "experience_id",
+                "candidate_key",
+                "strategy_key",
+                "guidance",
+                "applicability",
+                "reflection_quality",
+            )
+            if any(
+                getattr(self, field) != getattr(original, field)
+                for field in immutable_fields
+            ):
+                raise RuntimeCandidateImmutableError("BEHAVIOUR_CANDIDATE_IMMUTABLE")
+        super().save(*args, **kwargs)
+
+
+class CognitiveGuidancePackage(models.Model):
+    """Persisted, non-executable approved behaviour guidance for a consumer."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="cognitive_guidance_packages"
+    )
+    package_hash = models.CharField(max_length=64, unique=True)
+    query = models.CharField(max_length=500, blank=True)
+    candidate_ids = models.JSONField(default=list)
+    patterns = models.JSONField(default=list)
+    metrics = models.JSONField(default=dict)
+    evidence = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("COGNITIVE_GUIDANCE_PACKAGE_IMMUTABLE")
         super().save(*args, **kwargs)

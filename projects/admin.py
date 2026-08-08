@@ -10,6 +10,9 @@ from django.utils.html import format_html
 
 from projects.execution_activity import activity_summary, events_for_view
 from projects.models import (
+    BehaviourCandidate,
+    CognitiveExperience,
+    CognitiveGuidancePackage,
     CognitiveState,
     CognitiveStateEntry,
     ConversationOrchestration,
@@ -90,6 +93,40 @@ class CognitiveStateEntryAdmin(ReadOnlyAdmin):
     search_fields = ("state__project__project_id",)
     readonly_fields: ClassVar[tuple[str, ...]] = tuple(
         field.name for field in CognitiveStateEntry._meta.fields
+    )
+
+
+@admin.register(CognitiveExperience)
+class CognitiveExperienceAdmin(ReadOnlyAdmin):
+    list_display = ("experience_key", "project", "reflection_quality", "created_at")
+    search_fields = ("experience_key", "project__project_id")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in CognitiveExperience._meta.fields
+    )
+
+
+@admin.register(BehaviourCandidate)
+class BehaviourCandidateAdmin(ReadOnlyAdmin):
+    list_display = (
+        "strategy_key",
+        "project",
+        "status",
+        "reflection_quality",
+        "created_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("strategy_key", "candidate_key", "project__project_id")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in BehaviourCandidate._meta.fields
+    )
+
+
+@admin.register(CognitiveGuidancePackage)
+class CognitiveGuidancePackageAdmin(ReadOnlyAdmin):
+    list_display = ("package_hash", "project", "query", "created_at")
+    search_fields = ("package_hash", "project__project_id")
+    readonly_fields: ClassVar[tuple[str, ...]] = tuple(
+        field.name for field in CognitiveGuidancePackage._meta.fields
     )
 
 

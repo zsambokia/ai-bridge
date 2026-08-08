@@ -142,7 +142,7 @@ stateDiagram-v2
 
 Verification is deterministic Goal Integrity Validation: it compares the original expected outcome and acceptance checks with observed repository changes, build, regression tests and evidence references. It cannot be manually marked successful. Failure is a recoverable Runtime fact and returns to the existing recovery lifecycle.
 
-Reflection persists a run analysis and its evidence references, but cannot write Cognitive State. `OrkiKnowledgeIntegration` is the only Runtime path allowed to submit a KnowledgeEntry candidate, and it runs strictly after `reflection.completed`. A submitted entry is only a `CANDIDATE`; existing AKB Governance remains the sole owner of review, approval, activation and any embedding/index update. Consequently `embedding.generated` is never emitted for a candidate and can only be emitted by that existing owner after activation.
+Reflection persists a run analysis and its evidence references, but cannot write Cognitive State or submit a KnowledgeEntry candidate. The post-MVP Runtime Cleanup removed the legacy `OrkiKnowledgeIntegration` Runtime path. Knowledge Pipeline consumption of `RuntimeKnowledgeCandidate.v1` owns candidate validation, promotion, review, approval, activation, and any embedding/index update. Consequently `embedding.generated` is never emitted by Runtime.
 
 This enforces two platform principles: (11) execution is not knowledge, and (12) reflection precedes knowledge. Runtime events are audit/evidence, not shared knowledge.
 
@@ -164,4 +164,4 @@ recover endpoints retain lifecycle control. Reflection is the only route to a
 Knowledge Integration candidate; Factory Chat has no direct Cognitive State
 write path.
 
-The post-execution event contract is: `verification.completed`, `reflection.started`, `reflection.completed`, `knowledge.candidate.created` or `knowledge.rejected`, `knowledge.accepted` where a valid candidate is submitted, and `knowledge.integrated`. Each carries evidence references. `embedding.generated` remains reserved for the governed active-knowledge indexing flow.
+The canonical Runtime post-execution event contract is: `verification.completed`, `reflection.started`, and `reflection.completed`. Knowledge Pipeline emits its own governed candidate, acceptance, integration, and indexing events. Each carries evidence references.

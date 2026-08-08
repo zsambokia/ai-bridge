@@ -38,7 +38,6 @@ from .runtime_contract import (
     RuntimeKnowledgeCandidateValidator,
     RuntimeReflectionCandidateValidator,
 )
-from .runtime_knowledge_compat import integrate_legacy_reflection
 
 
 class RuntimeTransitionError(ValueError):
@@ -452,8 +451,6 @@ def _complete_factory_plan_approval(
             actor=actor,
             payload={"reflection_id": reflection.pk},
         )
-        _transition(execution, OrkiExecution.State.KNOWLEDGE_INTEGRATING, actor=actor)
-        integrate_legacy_reflection(execution, reflection, {}, actor, _event)
         _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
         execution.plan.status = OrkiPlan.Status.COMPLETED
         execution.plan.save(update_fields=["status", "updated_at"])
@@ -724,8 +721,6 @@ def execute_shadow_operation(
             actor=actor,
             payload={"reflection_id": reflection.pk},
         )
-        _transition(execution, OrkiExecution.State.KNOWLEDGE_INTEGRATING, actor=actor)
-        integrate_legacy_reflection(execution, reflection, result, actor, _event)
         _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
         execution.plan.status = OrkiPlan.Status.COMPLETED
         execution.plan.save(update_fields=["status", "updated_at"])
@@ -1394,21 +1389,10 @@ def dispatch_factory_chat_execution(
             actor=actor,
             payload={"reflection_id": reflection.pk},
         )
-        _transition(execution, OrkiExecution.State.KNOWLEDGE_INTEGRATING, actor=actor)
-        # Provider understanding is an observation, not a Cognitive State write.
-        # Only a valid, evidence-backed AKB candidate may pass this hand-off.
-        candidate = (
-            understanding.get("knowledge_candidate")
-            if isinstance(understanding, Mapping)
-            else None
-        )
-        integrate_legacy_reflection(
-            execution,
-            reflection,
-            {"knowledge_candidate": candidate},
-            actor,
-            _event,
-        )
+        # Provider understanding is an observation, not an AKB mutation.  The
+        # Factory-chat path has no RuntimeCandidate.v1 contract and therefore
+        # ends at reflection; a separately governed Knowledge Pipeline may
+        # consume only an explicit RuntimeKnowledgeCandidate.v1.
         _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
         execution.plan.status = OrkiPlan.Status.COMPLETED
         execution.plan.save(update_fields=["status", "updated_at"])
