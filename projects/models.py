@@ -9,6 +9,13 @@ from typing import Any
 from django.db import models
 from django.utils import timezone
 
+from .runtime_contract import (
+    RUNTIME_CANDIDATE_SCHEMA_VERSION,
+    RuntimeCandidateImmutableError,
+    RuntimeKnowledgeCandidateValidator,
+    RuntimeReflectionCandidateValidator,
+)
+
 
 class Project(models.Model):
     """The one canonical runtime Project Registry record."""
@@ -2031,7 +2038,12 @@ class OrkiReflection(models.Model):
 
 
 class OrkiKnowledgeIntegration(models.Model):
-    """The sole Runtime-owned bridge from a reflected run to an AKB candidate."""
+    """Deprecated compatibility adapter.
+
+    Maintained only during Runtime → Knowledge Pipeline migration.
+    New Runtime implementations MUST NOT depend on this component.
+    Scheduled for removal after Sprint 06.
+    """
 
     class Status(models.TextChoices):
         NOT_REQUIRED = "NOT_REQUIRED", "Not required"
@@ -2068,19 +2080,45 @@ class StructuredDecisionRecord(models.Model):
 
 
 class RuntimeReflectionCandidate(models.Model):
-    """A proposed reflection from the canonical Runtime path, never AKB state."""
+    """Immutable Runtime reflection candidate, never AKB or vector state."""
 
     execution = models.OneToOneField(
         OrkiExecution, on_delete=models.PROTECT, related_name="reflection_candidate"
     )
     contract_version = models.CharField(max_length=64)
-    payload = models.JSONField(default=dict)
+    schema_version = models.CharField(
+        max_length=64, default=RUNTIME_CANDIDATE_SCHEMA_VERSION
+    )
+    goal_id = models.UUIDField()
+    summary = models.TextField()
+    reflection_text = models.TextField()
+    verification_result = models.JSONField(default=dict)
+    confidence = models.FloatField()
     evidence_references = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def clean(self) -> None:
+        RuntimeReflectionCandidateValidator.validate_record(
+            {
+                "schema_version": self.schema_version,
+                "goal_id": self.goal_id,
+                "summary": self.summary,
+                "reflection_text": self.reflection_text,
+                "verification_result": self.verification_result,
+                "confidence": self.confidence,
+                "evidence_references": self.evidence_references,
+            }
+        )
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("RUNTIME_CANDIDATE_IMMUTABLE")
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 
 class RuntimeKnowledgeCandidate(models.Model):
-    """A Runtime-produced candidate awaiting Sprint 06 knowledge governance."""
+    """Immutable Runtime candidate awaiting Sprint 06 knowledge governance."""
 
     execution = models.OneToOneField(
         OrkiExecution, on_delete=models.PROTECT, related_name="knowledge_candidate"
@@ -2091,9 +2129,37 @@ class RuntimeKnowledgeCandidate(models.Model):
         related_name="knowledge_candidates",
     )
     contract_version = models.CharField(max_length=64)
-    payload = models.JSONField(default=dict)
+    schema_version = models.CharField(
+        max_length=64, default=RUNTIME_CANDIDATE_SCHEMA_VERSION
+    )
+    title = models.CharField(max_length=255)
+    summary = models.TextField()
+    body = models.TextField()
+    reason = models.TextField()
+    confidence = models.FloatField()
+    tags = models.JSONField(default=list)
     evidence_references = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
+
+    def clean(self) -> None:
+        RuntimeKnowledgeCandidateValidator.validate_record(
+            {
+                "schema_version": self.schema_version,
+                "title": self.title,
+                "summary": self.summary,
+                "body": self.body,
+                "reason": self.reason,
+                "confidence": self.confidence,
+                "tags": self.tags,
+                "evidence_references": self.evidence_references,
+            }
+        )
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("RUNTIME_CANDIDATE_IMMUTABLE")
+        self.full_clean()
+        super().save(*args, **kwargs)

@@ -1,8 +1,8 @@
-"""Deprecated compatibility bridge for pre-Sprint-05 Runtime knowledge writes.
+"""Deprecated compatibility adapter.
 
-New canonical executions must only create RuntimeKnowledgeCandidate records.  This
-adapter preserves the legacy Factory Runtime behaviour until Sprint 06 owns
-knowledge promotion and AKB mutation.
+Maintained only during Runtime → Knowledge Pipeline migration.
+New Runtime implementations MUST NOT depend on this component.
+Scheduled for removal after Sprint 06.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ def integrate_legacy_reflection(
     actor: str,
     emit_event: Callable[..., object],
 ) -> OrkiKnowledgeIntegration:
-    """Maintain legacy AKB-candidate creation behind one isolated adapter."""
+    """Maintain the temporary legacy AKB path without extending its ownership."""
     evidence = list(reflection.evidence_references)
     candidate = result.get("knowledge_candidate")
     if not isinstance(candidate, Mapping):

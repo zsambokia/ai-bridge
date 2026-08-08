@@ -67,7 +67,19 @@ class StructuredDecisionRuntimeTests(TestCase):
             actor="runtime-test",
             operation=lambda: {
                 "verification": {"passed": True},
-                "knowledge_candidate": {"title": "Candidate only"},
+                "reflection_candidate": {
+                    "summary": "The artifact was verified.",
+                    "reflection_text": "Verification evidence confirms the goal.",
+                    "confidence": 0.95,
+                },
+                "knowledge_candidate": {
+                    "title": "Candidate only",
+                    "summary": "A verified Runtime artifact.",
+                    "body": "The artifact exists and was read back successfully.",
+                    "reason": "Reusable execution evidence.",
+                    "confidence": 0.9,
+                    "tags": ["runtime", "verification"],
+                },
                 "evidence_references": ["artifact:runtime-proof"],
             },
         )

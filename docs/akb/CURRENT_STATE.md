@@ -890,3 +890,12 @@ the same job enters the established recovery controller; never create another
 run or provider execution. Completion requires a verified local Git HEAD and
 non-empty evidence manifest. Arbitrary pre-existing local sessions are
 explicitly audited as `UNVERIFIED` and cannot be attached.
+
+## AI Bridge 2.0 Sprint 05.1 Runtime Contract Hardening
+
+The canonical Runtime emits only immutable `RuntimeCandidate.v1` reflection and
+knowledge candidates after verification. Candidate schemas are explicit and reject
+embedding, vector, index, activation, AKB, and `KnowledgeEntry` ownership fields
+recursively. The legacy Runtime-to-AKB integration remains an isolated deprecated
+compatibility adapter until the Sprint 06 Knowledge Pipeline migration; it is not
+part of canonical structured-decision execution.

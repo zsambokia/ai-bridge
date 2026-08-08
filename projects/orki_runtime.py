@@ -32,6 +32,12 @@ from .models import (
     RuntimeReflectionCandidate,
 )
 from .providers import model_adapter_for, model_text_response
+from .runtime_contract import (
+    RUNTIME_CANDIDATE_SCHEMA_VERSION,
+    RuntimeCandidateValidationError,
+    RuntimeKnowledgeCandidateValidator,
+    RuntimeReflectionCandidateValidator,
+)
 from .runtime_knowledge_compat import integrate_legacy_reflection
 
 
@@ -923,10 +929,23 @@ def execute_structured_decision(
             event_type="ReflectionStarted",
         )
         evidence = cast(list[str], verification["evidence_references"])
+        reflection_input = result.get("reflection_candidate")
+        if not isinstance(reflection_input, Mapping):
+            raise RuntimeCandidateValidationError(
+                "RUNTIME_CANDIDATE_REQUIRED_FIELDS:reflection_candidate"
+            )
+        reflection_data = RuntimeReflectionCandidateValidator.validate_input(
+            reflection_input
+        )
         reflection = RuntimeReflectionCandidate.objects.create(
             execution=execution,
             contract_version=CONTRACT_VERSION,
-            payload={"verification": verification, "result": result},
+            schema_version=RUNTIME_CANDIDATE_SCHEMA_VERSION,
+            goal_id=execution.plan.goal.token,
+            summary=cast(str, reflection_data["summary"]),
+            reflection_text=cast(str, reflection_data["reflection_text"]),
+            verification_result=verification,
+            confidence=cast(float, reflection_data["confidence"]),
             evidence_references=evidence,
         )
         _event(
@@ -936,11 +955,25 @@ def execute_structured_decision(
             payload={"candidate_id": reflection.pk},
         )
         _transition(execution, OrkiExecution.State.KNOWLEDGE_CANDIDATE, actor=actor)
+        knowledge_input = result.get("knowledge_candidate")
+        if not isinstance(knowledge_input, Mapping):
+            raise RuntimeCandidateValidationError(
+                "RUNTIME_CANDIDATE_REQUIRED_FIELDS:knowledge_candidate"
+            )
+        knowledge_data = RuntimeKnowledgeCandidateValidator.validate_input(
+            knowledge_input
+        )
         candidate = RuntimeKnowledgeCandidate.objects.create(
             execution=execution,
             reflection_candidate=reflection,
             contract_version=CONTRACT_VERSION,
-            payload=dict(result.get("knowledge_candidate") or {}),
+            schema_version=RUNTIME_CANDIDATE_SCHEMA_VERSION,
+            title=cast(str, knowledge_data["title"]),
+            summary=cast(str, knowledge_data["summary"]),
+            body=cast(str, knowledge_data["body"]),
+            reason=cast(str, knowledge_data["reason"]),
+            confidence=cast(float, knowledge_data["confidence"]),
+            tags=cast(list[str], knowledge_data["tags"]),
             evidence_references=evidence,
         )
         _event(
