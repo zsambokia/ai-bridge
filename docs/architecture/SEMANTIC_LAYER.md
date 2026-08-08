@@ -50,6 +50,22 @@ provider decides which AKB entries are selected.
 - **Providers** may receive an attributable context package but cannot define
   selection behaviour.
 
+## Sprint 02 Semantic Intelligence implementation
+
+`DjangoVectorStore` indexes only `ACTIVE` AKB entries scoped to the requested
+Project or Platform. It persists a versioned `SemanticEmbedding` cache with a
+deterministic identity, source version and content hash. The initial
+`LOCAL_HASH/v1` provider is deterministic and local; its `EmbeddingProvider`
+boundary permits FAISS, pgvector, Qdrant or Pinecone-backed adapters without
+Runtime changes.
+
+`SemanticCandidateSelector` returns cosine-ranked candidates only, with score,
+reason, metadata and embedding/source evidence. `RetrievalService` is RAG
+retrieval only. `SemanticContextBuilder` is the only Semantic component which
+formats retrieved text, applies its token budget, and emits evidence. Embedding
+generation occurs only via explicit index/reindex after AKB approval; Runtime
+execution never generates embeddings.
+
 ## Program evolution
 
 1. **Sprint 02 — Embedding Infrastructure:** governed embedding identity,

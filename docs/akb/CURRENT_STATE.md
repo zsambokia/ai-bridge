@@ -1,5 +1,15 @@
 # AI Bridge – Current State
 
+## Sprint 02 Semantic Intelligence — 2026-08-08
+
+The Semantic Layer is implemented as an additive, provider-independent
+retrieval foundation. Approved, active AKB entries can be explicitly indexed
+into a versioned local vector cache and retrieved as scored candidates with
+metadata and reproducible evidence. `SemanticCandidateSelector` and RAG only
+rank and return candidates; they do not make business decisions or execute
+Runtime actions. `SemanticContextBuilder` is the semantic path for bounded,
+deduplicated LLM context assembly. The Runtime remains unchanged.
+
 ## Orki Orchestrator Runtime Foundation — 2026-08-07
 
 The approved Runtime baseline is implemented in Factory Development Mode as a

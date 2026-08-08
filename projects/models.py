@@ -154,9 +154,7 @@ class FailureIncident(models.Model):
     correlation_id = models.CharField(max_length=128)
     summary = models.CharField(max_length=1000)
     causal_classification = models.CharField(max_length=64, blank=True)
-    status = models.CharField(
-        max_length=16, choices=Status.choices, default=Status.OPEN
-    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
     timeline = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -932,6 +930,30 @@ class KnowledgeContextPackage(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class SemanticEmbedding(models.Model):
+    """Versioned local vector cache for an approved AKB entry."""
+
+    entry = models.ForeignKey(
+        KnowledgeEntry, on_delete=models.CASCADE, related_name="semantic_embeddings"
+    )
+    embedding_id = models.CharField(max_length=64, unique=True)
+    provider = models.CharField(max_length=64)
+    model_version = models.CharField(max_length=64)
+    source_version = models.CharField(max_length=128)
+    content_hash = models.CharField(max_length=64)
+    vector = models.JSONField(default=list)
+    metadata = models.JSONField(default=dict)
+    indexed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["entry", "provider", "model_version"],
+                name="unique_semantic_embedding_version",
+            )
+        ]
 
 
 class KnowledgeContextUse(models.Model):
@@ -1859,7 +1881,9 @@ class OrkiGoal(models.Model):
         related_name="runtime_goal_references",
     )
     intent_reference = models.JSONField(default=dict, blank=True)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.OPEN
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2003,8 +2027,11 @@ class OrkiKnowledgeIntegration(models.Model):
         OrkiReflection, on_delete=models.PROTECT, related_name="knowledge_integration"
     )
     knowledge_entry = models.ForeignKey(
-        KnowledgeEntry, null=True, blank=True, on_delete=models.PROTECT,
-        related_name="runtime_integrations"
+        KnowledgeEntry,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="runtime_integrations",
     )
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.NOT_REQUIRED)
     evidence_references = models.JSONField(default=list, blank=True)
