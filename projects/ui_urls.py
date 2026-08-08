@@ -1,5 +1,10 @@
 from django.urls import path
 
+from .decision_api import (
+    reasoning_decision,
+    reasoning_decision_detail,
+    reasoning_schema,
+)
 from .factory_chat import (
     factory_chat,
     factory_chat_message,
@@ -22,6 +27,13 @@ from .runtime_api import (
 )
 
 urlpatterns = [
+    path("reasoning/decision", reasoning_decision, name="reasoning-decision"),
+    path(
+        "reasoning/decision/<uuid:decision_id>",
+        reasoning_decision_detail,
+        name="reasoning-decision-detail",
+    ),
+    path("reasoning/schema", reasoning_schema, name="reasoning-schema"),
     path("", factory_chat, name="factory-chat"),
     path("factory/message/", factory_chat_message, name="factory-chat-message"),
     path("factory/plan/", factory_plan_create, name="factory-plan-create"),

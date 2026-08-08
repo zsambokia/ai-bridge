@@ -36,5 +36,6 @@ The Planner creates only a dependency graph and expected evidence.
 This separation preserves the canonical future path:
 
 ```text
-Semantic Layer -> Reasoning Layer -> Structured Decision -> Runtime
+Semantic Layer -> Reasoning Layer -> Structured Decision Framework
+-> StructuredDecision.v1 -> Runtime
 ```

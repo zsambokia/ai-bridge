@@ -2038,3 +2038,15 @@ class OrkiKnowledgeIntegration(models.Model):
     embedding_reference = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class StructuredDecisionRecord(models.Model):
+    """Append-only audit record for a validated, non-executable decision contract."""
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    contract_version = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]

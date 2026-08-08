@@ -53,6 +53,7 @@ class PlanTask:
 @dataclass(frozen=True)
 class StructuredDecision:
     goal: str
+    intent: str
     behaviour: str
     confidence: float
     plan: tuple[PlanTask, ...]
@@ -195,6 +196,7 @@ class ReasoningFramework:
         critic = self.critic.review(intent, situation)
         return StructuredDecision(
             context.goal,
+            understanding.intent,
             behaviour,
             intent.confidence,
             self.planner.plan(intent, context.evidence),
