@@ -123,8 +123,12 @@ def hold_unhandled_job_for_remediation(
             }
             locked.save(
                 update_fields=[
-                    "status", "lease_owner", "lease_expires_at", "next_recovery_at",
-                    "provider_attempt_metadata", "updated_at",
+                    "status",
+                    "lease_owner",
+                    "lease_expires_at",
+                    "next_recovery_at",
+                    "provider_attempt_metadata",
+                    "updated_at",
                 ]
             )
             locked.run.lifecycle = ExecutionRun.Lifecycle.REPAIRING
@@ -137,7 +141,10 @@ def hold_unhandled_job_for_remediation(
             }
             locked.run.save(
                 update_fields=[
-                    "lifecycle", "current_phase", "current_blocker", "updated_at"
+                    "lifecycle",
+                    "current_phase",
+                    "current_blocker",
+                    "updated_at",
                 ]
             )
         from .execution import add_event
@@ -177,8 +184,12 @@ def hold_unhandled_job_for_remediation(
         }
         locked.save(
             update_fields=[
-                "status", "lease_owner", "lease_expires_at", "next_recovery_at",
-                "provider_attempt_metadata", "updated_at",
+                "status",
+                "lease_owner",
+                "lease_expires_at",
+                "next_recovery_at",
+                "provider_attempt_metadata",
+                "updated_at",
             ]
         )
     from .execution import add_event
@@ -395,9 +406,10 @@ def escalate_business_decision(
 ) -> TechnicalRemediationEscalation:
     """Persist an explicit business question instead of guessing an outcome."""
     required_values = (gate_name, summary, idempotency_key)
-    if not all(
-        isinstance(value, str) and value.strip() for value in required_values
-    ) or not evidence_references:
+    if (
+        not all(isinstance(value, str) and value.strip() for value in required_values)
+        or not evidence_references
+    ):
         raise ValueError("BUSINESS_ESCALATION_INPUT_REQUIRED")
     parent_run = ExecutionRun.objects.select_for_update().get(pk=parent_run.pk)
     parent_scope = _parent_scope(parent_run)
@@ -577,11 +589,9 @@ def complete_technical_remediation(
         .filter(run=run, status=ExecutionJob.Status.FAILED)
         .first()
     )
-    if (
-        job is not None
-        and job.provider_attempt_metadata.get("technical_remediation_loop")
-        == str(loop.pk)
-    ):
+    if job is not None and job.provider_attempt_metadata.get(
+        "technical_remediation_loop"
+    ) == str(loop.pk):
         job.status = ExecutionJob.Status.QUEUED
         job.next_recovery_at = None
         job.provider_attempt_metadata = {
@@ -590,7 +600,10 @@ def complete_technical_remediation(
         }
         job.save(
             update_fields=[
-                "status", "next_recovery_at", "provider_attempt_metadata", "updated_at"
+                "status",
+                "next_recovery_at",
+                "provider_attempt_metadata",
+                "updated_at",
             ]
         )
     McpAuditEvent.objects.create(

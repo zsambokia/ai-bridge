@@ -5,14 +5,13 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("projects", "0041_sprint7_remediation_self_healing"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='TechnicalRemediationValidation',
+            name="TechnicalRemediationValidation",
             fields=[
                 (
                     "id",

@@ -7,7 +7,6 @@ Project, plan, approval, execution and knowledge services retain authority.
 from __future__ import annotations
 
 import logging
-import unicodedata
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -22,10 +21,8 @@ from .factory_coding import coding_projection
 from .factory_memory import memory_projection
 from .factory_missions import human_projection, mission_for
 from .factory_orki import availability, get_or_create_session, messages_for
-from .factory_orki import reply as orki_reply
 from .factory_planning import (
     approve_plan,
-    create_plan,
     reject_plan,
     request_plan_changes,
 )
@@ -40,8 +37,16 @@ from .models import (
     FactoryPlan,
     GovernanceApproval,
     KnowledgeContextPackage,
+    OrkiExecution,
     Project,
     RuntimeDeployment,
+)
+from .orki_runtime import (
+    create_factory_plan_in_shadow,
+    dispatch_factory_chat_execution,
+    execution_projection,
+    observe_factory_plan_approval,
+    start_factory_chat_execution,
 )
 
 SESSION_KEY = "factory_chat"
@@ -100,6 +105,7 @@ def _context(
             "memory_mode": None,
             "plan": None,
             "deployment": None,
+            "runtime": None,
             "state_text": "Válassz vagy indíts egy projektet.",
             "next_step": "Mondd el, min szeretnél dolgozni.",
         }
@@ -119,6 +125,12 @@ def _context(
         .first()
     )
     mission_object = mission_for(session) if session is not None else None
+    runtime_execution = (
+        OrkiExecution.objects.filter(plan__goal__project=project)
+        .select_related("plan__goal")
+        .order_by("-created_at")
+        .first()
+    )
     context: dict[str, object] = {
         "project": project,
         "scope": project.scopes.exclude(status=ExecutableScope.Status.ACCEPTED)
@@ -137,6 +149,9 @@ def _context(
         .first(),
         "deployment": deployment,
         "mission": human_projection(mission_object),
+        "runtime": execution_projection(runtime_execution)
+        if runtime_execution is not None
+        else None,
     }
     context["artifact"] = (
         run
@@ -193,13 +208,14 @@ def _safe_chat_error(
     request: HttpRequest,
     *,
     correlation_id: str,
-    code: str = "CHAT_UNAVAILABLE",
-    status: int = 503,
+    code: str = "RUNTIME_INGRESS_REJECTED",
+    status: int = 400,
     message: str | None = None,
 ) -> HttpResponse:
     """Return only a plain-language recovery path to the Product Owner."""
-    message = (
-        message or "Most nem sikerült elküldeni az üzenetet. Kérlek, próbáld újra."
+    message = message or (
+        "A Runtime a kérést nem tudta rögzíteni; javítsd a jelzett adatot, "
+        "majd küldd el újra."
     )
     if _enhanced(request):
         return JsonResponse(
@@ -247,25 +263,10 @@ def _response(request: HttpRequest, project: Project, mode: str) -> HttpResponse
     )
 
 
-def _approval_phrase(text: str) -> bool:
-    """Recognize an unambiguous Product Owner approval without an LLM call."""
-    normalized = "".join(
-        character
-        for character in unicodedata.normalize("NFKD", text.casefold())
-        if not unicodedata.combining(character)
-    )
-    return normalized.strip() in {
-        "jovahagyom",
-        "jovahagyom a tervet",
-        "ok mehet",
-        "oke mehet",
-        "rendben mehet",
-    }
-
-
 def _continue_after_plan_approval(plan: FactoryPlan, actor: str) -> FactoryPlan:
     """Record one plan approval without starting repository or execution work."""
     approved_plan = approve_plan(plan.pk, plan.project, actor)
+    observe_factory_plan_approval(approved_plan, actor=actor)
     session = (
         FactoryChatSession.objects.filter(project=plan.project)
         .order_by("-updated_at")
@@ -283,40 +284,6 @@ def _continue_after_plan_approval(plan: FactoryPlan, actor: str) -> FactoryPlan:
         }
         mission.save(update_fields=["phase", "delivery_status", "updated_at"])
     return approved_plan
-
-
-def _record_natural_language_approval(
-    request: HttpRequest, plan: FactoryPlan, text: str, correlation_id: str
-) -> list[dict[str, str | int]]:
-    """Keep semantic approval in the transcript while bypassing provider inference."""
-    session = get_or_create_session(request, plan.project)
-    prior = [
-        message
-        for message in messages_for(session)
-        if message.get("correlation_id") == correlation_id
-    ]
-    if prior:
-        return prior
-    FactoryChatMessage.objects.create(
-        session=session,
-        role=FactoryChatMessage.Role.OWNER,
-        body=text,
-        correlation_id=correlation_id,
-    )
-    FactoryChatMessage.objects.create(
-        session=session,
-        role=FactoryChatMessage.Role.ORKI,
-        body=(
-            "A tervet jóváhagytad. Orki átvette a szállítást, és a "
-            "jóváhagyott terv szerint folytatja a következő lépéssel."
-        ),
-        correlation_id=correlation_id,
-    )
-    return [
-        message
-        for message in messages_for(session)
-        if message.get("correlation_id") == correlation_id
-    ]
 
 
 def _new_project_from_answers(answers: list[str]) -> Project:
@@ -384,24 +351,31 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
             message="Az üzenet megadása kötelező és legfeljebb 12 000 karakter lehet.",
         )
     project = _selected_project(request)
-    pending_plan = (
-        FactoryPlan.objects.filter(
-            project=project,
-            status=FactoryPlan.Status.PENDING_APPROVAL,
+    if project is None:
+        return _safe_chat_error(
+            request,
+            correlation_id=correlation_id,
+            code="PROJECT_REQUIRED",
+            status=400,
+            message="A Runtime indításához előbb válassz vagy hozz létre projektet.",
         )
-        .order_by("-created_at")
-        .first()
-        if project
-        else None
-    )
+    execution: OrkiExecution | None = None
     try:
-        if pending_plan and _approval_phrase(text):
-            _continue_after_plan_approval(pending_plan, request.user.get_username())
-            added = _record_natural_language_approval(
-                request, pending_plan, text, correlation_id
+        execution = start_factory_chat_execution(
+            project=project,
+            session=get_or_create_session(request, project),
+            text=text,
+            correlation_id=correlation_id,
+            actor=request.user.get_username(),
+        )
+        # Existing clients retain their synchronous response shape, but the
+        # work is still exclusively executed by the Runtime.  The Live Runtime
+        # Monitor explicitly opts into the two-step ingress/stream contract.
+        runtime_async = request.headers.get("X-Orki-Runtime-Async") == "1"
+        if not runtime_async:
+            dispatch_factory_chat_execution(
+                str(execution.token), actor=request.user.get_username()
             )
-        else:
-            added = orki_reply(request, project, text, correlation_id)
     except (OSError, TimeoutError, ValueError, RuntimeError) as exc:
         logger.warning(
             "factory_chat_request_failed",
@@ -414,17 +388,56 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
                 "factory_conversation_id": "",
             },
         )
-        return _safe_chat_error(request, correlation_id=correlation_id)
-    if _enhanced(request):
-        orki_session = get_or_create_session(request, project)
-        return JsonResponse(
-            {
-                "messages": added,
-                "ok": added[-1]["status"] != FactoryChatMessage.Status.FAILED,
-                "orki_availability": availability(orki_session),
-                "correlation_id": correlation_id,
-            }
+        if execution is not None:
+            execution.refresh_from_db()
+            projection = execution_projection(execution)
+            if _enhanced(request):
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": "RUNTIME_STATE_REQUIRES_ATTENTION",
+                            "message": projection["human_message"],
+                            "retryable": execution.state.startswith("WAITING_"),
+                        },
+                        "correlation_id": correlation_id,
+                        "execution": projection,
+                        "orki_availability": availability(
+                            get_or_create_session(request, project)
+                        ),
+                    },
+                    status=409,
+                )
+            return HttpResponseBadRequest(str(projection["human_message"]))
+        return _safe_chat_error(
+            request,
+            correlation_id=correlation_id,
+            code="RUNTIME_INGRESS_FAILED",
+            status=500,
+            message=(
+                "A Runtime indítása a kérés rögzítése előtt megszakadt. "
+                "Kérlek, próbáld meg ismét."
+            ),
         )
+    if _enhanced(request):
+        execution.refresh_from_db()
+        orki_session = get_or_create_session(request, project)
+        payload = {
+            "messages": [
+                message
+                for message in messages_for(orki_session)
+                if message.get("correlation_id") == correlation_id
+            ],
+            "ok": True,
+            "orki_availability": availability(orki_session),
+            "correlation_id": correlation_id,
+            "execution": execution_projection(execution),
+        }
+        if runtime_async:
+            payload["dispatch_url"] = reverse(
+                "runtime-execution-dispatch", args=[execution.token]
+            )
+        return JsonResponse(payload, status=202 if runtime_async else 200)
     return redirect("factory-chat")
 
 
@@ -437,7 +450,7 @@ def factory_plan_create(request: HttpRequest) -> HttpResponse:
         lifecycle=Project.Lifecycle.ACTIVE,
     )
     try:
-        create_plan(
+        create_factory_plan_in_shadow(
             project,
             {
                 "outcome": request.POST.get("outcome", ""),
@@ -449,7 +462,12 @@ def factory_plan_create(request: HttpRequest) -> HttpResponse:
                 "risk_modifiers": request.POST.get("risk_modifiers", ""),
                 "business_escalation": request.POST.get("business_escalation", ""),
             },
-            request.user.get_username(),
+            actor=request.user.get_username(),
+            session=(
+                FactoryChatSession.objects.filter(project=project)
+                .order_by("-updated_at")
+                .first()
+            ),
         )
     except ValueError as exc:
         return _safe_action_error(request, exc)

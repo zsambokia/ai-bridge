@@ -12,6 +12,14 @@ from .factory_chat import (
     factory_plan_reject,
     factory_plan_request_changes,
 )
+from .runtime_api import (
+    runtime_execution_detail,
+    runtime_execution_dispatch,
+    runtime_execution_event_stream,
+    runtime_execution_pause,
+    runtime_execution_recover,
+    runtime_execution_resume,
+)
 
 urlpatterns = [
     path("", factory_chat, name="factory-chat"),
@@ -43,5 +51,35 @@ urlpatterns = [
         "factory/new-project/",
         factory_chat_new_project,
         name="factory-chat-new-project",
+    ),
+    path(
+        "runtime/executions/<uuid:token>/",
+        runtime_execution_detail,
+        name="runtime-execution-detail",
+    ),
+    path(
+        "runtime/executions/<uuid:token>/dispatch/",
+        runtime_execution_dispatch,
+        name="runtime-execution-dispatch",
+    ),
+    path(
+        "runtime/executions/<uuid:token>/events/stream/",
+        runtime_execution_event_stream,
+        name="runtime-execution-event-stream",
+    ),
+    path(
+        "runtime/executions/<uuid:token>/pause/",
+        runtime_execution_pause,
+        name="runtime-execution-pause",
+    ),
+    path(
+        "runtime/executions/<uuid:token>/resume/",
+        runtime_execution_resume,
+        name="runtime-execution-resume",
+    ),
+    path(
+        "runtime/executions/<uuid:token>/recover/",
+        runtime_execution_recover,
+        name="runtime-execution-recover",
     ),
 ]

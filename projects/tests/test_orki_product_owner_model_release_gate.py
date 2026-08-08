@@ -200,8 +200,7 @@ class ProductOwnerModelReleaseGateTests(TestCase):
                 content={
                     "attribute": attribute,
                     "value": (
-                        "Recent delivery choices consistently favour "
-                        "small increments"
+                        "Recent delivery choices consistently favour small increments"
                     ),
                 },
                 provenance=self._source(number + 2),
@@ -294,7 +293,7 @@ class ProductOwnerModelReleaseGateTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "owner-model-gate-provider",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter,
+            patch("projects.orki_runtime.model_adapter_for") as adapter,
         ):
             adapter.return_value.invoke_model.return_value = {
                 "output_text": json.dumps(
@@ -316,10 +315,11 @@ class ProductOwnerModelReleaseGateTests(TestCase):
                             "product_owner_profile": {
                                 "dimension": "governance_preference",
                                 "preference": "Prefer explicit release gates",
-                        "rationale": (
-                            "The stated objective and read-only constraint favour "
-                            "controlled delivery."
-                        ),
+                                "rationale": (
+                                    "The stated objective and read-only constraint "
+                                    "favour "
+                                    "controlled delivery."
+                                ),
                                 "evidence_attributes": [
                                     "stated_intent",
                                     "stated_constraints",

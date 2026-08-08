@@ -1830,3 +1830,184 @@ class ProviderAuditEvent(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class OrkiGoal(models.Model):
+    """Runtime intent reference; it never owns or copies Cognitive State knowledge."""
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Open"
+        ACHIEVED = "ACHIEVED", "Achieved"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="orki_goals"
+    )
+    source_session = models.ForeignKey(
+        FactoryChatSession,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="runtime_goals",
+    )
+    cognitive_goal = models.ForeignKey(
+        CognitiveStateEntry,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="runtime_goal_references",
+    )
+    intent_reference = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class OrkiPlan(models.Model):
+    """Versioned execution strategy that references, rather than duplicates, knowledge."""
+
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        SELECTED = "SELECTED", "Selected"
+        SUPERSEDED = "SUPERSEDED", "Superseded"
+        COMPLETED = "COMPLETED", "Completed"
+
+    goal = models.ForeignKey(OrkiGoal, on_delete=models.PROTECT, related_name="plans")
+    version = models.PositiveIntegerField(default=1)
+    factory_plan = models.ForeignKey(
+        FactoryPlan,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="runtime_plans",
+    )
+    cognitive_plan = models.ForeignKey(
+        CognitiveStateEntry,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="runtime_plan_references",
+    )
+    plan_hash = models.CharField(max_length=64, blank=True)
+    strategy_references = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["goal", "-version"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["goal", "version"], name="unique_orki_plan_goal_version"
+            )
+        ]
+
+
+class OrkiExecution(models.Model):
+    """Canonical provider-neutral execution lifecycle; never replaces ExecutionRun."""
+
+    class Mode(models.TextChoices):
+        SHADOW = "SHADOW", "Shadow"
+        LIVE = "LIVE", "Live"
+
+    class State(models.TextChoices):
+        CREATED = "CREATED", "Created"
+        PLANNING = "PLANNING", "Planning"
+        WAITING_APPROVAL = "WAITING_APPROVAL", "Waiting for approval"
+        WAITING_GOVERNANCE = "WAITING_GOVERNANCE", "Waiting for governance"
+        DISPATCHING = "DISPATCHING", "Dispatching"
+        RUNNING = "RUNNING", "Running"
+        VERIFYING = "VERIFYING", "Verifying"
+        REFLECTING = "REFLECTING", "Reflecting"
+        KNOWLEDGE_INTEGRATING = "KNOWLEDGE_INTEGRATING", "Knowledge integrating"
+        WAITING_EXTERNAL = "WAITING_EXTERNAL", "Waiting for external input"
+        WAITING_FOR_USER = "WAITING_FOR_USER", "Waiting for user"
+        PAUSED = "PAUSED", "Paused"
+        SUCCEEDED = "SUCCEEDED", "Succeeded"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    plan = models.ForeignKey(OrkiPlan, on_delete=models.PROTECT, related_name="executions")
+    execution_run = models.ForeignKey(
+        ExecutionRun,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="orki_executions",
+    )
+    mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.SHADOW)
+    state = models.CharField(max_length=24, choices=State.choices, default=State.CREATED)
+    state_version = models.PositiveIntegerField(default=0)
+    paused_from_state = models.CharField(max_length=24, blank=True)
+    waiting_reason = models.JSONField(default=dict, blank=True)
+    governance_reference = models.JSONField(default=dict, blank=True)
+    provider_context = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["state", "mode", "created_at"])]
+
+
+class OrkiRuntimeEvent(models.Model):
+    """Append-only, evidence-addressable Runtime Event Stream record."""
+
+    execution = models.ForeignKey(
+        OrkiExecution, on_delete=models.PROTECT, related_name="events"
+    )
+    sequence = models.PositiveIntegerField()
+    event_type = models.CharField(max_length=64)
+    actor_identity = models.CharField(max_length=255, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    evidence_references = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["execution", "sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["execution", "sequence"], name="unique_orki_runtime_sequence"
+            )
+        ]
+
+
+class OrkiReflection(models.Model):
+    """Execution-bound reflection artifact; it is not Cognitive State or AKB."""
+
+    execution = models.OneToOneField(
+        OrkiExecution, on_delete=models.PROTECT, related_name="reflection"
+    )
+    analysis = models.JSONField(default=dict, blank=True)
+    evidence_references = models.JSONField(default=list, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class OrkiKnowledgeIntegration(models.Model):
+    """The sole Runtime-owned bridge from a reflected run to an AKB candidate."""
+
+    class Status(models.TextChoices):
+        NOT_REQUIRED = "NOT_REQUIRED", "Not required"
+        CANDIDATE_CREATED = "CANDIDATE_CREATED", "Candidate created"
+        ACCEPTED_FOR_REVIEW = "ACCEPTED_FOR_REVIEW", "Accepted for governance review"
+        REJECTED = "REJECTED", "Rejected"
+
+    reflection = models.OneToOneField(
+        OrkiReflection, on_delete=models.PROTECT, related_name="knowledge_integration"
+    )
+    knowledge_entry = models.ForeignKey(
+        KnowledgeEntry, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="runtime_integrations"
+    )
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.NOT_REQUIRED)
+    evidence_references = models.JSONField(default=list, blank=True)
+    embedding_reference = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

@@ -5,15 +5,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("projects", "0040_conversationorchestration_caller_fingerprint_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='technicalremediationloop',
-            name='incident',
+            model_name="technicalremediationloop",
+            name="incident",
             field=models.OneToOneField(
                 blank=True,
                 null=True,
@@ -23,12 +22,12 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.AddField(
-            model_name='technicalremediationloop',
-            name='resume_checkpoint',
+            model_name="technicalremediationloop",
+            name="resume_checkpoint",
             field=models.JSONField(blank=True, default=dict),
         ),
         migrations.CreateModel(
-            name='TechnicalRemediationEscalation',
+            name="TechnicalRemediationEscalation",
             fields=[
                 (
                     "id",

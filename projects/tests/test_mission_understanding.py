@@ -118,8 +118,7 @@ class MissionUnderstandingTests(TestCase):
         )
         evolved = self._observation(
             inferred_business_goal=(
-                "A készlethiányból eredő bevételkiesés és sürgős beszerzés "
-                "csökkentése"
+                "A készlethiányból eredő bevételkiesés és sürgős beszerzés csökkentése"
             ),
             inference_confidence=0.91,
             material_unknowns=["Melyik üzleti egység legyen a pilot?"],
@@ -227,7 +226,7 @@ class MissionUnderstandingPublicBoundaryTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "mission-http-provider",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+            patch("projects.orki_runtime.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.return_value = response
             self.client.get(

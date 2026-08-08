@@ -6,8 +6,8 @@ from collections.abc import Mapping
 
 from django.db import transaction
 
-from .factory_planning import create_plan
 from .models import FactoryChatSession, FactoryMission
+from .orki_runtime import create_factory_plan_in_shadow
 
 CONFIDENCE_THRESHOLD = 0.70
 _TEXT_FIELDS = (
@@ -164,7 +164,7 @@ def create_plan_when_sufficient(mission: FactoryMission, actor: str) -> FactoryM
         else "A fő munkafolyamat végigvihető."
     )
     with transaction.atomic():
-        plan = create_plan(
+        plan = create_factory_plan_in_shadow(
             project,
             {
                 "outcome": mission.objective,
@@ -173,7 +173,8 @@ def create_plan_when_sufficient(mission: FactoryMission, actor: str) -> FactoryM
                 "acceptance_checks": checks,
                 "risk_modifiers": "",
             },
-            actor,
+            actor=actor,
+            session=mission.session,
         )
         plan.plan_document = document
         plan.save(update_fields=["plan_document", "updated_at"])

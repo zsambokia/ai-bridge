@@ -65,7 +65,7 @@ class InitiativeEngineReleaseGateTests(TestCase):
                     "AI_BRIDGE_FACTORY_ORKI_PROVIDER": "initiative-gate-provider",
                 },
             ),
-            patch("projects.factory_orki.model_adapter_for") as adapter_for,
+            patch("projects.orki_runtime.model_adapter_for") as adapter_for,
         ):
             adapter_for.return_value.invoke_model.return_value = {
                 "output_text": json.dumps(

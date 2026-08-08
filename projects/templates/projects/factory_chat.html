@@ -31,6 +31,157 @@
     const setPanel=panel=>{workspace.classList.remove('show-projects','show-context');if(panel!=='chat')workspace.classList.add('show-'+panel);document.querySelectorAll('[data-panel]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.panel===panel)))};document.querySelectorAll('[data-panel]').forEach(button=>button.addEventListener('click',()=>setPanel(button.dataset.panel)));document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();composer.focus()}if(event.key==='Escape')setPanel('chat')});
     const refresh=async()=>{try{const response=await fetch(statusUrl,{headers:{'X-Requested-With':'FactoryChat'}});if(response.ok)document.getElementById('context-status').innerHTML=await response.text()}catch(_){/* The conversation remains usable while context refresh recovers. */}};
     retryButton.addEventListener('click',()=>{if(!pending||busy)return;composer.value=pending.text;sessionStorage.setItem(draftKey(),composer.value);chatForm.requestSubmit()});
-    document.addEventListener('submit',async event=>{const form=event.target;if(!form.matches('[data-chat-form],[data-new-project],[data-factory-action]'))return;event.preventDefault();if(busy||form.dataset.busy)return;const isChat=form.matches('[data-chat-form]'),expectsPayload=isChat||form.matches('[data-new-project]'),text=isChat?composer.value:'';if(isChat&&!text.trim()){feedback('Üres üzenetet nem lehet küldeni.',true);return}const following=nearBottom(),formData=new FormData(form);let currentRequestId='';if(isChat){currentRequestId=pending?.text===text?pending.id:requestId();pending={id:currentRequestId,text};sessionStorage.setItem(pendingKey(),JSON.stringify(pending));formData.set('request_id',currentRequestId);addMessage({role:'owner',text,clientRequestId:currentRequestId},following,true)}form.dataset.busy='1';retryButton.hidden=true;setBusy(true,isChat?'Összerendezi a célodat és a következő lépést.':'Rögzíti a döntést.');try{const response=await fetch(form.action,{method:'POST',body:formData,headers:{'X-Requested-With':'FactoryChat'}}),data=await safeJson(response);if(!response.ok||(expectsPayload&&!data)){showFailure(data);return}if(expectsPayload){if(form.matches('[data-new-project]'))messages.replaceChildren();syncMessages(data.messages,following,currentRequestId);if(data.orki_availability){const status=document.getElementById('orki-status');status.textContent=data.orki_availability.label;status.dataset.state=data.orki_availability.state}if(!data.ok){showFailure(data);return}pending=null;sessionStorage.removeItem(pendingKey());sessionStorage.removeItem(draftKey());composer.value='';autoGrow();setPanel('chat')}await refresh()}catch(_){showFailure()}finally{delete form.dataset.busy;setBusy(false)}});messages.scrollTop=messages.scrollHeight;window.setInterval(()=>{if(!busy)refresh()},7000);
+    document.addEventListener('submit',async event=>{const form=event.target;if(!form.matches('[data-chat-form],[data-new-project],[data-factory-action]'))return;event.preventDefault();if(busy||form.dataset.busy)return;const isChat=form.matches('[data-chat-form]'),expectsPayload=isChat||form.matches('[data-new-project]'),text=isChat?composer.value:'';if(isChat&&!text.trim()){feedback('Üres üzenetet nem lehet küldeni.',true);return}const following=nearBottom(),formData=new FormData(form);let currentRequestId='';if(isChat){currentRequestId=pending?.text===text?pending.id:requestId();pending={id:currentRequestId,text};sessionStorage.setItem(pendingKey(),JSON.stringify(pending));formData.set('request_id',currentRequestId);addMessage({role:'owner',text,clientRequestId:currentRequestId},following,true)}form.dataset.busy='1';retryButton.hidden=true;setBusy(true,isChat?'Összerendezi a célodat és a következő lépést.':'Rögzíti a döntést.');try{const response=await fetch(form.action,{method:'POST',body:formData,headers:{'X-Requested-With':'FactoryChat',...(isChat?{'X-Orki-Runtime-Async':'1'}:{})}}),data=await safeJson(response);if(!response.ok||(expectsPayload&&!data)){showFailure(data);return}if(expectsPayload){if(form.matches('[data-new-project]'))messages.replaceChildren();syncMessages(data.messages,following,currentRequestId);if(isChat&&data.execution){document.dispatchEvent(new CustomEvent('orki-runtime-projection',{detail:data.execution}));if(data.dispatch_url){const dispatchResponse=await fetch(data.dispatch_url,{method:'POST',body:new FormData(form),headers:{'X-Requested-With':'FactoryChat'}}),dispatchData=await safeJson(dispatchResponse);if(!dispatchResponse.ok||!dispatchData){showFailure(dispatchData);return}syncMessages(dispatchData.messages,following,currentRequestId);document.dispatchEvent(new CustomEvent('orki-runtime-projection',{detail:dispatchData.execution||dispatchData}))}}if(data.orki_availability){const status=document.getElementById('orki-status');status.textContent=data.orki_availability.label;status.dataset.state=data.orki_availability.state}if(!data.ok){showFailure(data);return}pending=null;sessionStorage.removeItem(pendingKey());sessionStorage.removeItem(draftKey());composer.value='';autoGrow();setPanel('chat')}await refresh()}catch(_){showFailure()}finally{delete form.dataset.busy;setBusy(false)}});messages.scrollTop=messages.scrollHeight;window.setInterval(()=>{if(!busy)refresh()},7000);
+  </script>
+  <style>
+    .runtime-monitor { margin: 0.75rem 0; padding: 0.75rem; border: 1px solid #d7e1f2; border-radius: 0.5rem; background: #f8fbff; font-size: 0.9rem; }
+    .runtime-monitor h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .runtime-monitor dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem; margin: 0; }
+    .runtime-monitor dt { font-weight: 600; }
+    .runtime-monitor dd { margin: 0; }
+    .runtime-monitor .runtime-message { margin: 0.5rem 0 0; }
+  </style>
+  <section class="runtime-monitor" aria-live="polite" aria-label="Orki Runtime monitor">
+    <h2>Orki Runtime monitor</h2>
+    <dl>
+      <dt>OESM</dt><dd data-runtime="state">Nincs aktív végrehajtás</dd>
+      <dt>Goal</dt><dd data-runtime="goal">—</dd>
+      <dt>Tervezés</dt><dd data-runtime="planning">—</dd>
+      <dt>Előrehaladás</dt><dd data-runtime="progress">—</dd>
+      <dt>Aktuális lépés</dt><dd data-runtime="step">—</dd>
+      <dt>Várakozás oka</dt><dd data-runtime="waiting">—</dd>
+      <dt>Recovery</dt><dd data-runtime="recovery">—</dd>
+      <dt>Reflection</dt><dd data-runtime="reflection">—</dd>
+      <dt>Knowledge integration</dt><dd data-runtime="knowledge">—</dd>
+      <dt>Indult</dt><dd data-runtime="started">—</dd>
+      <dt>Következő lépés</dt><dd data-runtime="next">—</dd>
+      <dt>Evidence</dt><dd data-runtime="evidence">—</dd>
+    </dl>
+    <p class="runtime-message" data-runtime="message">A Runtime még nem indított végrehajtást.</p>
+  </section>
+  <script>
+  (() => {
+    const form = document.querySelector("[data-chat-form]");
+    const composer = document.getElementById("message");
+    const submit = form ? form.querySelector('button[type="submit"]') : null;
+    const transcript = document.getElementById("chat-messages");
+    const thinking = document.getElementById("orki-thinking");
+    const runtime = key => document.querySelector('[data-runtime="' + key + '"]');
+    let stream = null;
+    let busy = false;
+
+    const setRuntime = (key, value) => {
+      const node = runtime(key);
+      if (node) node.textContent = value || "—";
+    };
+    const appendMessage = message => {
+      if (!message || !transcript) return;
+      const article = document.createElement("article");
+      if (message.id && transcript.querySelector('[data-message-id="' + message.id + '"]')) return;
+      article.className = "message " + (message.role === "orki" ? "orki" : "owner");
+      if (message.id) article.dataset.messageId = message.id;
+      article.textContent = message.text || message.content || "";
+      transcript.appendChild(article);
+      transcript.scrollTop = transcript.scrollHeight;
+    };
+    const renderMessages = messages => (messages || []).forEach(appendMessage);
+    const project = payload => {
+      const p = payload && (payload.presentation || payload);
+      if (!p || !p.runtime_state) return;
+      setRuntime("state", p.runtime_state);
+      setRuntime("goal", p.goal_status || "—");
+      setRuntime("planning", p.planning_status || "—");
+      setRuntime("progress", p.progress_percent == null ? "—" : p.progress_percent + "%");
+      setRuntime("step", p.current_step || "—");
+      setRuntime("waiting", p.waiting_message || "—");
+      setRuntime("recovery", (p.recovery_events || []).map(item => item.event_type || item.type || item).join(", ") || "—");
+      setRuntime("reflection", p.reflection_status || "—");
+      setRuntime("knowledge", p.knowledge_integration_status || "—");
+      setRuntime("started", p.started_at || "—");
+      setRuntime("next", p.estimated_next_step || "—");
+      setRuntime("evidence", p.evidence_reference || "—");
+      setRuntime("message", p.human_message || "—");
+    };
+    const openStream = token => {
+      if (stream) stream.close();
+      stream = new EventSource("/runtime/executions/" + encodeURIComponent(token) + "/events/stream/");
+      stream.addEventListener("runtime", event => project(JSON.parse(event.data)));
+      stream.addEventListener("snapshot", event => project(JSON.parse(event.data)));
+      stream.addEventListener("completed", event => {
+        const data = JSON.parse(event.data);
+        project(data);
+        renderMessages(data.messages);
+        stream.close();
+        stream = null;
+      });
+      stream.addEventListener("failed", event => {
+        const data = JSON.parse(event.data);
+        project(data);
+        renderMessages(data.messages);
+        stream.close();
+        stream = null;
+      });
+      stream.addEventListener("terminal", event => {
+        project(JSON.parse(event.data));
+        stream.close();
+        stream = null;
+      });
+    };
+    const requestId = () => {
+      const field = form.querySelector('input[name="request_id"]');
+      if (!field.value) field.value = crypto.randomUUID();
+    };
+
+    document.addEventListener("submit", async event => {
+      // The canonical Factory Chat handler above owns ingress and dispatch.
+      // This monitor subscribes to its Runtime projections and never creates a bypass.
+      return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (busy || !composer.value.trim()) return;
+      busy = true;
+      requestId();
+      if (submit) submit.disabled = true;
+      if (thinking) thinking.hidden = false;
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          headers: {
+            "X-Requested-With": "FactoryChat",
+            "X-Orki-Runtime-Async": "1"
+          },
+          body: new FormData(form),
+        });
+        const data = await response.json();
+        project(data.execution || data);
+        renderMessages(data.messages);
+        if (!response.ok) return;
+        composer.value = "";
+        const token = data.execution && data.execution.token;
+        if (token) openStream(token);
+        if (data.dispatch_url) {
+          const dispatched = await fetch(data.dispatch_url, {
+            method: "POST",
+            headers: { "X-Requested-With": "FactoryChat" },
+            body: new FormData(form),
+          });
+          const result = await dispatched.json();
+          project(result.execution || result);
+          renderMessages(result.messages);
+        }
+      } catch (error) {
+        setRuntime("message", "A Runtime kapcsolata megszakadt; a következő állapot a szervertől érkezik.");
+      } finally {
+        busy = false;
+        if (submit) submit.disabled = false;
+        if (thinking) thinking.hidden = true;
+      }
+    }, true);
+    document.addEventListener("orki-runtime-projection", event => {
+      const execution = event.detail;
+      project(execution);
+      if (execution && execution.token && !stream) openStream(execution.token);
+    });
+  })();
   </script>
 </body></html>
