@@ -3,7 +3,11 @@
 **Repository:** `zsambokia/ai-bridge`
 **Branch:** `main`
 **Baseline:** `efa4b7fe47c43378638c042ca5ed53326098c7b1`
-**Final state:** uncommitted working tree; no final commit has been created.
+**Validated implementation revision:** `dce6b0568e246f5060e7b6cf71694769be9e12f0`
+
+The release gates were executed against the reproducible implementation tree
+recorded in this revision. The subsequent closure-evidence commit changes no
+executable code, configuration, migration, or test content.
 
 | Gate | Command | Result | Evidence |
 | --- | --- | --- | --- |

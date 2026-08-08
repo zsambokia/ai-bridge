@@ -35,6 +35,7 @@
 
 ## Remaining work
 
-- No technical remediation remains. The Sprint 01 implementation is ready for
-  its main-only closure commit; the unrelated Factory Chat browser-test change
-  remains deliberately excluded from this Sprint's scope and commit.
+- No technical remediation remains. The validated Sprint 01 implementation is
+  committed as `dce6b0568e246f5060e7b6cf71694769be9e12f0`; the unrelated Factory
+  Chat browser-test change remains deliberately excluded from this Sprint's
+  scope and commit.
