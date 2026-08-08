@@ -854,6 +854,16 @@ contract, completed run, and Coding projection. It also checks the mobile
 single-column Chat surface. This is integration evidence, not a new browser
 authority or a claim of direct provider dispatch.
 
+## AI Bridge 2.0 Sprint 03 Cognitive Decision Framework
+
+Sprint 03 adds the pure `projects.reasoning` framework. It consumes the
+bounded `SemanticContextV2` artifact and returns an immutable
+`StructuredDecision` through Understanding, Situation, Behaviour, Reasoning,
+Critic and Planning stages. It stops before Runtime: it performs no execution,
+provider call, AKB write, state transition, or database change. Missing
+semantic evidence is critic feedback (`needs_user`), not a fabricated decision
+or autonomous recovery action.
+
 ## Sprint D local Codex operational knowledge
 
 Use `prepare_local_codex` (or the `prepare_local_codex` management command)

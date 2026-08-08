@@ -2,8 +2,8 @@
 
 ## Status
 
-Sprint 01 establishes the Semantic Layer foundation. Its current capability is
-**durable, governed context selection**, not semantic retrieval.
+Sprint 02 delivers the Semantic Intelligence implementation: durable,
+governed semantic retrieval and bounded context selection.
 
 ## Canonical boundary
 
@@ -68,12 +68,10 @@ execution never generates embeddings.
 
 ## Program evolution
 
-1. **Sprint 02 — Embedding Infrastructure:** governed embedding identity,
-   versioning, storage, refresh and invalidation.
-2. **Sprint 03 — Semantic Retrieval:** query embedding, scoped similarity
-   retrieval, deterministic safety filters and rank provenance.
-3. **Sprint 04 — Context Builder Evolution:** compose bounded RAG context from
-   retrieved candidates while preserving evidence and conflict diagnostics.
+Sprint 02 completed embedding infrastructure, scoped semantic retrieval and
+bounded Context Builder v2. Sprint 03 consumes its `SemanticContextV2` only
+through the separate Cognitive Decision Framework; semantic retrieval remains
+candidate-only and never becomes a business-decision owner.
 
 The target reusable decision pattern remains:
 
@@ -81,5 +79,5 @@ The target reusable decision pattern remains:
 Embedding -> Semantic Retrieval/RAG -> Reasoning -> Structured Decision -> Runtime
 ```
 
-Until Sprints 02–04 pass, callers must honestly use the current deterministic
-foundation rather than claiming that target pattern is already available.
+The Semantic Layer is operational. Callers must retain its candidate-only
+boundary and pass the bounded result to Reasoning for decision formation.
