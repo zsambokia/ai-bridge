@@ -61,8 +61,15 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
         execution = OrkiExecution.objects.get(token=token)
         self.assertEqual(execution.state, OrkiExecution.State.PLANNING)
         self.assertEqual(execution.mode, OrkiExecution.Mode.LIVE)
-        self.assertTrue(execution.events.filter(event_type="FACTORY_CHAT_INGRESS_ACCEPTED").exists())
-        self.assertEqual(FactoryChatMessage.objects.filter(session=execution.plan.goal.source_session).count(), 1)
+        self.assertTrue(
+            execution.events.filter(event_type="FACTORY_CHAT_INGRESS_ACCEPTED").exists()
+        )
+        self.assertEqual(
+            FactoryChatMessage.objects.filter(
+                session=execution.plan.goal.source_session
+            ).count(),
+            1,
+        )
 
         dispatched = self.client.post(ingress["dispatch_url"])
 
@@ -77,8 +84,12 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
             [message["role"] for message in result["messages"]],
             ["owner", "orki"],
         )
-        self.assertTrue(any(event["type"] == "reflection.completed" for event in result["events"]))
-        self.assertTrue(any(event["type"] == "GOAL_ACHIEVED" for event in result["events"]))
+        self.assertTrue(
+            any(event["type"] == "reflection.completed" for event in result["events"])
+        )
+        self.assertTrue(
+            any(event["type"] == "GOAL_ACHIEVED" for event in result["events"])
+        )
         self.assertEqual(
             list(
                 FactoryChatMessage.objects.filter(
@@ -111,7 +122,9 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
 
         with patch(
             "projects.factory_orki._provider",
-            side_effect=__import__("projects.factory_orki", fromlist=["ModelProviderSelectionUnavailable"]).ModelProviderSelectionUnavailable(),
+            side_effect=__import__(
+                "projects.factory_orki", fromlist=["ModelProviderSelectionUnavailable"]
+            ).ModelProviderSelectionUnavailable(),
         ):
             response = self.client.post(
                 reverse("runtime-execution-dispatch", args=[token])

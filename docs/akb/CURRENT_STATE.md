@@ -1,5 +1,20 @@
 # AI Bridge – Current State
 
+## Sprint 05 Orki Runtime Orchestrator — 2026-08-08
+
+The Runtime now has a canonical, provider-neutral structured-decision path:
+`StructuredDecision -> Planning -> Execution -> Verification ->
+ReflectionCandidate -> KnowledgeCandidate`. It stores the decision-derived
+goal, versioned plan and append-only Runtime events, and exposes its live
+execution projection without making an AKB mutation. Verification requires
+explicit passing evidence; failures enter recoverable `RECOVERY -> RETRYING`
+states. The pre-existing reflection-to-AKB flow remains operational only behind
+the deprecated `runtime_knowledge_compat` adapter for the Sprint 06 migration.
+The canonical path creates `RuntimeReflectionCandidate` and
+`RuntimeKnowledgeCandidate` artifacts, leaving candidate validation,
+promotion, embedding, indexing and AKB mutation to the future knowledge
+lifecycle owner. Architecture: [Orki Runtime Orchestrator](../architecture/ORKI_RUNTIME_ORCHESTRATOR.md).
+
 ## Sprint 02 Semantic Intelligence — 2026-08-08
 
 The Semantic Layer is implemented as an additive, provider-independent

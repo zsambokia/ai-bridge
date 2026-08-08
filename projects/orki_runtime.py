@@ -6,14 +6,16 @@ ExecutionContract and ExecutionRun retain their existing owners and semantics.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from django.db import transaction
 from django.utils import timezone
 
+from .decision_contract.framework import CONTRACT_VERSION, ExecutionRequest
 from .factory_planning import approve_plan, create_plan
-from .knowledge import create_or_upsert_candidate
 from .models import (
     CognitiveStateEntry,
     FactoryChatMessage,
@@ -22,13 +24,15 @@ from .models import (
     FactoryPlan,
     OrkiExecution,
     OrkiGoal,
-    OrkiKnowledgeIntegration,
     OrkiPlan,
     OrkiReflection,
     OrkiRuntimeEvent,
     Project,
+    RuntimeKnowledgeCandidate,
+    RuntimeReflectionCandidate,
 )
 from .providers import model_adapter_for, model_text_response
+from .runtime_knowledge_compat import integrate_legacy_reflection
 
 
 class RuntimeTransitionError(ValueError):
@@ -38,6 +42,7 @@ class RuntimeTransitionError(ValueError):
 _TRANSITIONS: dict[str, set[str]] = {
     OrkiExecution.State.CREATED: {OrkiExecution.State.PLANNING},
     OrkiExecution.State.PLANNING: {
+        OrkiExecution.State.READY,
         OrkiExecution.State.WAITING_APPROVAL,
         OrkiExecution.State.WAITING_EXTERNAL,
         OrkiExecution.State.DISPATCHING,
@@ -61,6 +66,7 @@ _TRANSITIONS: dict[str, set[str]] = {
         OrkiExecution.State.FAILED,
     },
     OrkiExecution.State.RUNNING: {
+        OrkiExecution.State.WAITING,
         OrkiExecution.State.VERIFYING,
         OrkiExecution.State.WAITING_EXTERNAL,
         OrkiExecution.State.WAITING_FOR_USER,
@@ -76,6 +82,7 @@ _TRANSITIONS: dict[str, set[str]] = {
         OrkiExecution.State.CANCELLED,
     },
     OrkiExecution.State.REFLECTING: {
+        OrkiExecution.State.KNOWLEDGE_CANDIDATE,
         OrkiExecution.State.KNOWLEDGE_INTEGRATING,
         OrkiExecution.State.COMPLETED,
         OrkiExecution.State.WAITING_EXTERNAL,
@@ -100,9 +107,28 @@ _TRANSITIONS: dict[str, set[str]] = {
         OrkiExecution.State.CANCELLED,
     },
     OrkiExecution.State.PAUSED: set(),  # Resume restores the recorded prior state.
+    OrkiExecution.State.READY: {
+        OrkiExecution.State.RUNNING,
+        OrkiExecution.State.PAUSED,
+        OrkiExecution.State.CANCELLED,
+    },
+    OrkiExecution.State.WAITING: {
+        OrkiExecution.State.RUNNING,
+        OrkiExecution.State.PAUSED,
+        OrkiExecution.State.CANCELLED,
+    },
+    OrkiExecution.State.RETRYING: {
+        OrkiExecution.State.RUNNING,
+        OrkiExecution.State.CANCELLED,
+    },
+    OrkiExecution.State.RECOVERY: {
+        OrkiExecution.State.RETRYING,
+        OrkiExecution.State.CANCELLED,
+    },
+    OrkiExecution.State.KNOWLEDGE_CANDIDATE: {OrkiExecution.State.COMPLETED},
     OrkiExecution.State.SUCCEEDED: set(),
     OrkiExecution.State.COMPLETED: set(),
-    OrkiExecution.State.FAILED: set(),
+    OrkiExecution.State.FAILED: {OrkiExecution.State.RECOVERY},
     OrkiExecution.State.CANCELLED: set(),
 }
 
@@ -421,7 +447,7 @@ def _complete_factory_plan_approval(
             payload={"reflection_id": reflection.pk},
         )
         _transition(execution, OrkiExecution.State.KNOWLEDGE_INTEGRATING, actor=actor)
-        _integrate_reflection(execution, reflection, {}, actor)
+        integrate_legacy_reflection(execution, reflection, {}, actor, _event)
         _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
         execution.plan.status = OrkiPlan.Status.COMPLETED
         execution.plan.save(update_fields=["status", "updated_at"])
@@ -693,7 +719,7 @@ def execute_shadow_operation(
             payload={"reflection_id": reflection.pk},
         )
         _transition(execution, OrkiExecution.State.KNOWLEDGE_INTEGRATING, actor=actor)
-        _integrate_reflection(execution, reflection, result, actor)
+        integrate_legacy_reflection(execution, reflection, result, actor, _event)
         _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
         execution.plan.status = OrkiPlan.Status.COMPLETED
         execution.plan.save(update_fields=["status", "updated_at"])
@@ -701,6 +727,270 @@ def execute_shadow_operation(
         execution.plan.goal.save(update_fields=["status", "updated_at"])
         _event(execution, "GOAL_ACHIEVED", actor=actor, payload={"result": result})
         return execution
+
+
+def _execution_request_definition(request: ExecutionRequest) -> dict[str, object]:
+    """Canonical, immutable Runtime projection of an already validated decision."""
+    return {
+        "decision_id": str(request.decision_id),
+        "goal": request.goal,
+        "behaviour": request.evidence.behaviour,
+        "plan": [
+            {
+                "identifier": item.identifier,
+                "title": item.title,
+                "depends_on": list(item.depends_on),
+                "expected_result": item.expected_result,
+            }
+            for item in request.plan
+        ],
+        "required_capabilities": list(request.required_capabilities),
+        "required_tools": list(request.required_tools),
+        "required_workflows": list(request.required_workflows),
+        "evidence": {
+            "knowledge_entry_ids": list(request.evidence.knowledge_entry_ids),
+            "embedding_hits": list(request.evidence.embedding_hits),
+            "critic_observations": list(request.evidence.critic_observations),
+        },
+    }
+
+
+def start_structured_decision_execution(
+    project: Project, request: ExecutionRequest, *, actor: str
+) -> OrkiExecution:
+    """Create the canonical Runtime lifecycle from a validated decision request.
+
+    Reasoning has already selected the behaviour, plan, tools, and capabilities.
+    Runtime only persists and executes that immutable request; it never ranks or
+    changes business candidates.
+    """
+    if request.contract_version != CONTRACT_VERSION:
+        raise ValueError("RUNTIME_DECISION_CONTRACT_VERSION_INVALID")
+    if not request.plan or not request.evidence.behaviour.strip():
+        raise ValueError("RUNTIME_DECISION_REQUEST_INCOMPLETE")
+    definition = _execution_request_definition(request)
+    plan_hash = hashlib.sha256(
+        json.dumps(definition, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    with transaction.atomic():
+        existing = (
+            OrkiExecution.objects.select_for_update()
+            .filter(provider_context__decision_id=str(request.decision_id))
+            .order_by("-created_at")
+            .first()
+        )
+        if existing:
+            return existing
+        goal = OrkiGoal.objects.create(
+            project=project,
+            intent_reference={
+                "structured_decision_id": str(request.decision_id),
+                "contract_version": request.contract_version,
+                "goal": request.goal,
+            },
+        )
+        plan = OrkiPlan.objects.create(
+            goal=goal,
+            version=1,
+            plan_hash=plan_hash,
+            contract_version=request.contract_version,
+            definition=definition,
+            strategy_references={"decision_id": str(request.decision_id)},
+            status=OrkiPlan.Status.SELECTED,
+        )
+        execution = OrkiExecution.objects.create(
+            plan=plan,
+            mode=OrkiExecution.Mode.SHADOW,
+            behaviour=request.evidence.behaviour,
+            provider_context={
+                "decision_id": str(request.decision_id),
+                "contract_version": request.contract_version,
+                "provider": "runtime-operation-gateway",
+            },
+        )
+        _event(execution, "GoalCreated", actor=actor, payload={"goal": request.goal})
+        _transition(
+            execution,
+            OrkiExecution.State.PLANNING,
+            actor=actor,
+            event_type="PlanningStarted",
+        )
+        _event(
+            execution,
+            "PlanningCompleted",
+            actor=actor,
+            payload={"plan_hash": plan_hash, "version": plan.version},
+        )
+        _transition(execution, OrkiExecution.State.READY, actor=actor)
+        return execution
+
+
+def execute_structured_decision(
+    execution_token: str,
+    *,
+    actor: str,
+    operation: Callable[[], Mapping[str, Any]],
+) -> OrkiExecution:
+    """Execute a supplied operation through the canonical Sprint-05 lifecycle.
+
+    The callable is the provider gateway seam.  Its selection is outside the
+    Runtime; the Runtime records provider/task events, verifies supplied
+    evidence, and emits candidates without AKB mutation.
+    """
+    with transaction.atomic():
+        execution = (
+            OrkiExecution.objects.select_for_update()
+            .select_related("plan__goal")
+            .get(token=execution_token)
+        )
+        if execution.state not in {
+            OrkiExecution.State.READY,
+            OrkiExecution.State.RETRYING,
+        }:
+            raise RuntimeTransitionError("RUNTIME_STRUCTURED_EXECUTION_NOT_READY")
+        _transition(
+            execution,
+            OrkiExecution.State.RUNNING,
+            actor=actor,
+            event_type="ExecutionStarted",
+        )
+        _event(
+            execution,
+            "TaskStarted",
+            actor=actor,
+            payload={"behaviour": execution.behaviour},
+        )
+        _event(
+            execution,
+            "ProviderStarted",
+            actor=actor,
+            payload={"gateway": execution.provider_context.get("provider")},
+        )
+    try:
+        result = dict(operation())
+    except Exception as error:
+        with transaction.atomic():
+            execution = OrkiExecution.objects.select_for_update().get(
+                token=execution_token
+            )
+            _event(
+                execution,
+                "Failed",
+                actor=actor,
+                payload={"error_type": type(error).__name__},
+            )
+            _transition(execution, OrkiExecution.State.FAILED, actor=actor)
+            return execution
+    with transaction.atomic():
+        execution = (
+            OrkiExecution.objects.select_for_update()
+            .select_related("plan__goal")
+            .get(token=execution_token)
+        )
+        _event(
+            execution,
+            "ProviderCompleted",
+            actor=actor,
+            payload={"gateway": execution.provider_context.get("provider")},
+        )
+        _event(
+            execution,
+            "TaskCompleted",
+            actor=actor,
+            payload={"result_keys": sorted(result)},
+        )
+        _transition(
+            execution,
+            OrkiExecution.State.VERIFYING,
+            actor=actor,
+            event_type="VerificationStarted",
+        )
+        verification = _structured_verification(result)
+        _event(execution, "VerificationCompleted", actor=actor, payload=verification)
+        if not verification["passed"]:
+            _event(
+                execution,
+                "Failed",
+                actor=actor,
+                payload={"failures": verification["failures"]},
+            )
+            _transition(execution, OrkiExecution.State.FAILED, actor=actor)
+            return execution
+        _transition(
+            execution,
+            OrkiExecution.State.REFLECTING,
+            actor=actor,
+            event_type="ReflectionStarted",
+        )
+        evidence = cast(list[str], verification["evidence_references"])
+        reflection = RuntimeReflectionCandidate.objects.create(
+            execution=execution,
+            contract_version=CONTRACT_VERSION,
+            payload={"verification": verification, "result": result},
+            evidence_references=evidence,
+        )
+        _event(
+            execution,
+            "ReflectionCompleted",
+            actor=actor,
+            payload={"candidate_id": reflection.pk},
+        )
+        _transition(execution, OrkiExecution.State.KNOWLEDGE_CANDIDATE, actor=actor)
+        candidate = RuntimeKnowledgeCandidate.objects.create(
+            execution=execution,
+            reflection_candidate=reflection,
+            contract_version=CONTRACT_VERSION,
+            payload=dict(result.get("knowledge_candidate") or {}),
+            evidence_references=evidence,
+        )
+        _event(
+            execution,
+            "KnowledgeCandidateCreated",
+            actor=actor,
+            payload={"candidate_id": candidate.pk},
+            evidence_references=evidence,
+        )
+        _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
+        execution.plan.status = OrkiPlan.Status.COMPLETED
+        execution.plan.save(update_fields=["status", "updated_at"])
+        execution.plan.goal.status = OrkiGoal.Status.ACHIEVED
+        execution.plan.goal.save(update_fields=["status", "updated_at"])
+        _event(
+            execution,
+            "GoalCompleted",
+            actor=actor,
+            payload={"goal": execution.plan.goal.intent_reference["goal"]},
+        )
+        _event(execution, "Finished", actor=actor, payload={"state": execution.state})
+        return execution
+
+
+def recover_structured_decision(execution_token: str, *, actor: str) -> OrkiExecution:
+    """Make a failed canonical execution retryable without losing its audit trail."""
+    with transaction.atomic():
+        execution = OrkiExecution.objects.select_for_update().get(token=execution_token)
+        if execution.state != OrkiExecution.State.FAILED:
+            raise RuntimeTransitionError("RUNTIME_STRUCTURED_RECOVERY_NOT_AVAILABLE")
+        _transition(execution, OrkiExecution.State.RECOVERY, actor=actor)
+        _transition(execution, OrkiExecution.State.RETRYING, actor=actor)
+        return execution
+
+
+def _structured_verification(result: Mapping[str, Any]) -> dict[str, object]:
+    verification = result.get("verification")
+    if not isinstance(verification, Mapping):
+        return {
+            "passed": False,
+            "failures": ["VERIFICATION_MISSING"],
+            "evidence_references": [],
+        }
+    evidence = list(result.get("evidence_references") or [])
+    passed = verification.get("passed") is True and bool(evidence)
+    return {
+        "passed": passed,
+        "failures": [] if passed else ["VERIFICATION_FAILED_OR_EVIDENCE_MISSING"],
+        "evidence_references": evidence,
+    }
 
 
 def _chat_messages_for_correlation(
@@ -1079,8 +1369,12 @@ def dispatch_factory_chat_execution(
             if isinstance(understanding, Mapping)
             else None
         )
-        _integrate_reflection(
-            execution, reflection, {"knowledge_candidate": candidate}, actor
+        integrate_legacy_reflection(
+            execution,
+            reflection,
+            {"knowledge_candidate": candidate},
+            actor,
+            _event,
         )
         _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
         execution.plan.status = OrkiPlan.Status.COMPLETED
@@ -1139,91 +1433,6 @@ def _validate_goal_integrity(
     }
 
 
-def _integrate_reflection(
-    execution: OrkiExecution,
-    reflection: OrkiReflection,
-    result: Mapping[str, Any],
-    actor: str,
-) -> OrkiKnowledgeIntegration:
-    """The only Runtime code path permitted to create an AKB candidate."""
-    evidence = list(reflection.evidence_references)
-    candidate = result.get("knowledge_candidate")
-    if not isinstance(candidate, Mapping):
-        integration = OrkiKnowledgeIntegration.objects.create(
-            reflection=reflection,
-            status=OrkiKnowledgeIntegration.Status.NOT_REQUIRED,
-            evidence_references=evidence,
-        )
-        _event(
-            execution,
-            "knowledge.rejected",
-            actor=actor,
-            payload={"reason": "not_required"},
-            evidence_references=evidence,
-        )
-        return integration
-    required = {"entry_key", "knowledge_type", "title", "content"}
-    if not required.issubset(candidate) or not evidence:
-        integration = OrkiKnowledgeIntegration.objects.create(
-            reflection=reflection,
-            status=OrkiKnowledgeIntegration.Status.REJECTED,
-            evidence_references=evidence,
-        )
-        _event(
-            execution,
-            "knowledge.rejected",
-            actor=actor,
-            payload={"reason": "candidate_invalid"},
-            evidence_references=evidence,
-        )
-        return integration
-    project = execution.plan.goal.project
-    entry = create_or_upsert_candidate(
-        project,
-        {
-            **dict(candidate),
-            "scope": "PROJECT",
-            "source_type": "RUNTIME_REFLECTION",
-            "source_reference": f"runtime-execution:{execution.token}",
-            "evidence_references": evidence,
-            "work_context_id": f"runtime:{execution.token}",
-        },
-        actor,
-    )
-    integration = OrkiKnowledgeIntegration.objects.create(
-        reflection=reflection,
-        knowledge_entry=entry,
-        status=OrkiKnowledgeIntegration.Status.ACCEPTED_FOR_REVIEW,
-        evidence_references=evidence,
-        embedding_reference=f"pending-governance:{entry.entry_key}",
-    )
-    _event(
-        execution,
-        "knowledge.candidate.created",
-        actor=actor,
-        payload={"knowledge_entry_id": entry.pk},
-        evidence_references=evidence,
-    )
-    _event(
-        execution,
-        "knowledge.accepted",
-        actor=actor,
-        payload={"knowledge_entry_id": entry.pk, "status": entry.status},
-        evidence_references=evidence,
-    )
-    # Runtime never owns an embedding index.  An embedding.generated event is
-    # emitted only by the existing knowledge/index owner after this candidate
-    # becomes ACTIVE through its normal governed approval path.
-    _event(
-        execution,
-        "knowledge.integrated",
-        actor=actor,
-        payload={"integration_id": integration.pk},
-        evidence_references=evidence,
-    )
-    return integration
-
-
 def runtime_presentation(
     execution: OrkiExecution, *, progress_percent: int
 ) -> dict[str, object]:
@@ -1241,6 +1450,22 @@ def runtime_presentation(
         OrkiExecution.State.PLANNING: (
             "A Runtime a célt végrehajtható tervvé rendezi.",
             "A provider-hívás előkészítése következik.",
+        ),
+        OrkiExecution.State.READY: (
+            "The Runtime has a validated plan and is ready to execute.",
+            "Execution can begin through the provider gateway.",
+        ),
+        OrkiExecution.State.WAITING: (
+            "The Runtime is waiting for a runtime dependency.",
+            "Execution resumes when the dependency is available.",
+        ),
+        OrkiExecution.State.RETRYING: (
+            "The Runtime has recovered a failed execution and will retry.",
+            "The provider gateway is the next step.",
+        ),
+        OrkiExecution.State.RECOVERY: (
+            "The Runtime is preserving evidence while it prepares recovery.",
+            "A retryable execution state follows.",
         ),
         OrkiExecution.State.WAITING_APPROVAL: (
             "A Runtime a szükséges jóváhagyásra vár.",
@@ -1269,6 +1494,10 @@ def runtime_presentation(
         OrkiExecution.State.KNOWLEDGE_INTEGRATING: (
             "A Runtime a reflektált tanulságot ellenőrzött tudásjelöltté alakítja.",
             "A végrehajtás lezárása következik.",
+        ),
+        OrkiExecution.State.KNOWLEDGE_CANDIDATE: (
+            "The Runtime produced a knowledge candidate for later governance.",
+            "The execution can now complete without AKB mutation.",
         ),
         OrkiExecution.State.WAITING_EXTERNAL: (
             "A Runtime külső függőségre vár; a futás helyreállítható.",
@@ -1332,10 +1561,15 @@ def execution_projection(execution: OrkiExecution) -> dict[str, Any]:
         OrkiExecution.State.WAITING_APPROVAL: 30,
         OrkiExecution.State.WAITING_GOVERNANCE: 40,
         OrkiExecution.State.DISPATCHING: 60,
+        OrkiExecution.State.READY: 40,
+        OrkiExecution.State.WAITING: 45,
+        OrkiExecution.State.RETRYING: 55,
+        OrkiExecution.State.RECOVERY: 50,
         OrkiExecution.State.RUNNING: 75,
         OrkiExecution.State.VERIFYING: 84,
         OrkiExecution.State.REFLECTING: 90,
         OrkiExecution.State.KNOWLEDGE_INTEGRATING: 96,
+        OrkiExecution.State.KNOWLEDGE_CANDIDATE: 97,
         OrkiExecution.State.WAITING_EXTERNAL: 75,
         OrkiExecution.State.WAITING_FOR_USER: 75,
         OrkiExecution.State.PAUSED: 75,
@@ -1345,6 +1579,7 @@ def execution_projection(execution: OrkiExecution) -> dict[str, Any]:
         OrkiExecution.State.CANCELLED: 100,
     }
     progress_percent = progress_by_state[OrkiExecution.State(execution.state)]
+    latest_event = execution.events.order_by("-sequence").first()
     presentation = {
         **runtime_presentation(execution, progress_percent=progress_percent),
         # The monitor consumes only server-owned Runtime fields.  These are
@@ -1360,6 +1595,17 @@ def execution_projection(execution: OrkiExecution) -> dict[str, Any]:
             if hasattr(execution, "reflection")
             and hasattr(execution.reflection, "knowledge_integration")
             else "NOT_REQUIRED"
+        ),
+        "behaviour": execution.behaviour or "UNSPECIFIED",
+        "stage": execution.state,
+        "provider": execution.provider_context.get("provider", ""),
+        "running_task": (
+            latest_event.payload.get("task", latest_event.event_type)
+            if latest_event
+            else ""
+        ),
+        "duration_seconds": int(
+            (timezone.now() - execution.created_at).total_seconds()
         ),
     }
     events = [

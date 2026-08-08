@@ -104,10 +104,12 @@ def _references(project: Project, attributes: list[str]) -> list[CognitiveStateE
                 status=CognitiveStateEntry.Status.ACTIVE,
                 content__attribute=attribute,
             )
-            .exclude(kind__in=(
-                CognitiveStateEntry.Kind.EVIDENCE,
-                CognitiveStateEntry.Kind.PRODUCT_OWNER_PROFILE,
-            ))
+            .exclude(
+                kind__in=(
+                    CognitiveStateEntry.Kind.EVIDENCE,
+                    CognitiveStateEntry.Kind.PRODUCT_OWNER_PROFILE,
+                )
+            )
             .order_by("-created_at", "-pk")
             .first()
         )
@@ -207,16 +209,17 @@ def product_owner_history(project: Project) -> dict[str, Any]:
         previous = history[dimension][-1] if history[dimension] else None
         history[dimension].append(revision)
         if previous and previous["preference"] != revision["preference"]:
-            drift.append({
-                "dimension": dimension,
-                "previous": previous,
-                "current": revision,
-                "reason": (
-                    "Evidence-backed profile preference changed; "
-                    "no prior revision was erased."
-                ),
-            }
-        )
+            drift.append(
+                {
+                    "dimension": dimension,
+                    "previous": previous,
+                    "current": revision,
+                    "reason": (
+                        "Evidence-backed profile preference changed; "
+                        "no prior revision was erased."
+                    ),
+                }
+            )
     return {"history": dict(history), "drift": drift}
 
 
@@ -254,9 +257,11 @@ def product_owner_projection(project: Project) -> dict[str, Any]:
             continue
         entry = candidates[-1]
         value = entry.content["value"]
-        evidence_entries = list(project.cognitive_state.entries.filter(
-            pk__in=value.get("evidence_entry_ids", [])
-        ))
+        evidence_entries = list(
+            project.cognitive_state.entries.filter(
+                pk__in=value.get("evidence_entry_ids", [])
+            )
+        )
         profiles[dimension] = {
             "profile": _entry_view(entry),
             "evidence_entry_ids": value.get("evidence_entry_ids", []),

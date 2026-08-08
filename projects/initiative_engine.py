@@ -197,11 +197,15 @@ def dismiss_initiative(
     except CognitiveState.DoesNotExist as exc:
         raise ValueError("INITIATIVE_UNAVAILABLE") from exc
     with transaction.atomic():
-        entry = state.entries.select_for_update().filter(
-            pk=initiative_entry_id,
-            kind=CognitiveStateEntry.Kind.INITIATIVE,
-            status=CognitiveStateEntry.Status.ACTIVE,
-        ).first()
+        entry = (
+            state.entries.select_for_update()
+            .filter(
+                pk=initiative_entry_id,
+                kind=CognitiveStateEntry.Kind.INITIATIVE,
+                status=CognitiveStateEntry.Status.ACTIVE,
+            )
+            .first()
+        )
         if entry is None:
             raise ValueError("INITIATIVE_UNAVAILABLE")
         entry.status = CognitiveStateEntry.Status.DISMISSED

@@ -31,7 +31,9 @@ class OrkiRuntimeMissionE2ETests(TestCase):
 
     def setUp(self) -> None:
         self.actor = "mission-owner"
-        get_user_model().objects.create_user(username=self.actor, password="test-password")
+        get_user_model().objects.create_user(
+            username=self.actor, password="test-password"
+        )
         self.project = Project.objects.create(
             project_id="orki-runtime-mission-e2e",
             display_name="Orki Runtime Mission E2E",
@@ -41,7 +43,9 @@ class OrkiRuntimeMissionE2ETests(TestCase):
             onboarding_status=Project.OnboardingStatus.READY,
         )
 
-    def _approved_execution(self, *, title: str = "Runtime Mission E2E") -> OrkiExecution:
+    def _approved_execution(
+        self, *, title: str = "Runtime Mission E2E"
+    ) -> OrkiExecution:
         factory_plan = create_factory_plan_in_shadow(
             self.project,
             {
@@ -97,23 +101,34 @@ class OrkiRuntimeMissionE2ETests(TestCase):
             "README.md has the expected content": observed == content,
         }
         return {
-            "artifact": path.name, "verified": True, "bytes": len(observed.encode()),
-            "repository": str(path.parent), "repository_changes": [path.name],
+            "artifact": path.name,
+            "verified": True,
+            "bytes": len(observed.encode()),
+            "repository": str(path.parent),
+            "repository_changes": [path.name],
             "observed_goal": "Create and verify a README.md in the mission test project.",
             "verification": {"build": True, "tests": True, "checks": checks},
             "evidence_references": [f"artifact:{path.name}", "test:readback"],
         }
 
-    def test_mission_reaches_goal_completed_through_real_runtime_execution(self) -> None:
+    def test_mission_reaches_goal_completed_through_real_runtime_execution(
+        self,
+    ) -> None:
         execution = self._approved_execution()
         self.assertEqual(execution.state, OrkiExecution.State.WAITING_GOVERNANCE)
         self.assertIsNone(execution.execution_run_id)
 
-        wait_for_user_input(str(execution.token), actor=self.actor, prompt="Confirm README content.")
-        pause_execution(str(execution.token), actor=self.actor, reason="validate resume")
+        wait_for_user_input(
+            str(execution.token), actor=self.actor, prompt="Confirm README content."
+        )
+        pause_execution(
+            str(execution.token), actor=self.actor, reason="validate resume"
+        )
         resume_execution(str(execution.token), actor=self.actor)
         resume_after_user_input(
-            str(execution.token), actor=self.actor, response_reference="mission-e2e:user-confirmed"
+            str(execution.token),
+            actor=self.actor,
+            response_reference="mission-e2e:user-confirmed",
         )
         with TemporaryDirectory() as directory:
             readme = Path(directory) / "README.md"
@@ -134,14 +149,24 @@ class OrkiRuntimeMissionE2ETests(TestCase):
         self.assertEqual(projection["progress"]["percent"], 100)
         self.assertIsNone(execution.execution_run_id)
         events = list(execution.events.order_by("sequence"))
-        self.assertEqual([event.sequence for event in events], list(range(1, len(events) + 1)))
+        self.assertEqual(
+            [event.sequence for event in events], list(range(1, len(events) + 1))
+        )
         self.assertTrue(all(event.evidence_references for event in events))
         self.assertTrue(execution.events.filter(event_type="GOAL_ACHIEVED").exists())
-        self.assertTrue(execution.events.filter(event_type="verification.completed").exists())
-        self.assertTrue(execution.events.filter(event_type="reflection.completed").exists())
-        self.assertTrue(execution.events.filter(event_type="COGNITIVE_CONTEXT_REFERENCED").exists())
+        self.assertTrue(
+            execution.events.filter(event_type="verification.completed").exists()
+        )
+        self.assertTrue(
+            execution.events.filter(event_type="reflection.completed").exists()
+        )
+        self.assertTrue(
+            execution.events.filter(event_type="COGNITIVE_CONTEXT_REFERENCED").exists()
+        )
 
-    def test_recovery_loop_retries_real_operation_and_cancel_is_runtime_owned(self) -> None:
+    def test_recovery_loop_retries_real_operation_and_cancel_is_runtime_owned(
+        self,
+    ) -> None:
         execution = self._approved_execution()
         attempts = {"count": 0}
 
@@ -150,23 +175,40 @@ class OrkiRuntimeMissionE2ETests(TestCase):
             if attempts["count"] < 3:
                 raise RuntimeError(f"induced failure {attempts['count']}")
             with TemporaryDirectory() as directory:
-                return self._write_and_verify(Path(directory) / "README.md", "# Recovered\n")
+                return self._write_and_verify(
+                    Path(directory) / "README.md", "# Recovered\n"
+                )
 
-        execute_shadow_operation(str(execution.token), actor=self.actor, operation=fail_twice_then_write)
-        pause_execution(str(execution.token), actor=self.actor, reason="induced recovery pause")
+        execute_shadow_operation(
+            str(execution.token), actor=self.actor, operation=fail_twice_then_write
+        )
+        pause_execution(
+            str(execution.token), actor=self.actor, reason="induced recovery pause"
+        )
         resume_execution(str(execution.token), actor=self.actor)
         recover_execution(str(execution.token), actor=self.actor)
-        execute_shadow_operation(str(execution.token), actor=self.actor, operation=fail_twice_then_write)
+        execute_shadow_operation(
+            str(execution.token), actor=self.actor, operation=fail_twice_then_write
+        )
         recover_execution(str(execution.token), actor=self.actor)
-        execute_shadow_operation(str(execution.token), actor=self.actor, operation=fail_twice_then_write)
+        execute_shadow_operation(
+            str(execution.token), actor=self.actor, operation=fail_twice_then_write
+        )
         execution.refresh_from_db()
         self.assertEqual(execution.state, OrkiExecution.State.COMPLETED)
         self.assertEqual(attempts["count"], 3)
-        self.assertEqual(execution.events.filter(event_type="EXECUTION_ATTEMPT_FAILED").count(), 2)
-        self.assertEqual(execution.events.filter(event_type="RECOVERY_REASSESSMENT_STARTED").count(), 2)
+        self.assertEqual(
+            execution.events.filter(event_type="EXECUTION_ATTEMPT_FAILED").count(), 2
+        )
+        self.assertEqual(
+            execution.events.filter(event_type="RECOVERY_REASSESSMENT_STARTED").count(),
+            2,
+        )
 
         cancelled = self._approved_execution(title="Runtime Mission Cancellation")
-        cancel_execution(str(cancelled.token), actor=self.actor, reason="mission cancellation proof")
+        cancel_execution(
+            str(cancelled.token), actor=self.actor, reason="mission cancellation proof"
+        )
         cancelled.refresh_from_db()
         self.assertEqual(cancelled.state, OrkiExecution.State.CANCELLED)
         self.assertEqual(cancelled.plan.goal.status, "CANCELLED")

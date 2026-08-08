@@ -44,7 +44,7 @@ def build_semantic_context(project: Project, **kwargs: Any) -> SemanticContext:
             reason_by_entry_id.setdefault(entry_id, []).append(reason)
     if package["retrieval_query"]:
         for source in package["source_entries"]:
-            searchable = f'{source["title"]}\n{source["content"]}'.lower()
+            searchable = f"{source['title']}\n{source['content']}".lower()
             if package["retrieval_query"].lower() in searchable:
                 reason_by_entry_id.setdefault(source["entry_id"], []).append(
                     "LEXICAL_QUERY_MATCH"
@@ -53,9 +53,7 @@ def build_semantic_context(project: Project, **kwargs: Any) -> SemanticContext:
         SemanticSource(
             entry_id=item["entry_id"],
             source_version=package["source_versions"][str(item["entry_id"])],
-            selection_reasons=tuple(
-                reason_by_entry_id.get(item["entry_id"], [])
-            ),
+            selection_reasons=tuple(reason_by_entry_id.get(item["entry_id"], [])),
         )
         for item in package["source_entries"]
     )

@@ -154,7 +154,9 @@ class FailureIncident(models.Model):
     correlation_id = models.CharField(max_length=128)
     summary = models.CharField(max_length=1000)
     causal_classification = models.CharField(max_length=64, blank=True)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.OPEN
+    )
     timeline = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1917,8 +1919,12 @@ class OrkiPlan(models.Model):
         related_name="runtime_plan_references",
     )
     plan_hash = models.CharField(max_length=64, blank=True)
+    contract_version = models.CharField(max_length=64, blank=True)
+    definition = models.JSONField(default=dict, blank=True)
     strategy_references = models.JSONField(default=dict, blank=True)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.DRAFT
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1941,6 +1947,10 @@ class OrkiExecution(models.Model):
     class State(models.TextChoices):
         CREATED = "CREATED", "Created"
         PLANNING = "PLANNING", "Planning"
+        READY = "READY", "Ready"
+        WAITING = "WAITING", "Waiting"
+        RETRYING = "RETRYING", "Retrying"
+        RECOVERY = "RECOVERY", "Recovery"
         WAITING_APPROVAL = "WAITING_APPROVAL", "Waiting for approval"
         WAITING_GOVERNANCE = "WAITING_GOVERNANCE", "Waiting for governance"
         DISPATCHING = "DISPATCHING", "Dispatching"
@@ -1948,6 +1958,7 @@ class OrkiExecution(models.Model):
         VERIFYING = "VERIFYING", "Verifying"
         REFLECTING = "REFLECTING", "Reflecting"
         KNOWLEDGE_INTEGRATING = "KNOWLEDGE_INTEGRATING", "Knowledge integrating"
+        KNOWLEDGE_CANDIDATE = "KNOWLEDGE_CANDIDATE", "Knowledge candidate"
         WAITING_EXTERNAL = "WAITING_EXTERNAL", "Waiting for external input"
         WAITING_FOR_USER = "WAITING_FOR_USER", "Waiting for user"
         PAUSED = "PAUSED", "Paused"
@@ -1957,7 +1968,9 @@ class OrkiExecution(models.Model):
         CANCELLED = "CANCELLED", "Cancelled"
 
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    plan = models.ForeignKey(OrkiPlan, on_delete=models.PROTECT, related_name="executions")
+    plan = models.ForeignKey(
+        OrkiPlan, on_delete=models.PROTECT, related_name="executions"
+    )
     execution_run = models.ForeignKey(
         ExecutionRun,
         null=True,
@@ -1966,12 +1979,15 @@ class OrkiExecution(models.Model):
         related_name="orki_executions",
     )
     mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.SHADOW)
-    state = models.CharField(max_length=24, choices=State.choices, default=State.CREATED)
+    state = models.CharField(
+        max_length=24, choices=State.choices, default=State.CREATED
+    )
     state_version = models.PositiveIntegerField(default=0)
     paused_from_state = models.CharField(max_length=24, blank=True)
     waiting_reason = models.JSONField(default=dict, blank=True)
     governance_reference = models.JSONField(default=dict, blank=True)
     provider_context = models.JSONField(default=dict, blank=True)
+    behaviour = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2033,7 +2049,9 @@ class OrkiKnowledgeIntegration(models.Model):
         on_delete=models.PROTECT,
         related_name="runtime_integrations",
     )
-    status = models.CharField(max_length=32, choices=Status.choices, default=Status.NOT_REQUIRED)
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.NOT_REQUIRED
+    )
     evidence_references = models.JSONField(default=list, blank=True)
     embedding_reference = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2046,6 +2064,35 @@ class StructuredDecisionRecord(models.Model):
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     contract_version = models.CharField(max_length=64)
     payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class RuntimeReflectionCandidate(models.Model):
+    """A proposed reflection from the canonical Runtime path, never AKB state."""
+
+    execution = models.OneToOneField(
+        OrkiExecution, on_delete=models.PROTECT, related_name="reflection_candidate"
+    )
+    contract_version = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict)
+    evidence_references = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class RuntimeKnowledgeCandidate(models.Model):
+    """A Runtime-produced candidate awaiting Sprint 06 knowledge governance."""
+
+    execution = models.OneToOneField(
+        OrkiExecution, on_delete=models.PROTECT, related_name="knowledge_candidate"
+    )
+    reflection_candidate = models.ForeignKey(
+        RuntimeReflectionCandidate,
+        on_delete=models.PROTECT,
+        related_name="knowledge_candidates",
+    )
+    contract_version = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict)
+    evidence_references = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
