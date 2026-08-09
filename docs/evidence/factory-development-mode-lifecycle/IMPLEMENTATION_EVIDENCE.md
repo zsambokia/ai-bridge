@@ -23,11 +23,12 @@ had provider execution `2776`, last event `turn.completed`, and provider status
 
 The repair retains the existing execution model. It adds the narrowly scoped
 `FACTORY_DEVELOPMENT` execution profile, durable Product Owner authority facts,
-idempotent factory start, provider-terminal reconciliation, ordered terminal
-and validation-continuation events, a watchdog management command, and
-evidence-derived Product Owner progress. Factory start is restricted to the
-canonical `ai-bridge` repository; ordinary customer governance remains
-contract-first.
+provider-terminal reconciliation, ordered terminal and validation-continuation
+events, a watchdog management command, and evidence-derived Product Owner
+progress. The current Factory Development Mode entry point is the explicit
+Product Owner authorization and repository governance in `AGENTS.md`; this
+change does not introduce a parallel factory-start API. Ordinary customer
+governance remains contract-first.
 
 The Product Owner read model was completed as a derived extension of the same
 canonical event stream: source-event mapping, icon, confidence, provider
