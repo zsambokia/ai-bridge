@@ -48,3 +48,48 @@ credential value in Django or in the provider configuration.
 For staging and production, do not deploy `.env`; inject `OPENAI_API_KEY`
 through the environment or the platform secret manager and retain the same
 `credential_binding` reference.
+
+## Recovering a completed provider run
+
+Do not edit execution lifecycle fields in Django admin. A provider can finish
+after its caller has disconnected; reconciliation records the terminal fact
+and moves the canonical run from `RUNNING` to `VALIDATING` exactly once. The
+same recovery path closes an active run past the persisted-activity deadline
+as `BLOCKED` with a `WATCHDOG_STALE_BLOCKED` event; it never silently remains
+active after a detectable stall.
+
+Run the bounded, idempotent recovery command from the repository root:
+
+```powershell
+python manage.py reconcile_provider_runs
+```
+
+`execution.get_run_status` performs the same reconciliation before presenting
+Product Owner progress. The resulting validation continuation must still run
+the applicable tests and release gates, write evidence, update documentation,
+and bind the final commit before the draft Pull Request can be closed.
+
+Factory Development Mode is only for the canonical `ai-bridge` repository and
+requires an explicit Product Owner approval reference. It is not available
+for customer Projects and does not permit a manual terminal-state override.
+
+## Governed cancellation
+
+The `ExecutionRun` detail view has a **Request cancellation** action for an
+active run. Enter a non-empty reason, inspect the resulting confirmation page,
+and select the explicit confirmation button. The first submit records only a
+durable cancellation request; the confirmation submit invokes the same
+canonical cancellation service as MCP. Do not edit lifecycle fields, terminate
+a process tree from the shell, or use admin to bypass confirmation.
+
+The normal action requests graceful provider termination and leaves the run in
+`CANCELLING` until provider acknowledgement/reconciliation writes
+`CANCELLED`, cancellation evidence, and closure facts. A completed or terminal
+provider response is safe and is reported deterministically rather than raising
+an error. `python manage.py reconcile_provider_runs` also reconciles a
+persisted `CANCELLING` run after a restart; a non-responsive provider remains
+observable through its durable cancellation events and the existing watchdog.
+
+There is intentionally no routine force-cancel control. A forceful emergency
+action, if separately authorized in a future scope, must preserve the same
+requester, reason, confirmation, event, evidence, and audit trail.

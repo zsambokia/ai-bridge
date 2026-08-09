@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.db import models
 from django.utils import timezone
@@ -1292,6 +1292,13 @@ class ExecutionStartRequest(models.Model):
 class ExecutionRun(models.Model):
     """One contract-bound execution owned by the canonical dispatcher."""
 
+    if TYPE_CHECKING:
+        # The Factory Development profile deliberately persists no contract.
+        # Governed call sites validate the profile before dereferencing this
+        # relation and retain the canonical non-null contract type.
+        contract: ExecutionContract
+        start_request: ExecutionStartRequest
+
     class Lifecycle(models.TextChoices):
         REQUESTED = "REQUESTED", "Requested"
         STARTING = "STARTING", "Starting"
@@ -1307,11 +1314,29 @@ class ExecutionRun(models.Model):
         FAILED_GOVERNANCE = "FAILED_GOVERNANCE", "Failed governance"
         CANCELLED = "CANCELLED", "Cancelled"
 
+    class Profile(models.TextChoices):
+        GOVERNED = "GOVERNED", "Governed"
+        FACTORY_DEVELOPMENT = "FACTORY_DEVELOPMENT", "Factory Development"
+
     token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-    contract = models.ForeignKey(ExecutionContract, on_delete=models.PROTECT)
-    start_request = models.OneToOneField(
-        ExecutionStartRequest, on_delete=models.PROTECT, related_name="run"
+    # Factory Development runs deliberately have no generated contract.  The
+    # durable Product Owner authority is retained on the same canonical run
+    # rather than creating a parallel execution lifecycle.
+    contract = models.ForeignKey(  # type: ignore[assignment]
+        ExecutionContract, null=True, blank=True, on_delete=models.PROTECT
     )
+    start_request = models.OneToOneField(  # type: ignore[assignment]
+        ExecutionStartRequest,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="run",
+    )
+    execution_profile = models.CharField(
+        max_length=32, choices=Profile.choices, default=Profile.GOVERNED
+    )
+    authority_reference = models.CharField(max_length=255, blank=True)
+    authority_summary = models.JSONField(default=dict, blank=True)
     repository = models.CharField(max_length=255)
     branch = models.CharField(max_length=255)
     baseline_commit = models.CharField(max_length=64)

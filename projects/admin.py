@@ -1,13 +1,23 @@
 """Read-only operational visibility for canonical Project runtime records."""
 
+import hashlib
 from typing import ClassVar
 
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.db.models import QuerySet
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import path, reverse
+from django.urls.resolvers import URLPattern
 from django.utils.html import format_html
 
+from projects.execution import (
+    confirm_execution_cancellation,
+    prepare_execution_cancellation,
+    request_execution_cancellation,
+)
 from projects.execution_activity import activity_summary, events_for_view
 from projects.models import (
     BehaviourCandidate,
@@ -589,9 +599,11 @@ class ExecutionRunAdmin(admin.ModelAdmin):
         "provider_output",
         "raw_events",
         "recovery_summary",
+        "cancellation_action",
     )
     fieldsets = (
         (None, {"fields": tuple(field.name for field in ExecutionRun._meta.fields)}),
+        ("Governed cancellation", {"fields": ("cancellation_action",)}),
         ("Activity (derived, read-only)", {"fields": ("live_activity",)}),
         ("Recovery (derived, read-only)", {"fields": ("recovery_summary",)}),
         ("Provider Output (redacted, read-only)", {"fields": ("provider_output",)}),
@@ -617,6 +629,89 @@ class ExecutionRunAdmin(admin.ModelAdmin):
         self, request: object, obj: ExecutionRun | None = None
     ) -> bool:
         return False
+
+    def get_urls(self) -> list[URLPattern]:
+        """Expose cancellation through the same confirmed service as MCP."""
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<path:object_id>/cancel/",
+                self.admin_site.admin_view(self.cancel_view),
+                name="projects_executionrun_cancel",
+            )
+        ]
+        return custom + urls
+
+    @admin.display(description="Cancellation")
+    def cancellation_action(self, obj: ExecutionRun) -> str:
+        if obj.lifecycle in {
+            ExecutionRun.Lifecycle.CANCELLED,
+            ExecutionRun.Lifecycle.COMPLETED,
+            ExecutionRun.Lifecycle.FAILED_GOVERNANCE,
+            ExecutionRun.Lifecycle.BLOCKED_BUSINESS_DECISION,
+            ExecutionRun.Lifecycle.BLOCKED_EXTERNAL_INPUT,
+        }:
+            return "This execution is already terminal."
+        url = reverse("admin:projects_executionrun_cancel", args=[obj.pk])
+        return format_html('<a class="button" href="{}">Request cancellation</a>', url)
+
+    def cancel_view(self, request: HttpRequest, object_id: str) -> HttpResponse:
+        """Render and execute the same confirmed cancellation service as MCP."""
+        run = get_object_or_404(ExecutionRun, pk=object_id)
+        requester = f"django-admin:{request.user.get_username()}"
+        if request.method == "POST":
+            reason = str(request.POST.get("reason", "")).strip()
+            if not reason:
+                messages.error(request, "A cancellation reason is required.")
+            else:
+                cancellation = prepare_execution_cancellation(
+                    run, requested_by=requester, reason=reason
+                )
+                if request.POST.get("confirm") == "yes":
+                    confirmation_reference = (
+                        "django-cancel-"
+                        + hashlib.sha256(
+                            f"{run.token}:{requester}:{cancellation.reason}".encode()
+                        ).hexdigest()[:32]
+                    )
+                    confirm_execution_cancellation(
+                        run,
+                        requested_by=requester,
+                        confirmation_reference=confirmation_reference,
+                    )
+                    cancelled, status = request_execution_cancellation(
+                        run,
+                        requested_by=requester,
+                        reason=cancellation.reason,
+                        confirmation_reference=confirmation_reference,
+                    )
+                    messages.success(
+                        request,
+                        f"Cancellation result: {status} ({cancelled.lifecycle}).",
+                    )
+                    return redirect(
+                        "admin:projects_executionrun_change", object_id=run.pk
+                    )
+                return render(
+                    request,
+                    "admin/projects/executionrun/cancel_confirmation.html",
+                    {
+                        **self.admin_site.each_context(request),
+                        "title": "Confirm execution cancellation",
+                        "run": run,
+                        "reason": cancellation.reason,
+                    },
+                )
+        return render(
+            request,
+            "admin/projects/executionrun/cancel_confirmation.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": "Request execution cancellation",
+                "run": run,
+                "reason": "",
+            },
+        )
 
     @admin.display(description="Current activity, checklist, heartbeat and events")
     def live_activity(self, obj: ExecutionRun) -> str:

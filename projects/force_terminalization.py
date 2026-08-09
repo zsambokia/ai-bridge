@@ -90,6 +90,8 @@ def force_terminalize_execution(
         job = ExecutionJob.objects.select_for_update().filter(run=run).first()
         if job is None:
             raise ForceTerminalizationRefused("EXECUTION_JOB_NOT_FOUND")
+        if run.contract_id is None:
+            raise ForceTerminalizationRefused("GOVERNED_EXECUTION_CONTRACT_REQUIRED")
         contract = ExecutionContract.objects.select_for_update().get(pk=run.contract_id)
         workspace = (
             ExecutionWorkspace.objects.select_for_update().filter(run=run).first()

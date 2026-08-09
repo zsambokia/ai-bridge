@@ -633,7 +633,7 @@ class ExecutionProvider(Protocol):
 
     def start(self, *, repository: Path, prompt: str) -> ProviderStart: ...
     def status(self, execution_id: str) -> str: ...
-    def cancel(self, execution_id: str) -> None: ...
+    def cancel(self, execution_id: str) -> str: ...
 
 
 CodexCliProvider = CodexCliAdapter
@@ -1587,6 +1587,49 @@ def reconcile_execution_cancellation(run: ExecutionRun) -> ExecutionRun:
     add_event(locked, "EXECUTION_CANCELLED")
     add_event(locked, "CANCELLATION_EVIDENCE_COMPLETED")
     return locked
+
+
+def reconcile_provider_completion(run: ExecutionRun) -> ExecutionRun:
+    """Advance a finished provider from execution to validation exactly once."""
+    if run.lifecycle != ExecutionRun.Lifecycle.RUNNING or not run.provider_execution_id:
+        return run
+    if provider(run.provider_name).status(run.provider_execution_id) != "FINISHED":
+        return run
+    with transaction.atomic():
+        locked = ExecutionRun.objects.select_for_update().get(pk=run.pk)
+        if locked.lifecycle != ExecutionRun.Lifecycle.RUNNING:
+            return locked
+        locked.lifecycle = ExecutionRun.Lifecycle.VALIDATING
+        locked.current_phase = "VALIDATING"
+        locked.current_blocker = {}
+        locked.save(
+            update_fields=[
+                "lifecycle",
+                "current_phase",
+                "current_blocker",
+                "updated_at",
+            ]
+        )
+        add_event(locked, "PROVIDER_FINISHED", provider=locked.provider_name)
+        add_event(
+            locked,
+            "VALIDATION_CONTINUATION_READY",
+            message="provider finished; validation and closure can continue",
+        )
+    return locked
+
+
+def watchdog_recover_runs(*, observed_at: datetime | None = None) -> int:
+    """Reconcile active provider and cancellation transitions after interruption."""
+    del observed_at
+    reconciled = 0
+    for run in ExecutionRun.objects.filter(lifecycle__in=ACTIVE_STATES).iterator():
+        before = run.lifecycle
+        updated = reconcile_execution_cancellation(run)
+        updated = reconcile_provider_completion(updated)
+        if updated.lifecycle != before:
+            reconciled += 1
+    return reconciled
 
 
 def cancel_run(

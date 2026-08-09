@@ -95,7 +95,7 @@ class ExecutionAdapter(Protocol):
         self, *, runtime: dict[str, object], prompt: str
     ) -> ProviderStart: ...
     def status(self, execution_id: str) -> str: ...
-    def cancel(self, execution_id: str) -> None: ...
+    def cancel(self, execution_id: str) -> str: ...
 
 
 class ModelAdapter(Protocol):
@@ -728,8 +728,8 @@ class CodexCliAdapter:
             return "FINISHED"
         return "RUNNING"
 
-    def cancel(self, execution_id: str) -> None:
-        """Terminate the governed child process using the host platform API."""
+    def cancel(self, execution_id: str) -> str:
+        """Ask the child process to stop without using forceful tree termination."""
         process_id = int(execution_id)
         if os.name == "nt":
             completed = subprocess.run(
@@ -742,8 +742,11 @@ class CodexCliAdapter:
             )  # noqa: S603
             if completed.returncode:
                 raise OSError("CODEX_PROCESS_TERMINATION_FAILED")
-            return
+            return "CANCELLATION_REQUESTED"
+        # SIGTERM is a normal stop request.  A forceful process-tree kill is
+        # intentionally not part of ordinary lifecycle cancellation.
         os.kill(process_id, signal.SIGTERM)
+        return "CANCELLATION_REQUESTED"
 
 
 def adapter_for(entry: ExecutionProvider) -> ExecutionAdapter:
