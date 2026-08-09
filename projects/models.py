@@ -2154,7 +2154,9 @@ class WorkflowTemplate(models.Model):
     version = models.PositiveIntegerField(default=1)
     definition = models.JSONField(default=dict)
     definition_hash = models.CharField(max_length=64)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.CANDIDATE)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.CANDIDATE
+    )
     approval_reference = models.CharField(max_length=255, blank=True)
     embedding_reference = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2193,7 +2195,9 @@ class WorkflowInstance(models.Model):
         related_name="instances",
     )
     workflow_key = models.CharField(max_length=128)
-    state = models.CharField(max_length=24, choices=State.choices, default=State.CREATED)
+    state = models.CharField(
+        max_length=24, choices=State.choices, default=State.CREATED
+    )
     state_version = models.PositiveIntegerField(default=0)
     input_data = models.JSONField(default=dict, blank=True)
     output_data = models.JSONField(default=dict, blank=True)
@@ -2217,7 +2221,9 @@ class WorkflowStep(models.Model):
     )
     step_key = models.CharField(max_length=128)
     sequence = models.PositiveIntegerField(default=1)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING
+    )
     dependencies = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -2259,7 +2265,9 @@ class Task(models.Model):
     )
     task_key = models.CharField(max_length=128)
     kind = models.CharField(max_length=16, choices=Kind.choices)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING
+    )
     input_data = models.JSONField(default=dict, blank=True)
     output_data = models.JSONField(default=dict, blank=True)
     evidence_references = models.JSONField(default=list, blank=True)
@@ -2337,7 +2345,9 @@ class WorkflowCandidate(models.Model):
     )
     definition = models.JSONField(default=dict)
     evidence_references = models.JSONField(default=list, blank=True)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.GENERATED)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.GENERATED
+    )
     approval_reference = models.CharField(max_length=255, blank=True)
     embedding_reference = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

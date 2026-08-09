@@ -178,6 +178,7 @@ class OrkiRuntimeMissionE2ETests(TestCase):
         self.assertEqual(task.status, Task.Status.COMPLETED)
         self.assertEqual(task.execution_run_id, execution.execution_run_id)
         self.assertEqual(candidate.status, WorkflowCandidate.Status.GENERATED)
+        assert candidate.reflection is not None
         self.assertEqual(candidate.reflection.execution_id, execution.pk)
         self.assertTrue(workflow.events.filter(event_type="task.completed").exists())
 
@@ -249,7 +250,9 @@ class OrkiRuntimeMissionE2ETests(TestCase):
         self.assertEqual(cancelled.plan.goal.status, "CANCELLED")
         self.assertTrue(cancelled.events.filter(event_type="GOAL_CANCELLED").exists())
 
-    def test_workflow_engine_can_sequence_multiple_tasks_before_completion(self) -> None:
+    def test_workflow_engine_can_sequence_multiple_tasks_before_completion(
+        self,
+    ) -> None:
         execution = self._approved_execution(title="Workflow Task Sequence")
 
         execute_task_adapter(

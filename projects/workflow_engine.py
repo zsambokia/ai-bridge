@@ -7,7 +7,6 @@ mission execution and consumes the result through a narrow adapter call.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -33,14 +32,6 @@ class WorkflowTaskFailure(RuntimeError):
     def __init__(self, message: str, *, cause: Exception | None = None) -> None:
         super().__init__(message)
         self.cause = cause
-
-
-class ProviderTaskError(RuntimeError):
-    """Provider-neutral failure detail returned to the Runtime adapter."""
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
 
 
 _WSM_TRANSITIONS: dict[str, set[str]] = {
@@ -84,7 +75,9 @@ def _event(workflow: WorkflowInstance, event_type: str, **payload: object) -> No
 
 def _transition(workflow: WorkflowInstance, state: str) -> None:
     if state not in _WSM_TRANSITIONS[workflow.state]:
-        raise WorkflowTaskFailure(f"WORKFLOW_TRANSITION_INVALID:{workflow.state}:{state}")
+        raise WorkflowTaskFailure(
+            f"WORKFLOW_TRANSITION_INVALID:{workflow.state}:{state}"
+        )
     previous = workflow.state
     workflow.state = state
     workflow.state_version += 1
@@ -92,10 +85,12 @@ def _transition(workflow: WorkflowInstance, state: str) -> None:
     _event(workflow, "workflow.state.changed", previous=previous, current=state)
 
 
-def select_workflow_template(project: Project, query: str) -> tuple[WorkflowTemplate | None, dict[str, object]]:
-    """Perform the canonical vector top-N retrieval and persistable selection evidence."""
+def select_workflow_template(
+    project: Project, query: str
+) -> tuple[WorkflowTemplate | None, dict[str, object]]:
+    """Perform canonical vector top-N retrieval and persist selection evidence."""
     candidates = DjangoVectorStore().search(project, query, top_k=5)
-    evidence = {
+    evidence: dict[str, Any] = {
         "algorithm": "embedding -> vector-search -> top-n -> deterministic-reasoning",
         "top_n": [
             {"entry_id": item.entry_id, "score": item.score, "evidence": item.evidence}
@@ -105,7 +100,9 @@ def select_workflow_template(project: Project, query: str) -> tuple[WorkflowTemp
     # Only an explicitly approved template can ever be selected.  The vector
     # result remains evidence; template promotion is a separate governance act.
     template = (
-        WorkflowTemplate.objects.filter(project=project, status=WorkflowTemplate.Status.APPROVED)
+        WorkflowTemplate.objects.filter(
+            project=project, status=WorkflowTemplate.Status.APPROVED
+        )
         .order_by("workflow_key", "version")
         .first()
     )
@@ -134,11 +131,16 @@ def _workflow_for(
             workflow=workflow,
             query=task_key,
             candidates=evidence["top_n"],
-            reasoning="Approved templates only; otherwise the Runtime adapter workflow is used.",
+            reasoning=(
+                "Approved templates only; otherwise the Runtime adapter workflow "
+                "is used."
+            ),
             selected_template=template,
         )
     step, _ = WorkflowStep.objects.get_or_create(
-        workflow=workflow, step_key=task_key, defaults={"sequence": workflow.steps.count() + 1}
+        workflow=workflow,
+        step_key=task_key,
+        defaults={"sequence": workflow.steps.count() + 1},
     )
     task, _ = Task.objects.get_or_create(
         workflow_step=step,
@@ -192,11 +194,28 @@ def execute_task_adapter(
             task.retry_count += 1
             retryable = task.retry_count <= task.max_retries
             task.status = Task.Status.RETRY if retryable else Task.Status.FAILED
-            task.evidence_references = [*task.evidence_references, {"error": str(error)}]
-            task.save(update_fields=["retry_count", "status", "evidence_references", "updated_at"])
-            step.status = WorkflowStep.Status.WAITING if retryable else WorkflowStep.Status.FAILED
+            task.evidence_references = [
+                *task.evidence_references,
+                {"error": str(error)},
+            ]
+            task.save(
+                update_fields=[
+                    "retry_count",
+                    "status",
+                    "evidence_references",
+                    "updated_at",
+                ]
+            )
+            step.status = (
+                WorkflowStep.Status.WAITING if retryable else WorkflowStep.Status.FAILED
+            )
             step.save(update_fields=["status", "updated_at"])
-            _transition(workflow, WorkflowInstance.State.RETRY if retryable else WorkflowInstance.State.FAILED)
+            _transition(
+                workflow,
+                WorkflowInstance.State.RETRY
+                if retryable
+                else WorkflowInstance.State.FAILED,
+            )
             _event(workflow, "task.failed", task_id=task.pk, retryable=retryable)
         raise WorkflowTaskFailure(str(error), cause=error) from error
     with transaction.atomic():
@@ -206,7 +225,9 @@ def execute_task_adapter(
         task.status = Task.Status.COMPLETED
         task.output_data = result
         task.evidence_references = list(result.get("evidence_references", []))
-        task.save(update_fields=["status", "output_data", "evidence_references", "updated_at"])
+        task.save(
+            update_fields=["status", "output_data", "evidence_references", "updated_at"]
+        )
         step.status = WorkflowStep.Status.COMPLETED
         step.save(update_fields=["status", "updated_at"])
         workflow.output_data = result
@@ -221,89 +242,6 @@ def execute_task_adapter(
     return result
 
 
-def execute_chat_provider_task(
-    execution: OrkiExecution,
-    *,
-    session: object,
-    owner_body: str,
-    model_adapter_resolver: Callable[..., Any] | None = None,
-    model_text_decoder: Callable[..., str] | None = None,
-) -> dict[str, Any]:
-    """Run provider selection, prompt construction and invocation as an AI Task.
-
-    Imports are deliberately local: the established Factory adapter remains the
-    provider registry boundary and this Engine module must not create a module
-    cycle with the mission Runtime.
-    """
-    from time import perf_counter
-
-    from .factory_orki import (
-        ModelProviderAuthenticationUnavailable,
-        ModelProviderSelectionUnavailable,
-        _bounded_context,
-        _decode,
-        _hash,
-        _prompt,
-        _provider,
-    )
-    from .providers import model_adapter_for, model_text_response
-
-    adapter_resolver = model_adapter_resolver or model_adapter_for
-    text_decoder = model_text_decoder or model_text_response
-
-    def operation() -> Mapping[str, Any]:
-        try:
-            entry, model = _provider()
-        except ModelProviderSelectionUnavailable as error:
-            raise ProviderTaskError("MODEL_PROVIDER_UNAVAILABLE", str(error)) from error
-        except ModelProviderAuthenticationUnavailable as error:
-            raise ProviderTaskError("PROVIDER_CREDENTIAL_UNAVAILABLE", str(error)) from error
-        context_package = _bounded_context(session)  # type: ignore[arg-type]
-        prompt = _prompt(context_package, owner_body)
-        started = perf_counter()
-        try:
-            adapter = adapter_resolver(entry)
-            raw: dict[str, object] | None = None
-            attempts = 0
-            for attempts in range(1, 3):
-                try:
-                    raw = adapter.invoke_model(entry, prompt)
-                    break
-                except (OSError, TimeoutError):
-                    if attempts == 2:
-                        raise
-            if raw is None:
-                raise OSError("ORKI_MODEL_REQUEST_FAILED")
-            response_text = text_decoder(entry, raw)
-            response, provider_plan, understanding = _decode(response_text)
-        except (ValueError, OSError, TimeoutError) as error:
-            raise ProviderTaskError(type(error).__name__.upper(), str(error)) from error
-        return {
-            "response": response,
-            "provider_plan": provider_plan,
-            "understanding": understanding,
-            "raw": raw,
-            "provider_id": entry.provider_id,
-            "model": model,
-            "prompt_hash": _hash(prompt),
-            "response_hash": _hash(response_text),
-            "context_package_hash": _hash(json.dumps(context_package, sort_keys=True)),
-            "latency_ms": round((perf_counter() - started) * 1000),
-            "attempts": attempts,
-            "evidence_references": [
-                {"provider_id": entry.provider_id, "model": model, "attempts": attempts}
-            ],
-        }
-
-    return execute_task_adapter(
-        execution,
-        task_key="factory.chat.provider",
-        kind=Task.Kind.AI,
-        input_data={"owner_message": owner_body},
-        operation=operation,
-    )
-
-
 def create_workflow_candidate(execution: OrkiExecution) -> WorkflowCandidate:
     """Create a review-only learning candidate after Runtime verification/reflection."""
     workflow = WorkflowInstance.objects.get(mission_execution=execution)
@@ -312,9 +250,15 @@ def create_workflow_candidate(execution: OrkiExecution) -> WorkflowCandidate:
         workflow=workflow,
         defaults={
             "reflection": reflection,
-            "definition": {"workflow_key": workflow.workflow_key, "steps": list(workflow.steps.values_list("step_key", flat=True))},
+            "definition": {
+                "workflow_key": workflow.workflow_key,
+                "steps": list(workflow.steps.values_list("step_key", flat=True)),
+            },
             "evidence_references": [
-                {"workflow_id": workflow.pk, "reflection_id": reflection.pk if reflection else None}
+                {
+                    "workflow_id": workflow.pk,
+                    "reflection_id": reflection.pk if reflection else None,
+                }
             ],
         },
     )

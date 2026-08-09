@@ -1,5 +1,16 @@
 # AI Bridge – Current State
 
+## Runtime 2.0 Constitution — Phase 0 (2026-08-09)
+
+The Product Owner-approved [Runtime 2.0 Constitution](../runtime/runtime_2_0_constitution.md)
+is now the canonical target specification for Runtime 2.0. It establishes the
+Mission State Machine (MSM) as the single mission authority, treats `Orki` as a
+UX/persona name, and defines a later evidence-based Constitution Compliance
+Assessment. This documentation-only phase does not change the currently
+implemented Runtime, rewrite historical OESM/Orki records, or certify existing
+components as compliant. Phase evidence is in
+[`docs/evidence/runtime-2-0-constitution-phase-0/`](../evidence/runtime-2-0-constitution-phase-0/).
+
 ## Repository Bootstrap Lifecycle — 2026-08-08
 
 Repository documents can now enter the project AKB through a provider-driven,

@@ -28,7 +28,7 @@ from .models import (
 )
 from .models import ExecutionProvider as ExecutionProviderRecord
 from .provider_events import redact_value
-from .providers import (
+from .provider_gateway import (
     CodexCliAdapter,
     ProviderStart,
     adapter_for,

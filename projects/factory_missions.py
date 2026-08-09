@@ -7,8 +7,20 @@ from typing import cast
 
 from django.db import transaction
 
-from .models import FactoryChatSession, FactoryMission
-from .orki_runtime import create_factory_plan_in_shadow
+from .models import (
+    FactoryChatSession,
+    FactoryMission,
+    FactoryPlan,
+    OrkiExecution,
+    Project,
+    RepositoryKnowledgeReceipt,
+)
+from .orki_runtime import (
+    create_factory_plan_in_shadow,
+    dispatch_factory_chat_execution,
+    observe_factory_plan_approval,
+    start_factory_chat_execution,
+)
 
 CONFIDENCE_THRESHOLD = 0.90
 _TEXT_FIELDS = (
@@ -46,6 +58,14 @@ _CRITICAL_FIELDS: tuple[tuple[str, str], ...] = (
 )
 
 
+class ConversationEventDispatchError(RuntimeError):
+    """Retain the durable ingress record when synchronous dispatch fails."""
+
+    def __init__(self, execution: OrkiExecution) -> None:
+        super().__init__("Conversation event dispatch failed")
+        self.execution = execution
+
+
 def assess_mission_readiness(mission: FactoryMission) -> dict[str, object]:
     """Apply the Runtime-owned deterministic gate before Planning."""
     missing = [
@@ -73,6 +93,91 @@ def assess_mission_readiness(mission: FactoryMission) -> dict[str, object]:
 
 def mission_for(session: FactoryChatSession) -> FactoryMission:
     return FactoryMission.objects.get_or_create(session=session)[0]
+
+
+def receive_conversation_event(
+    *,
+    project: Project,
+    session: FactoryChatSession,
+    text: str,
+    correlation_id: str,
+    actor: str,
+    dispatch: bool,
+) -> OrkiExecution:
+    """MSM ingress for a Conversation event; the UI owns neither dispatch nor state."""
+    execution = start_factory_chat_execution(
+        project=project,
+        session=session,
+        text=text,
+        correlation_id=correlation_id,
+        actor=actor,
+    )
+    if dispatch:
+        try:
+            dispatch_factory_chat_execution(str(execution.token), actor=actor)
+        except (OSError, TimeoutError, ValueError, RuntimeError) as exc:
+            raise ConversationEventDispatchError(execution) from exc
+    return execution
+
+
+def record_plan_approval(plan: FactoryPlan, *, actor: str) -> OrkiExecution:
+    """Send a Product Owner approval to the mission authority for observation."""
+    return observe_factory_plan_approval(plan, actor=actor)
+
+
+def request_factory_plan(
+    project: Project,
+    payload: Mapping[str, str],
+    *,
+    actor: str,
+    session: FactoryChatSession | None,
+) -> FactoryPlan:
+    """Forward an owner plan request without giving the UI planning authority."""
+    return create_factory_plan_in_shadow(
+        project, dict(payload), actor=actor, session=session
+    )
+
+
+def request_repository_lifecycle_action(
+    project: Project,
+    *,
+    action: str,
+    mode: str,
+    actor: str,
+    approval_reference: str,
+) -> tuple[RepositoryKnowledgeReceipt, ...]:
+    """Route repository lifecycle events through the mission boundary."""
+    from .github_repository_provider import GitHubRepositoryProvider
+    from .models import ExecutionProvider
+    from .repository_lifecycle import RepositoryBootstrapLifecycle
+
+    provider = ExecutionProvider.objects.filter(
+        kind=ExecutionProvider.Kind.GITHUB,
+        role=ExecutionProvider.Role.REPOSITORY_SERVICE,
+        status=ExecutionProvider.Status.ACTIVE,
+        enabled=True,
+    ).first()
+    if provider is None:
+        raise ValueError("REPOSITORY_PROVIDER_UNAVAILABLE")
+    lifecycle = RepositoryBootstrapLifecycle(GitHubRepositoryProvider(provider))
+    if action == "bootstrap":
+        return lifecycle.bootstrap(
+            project,
+            mode=mode,
+            actor=actor,
+            approval_reference=approval_reference,
+        )
+    if action in {"sync", "reindex"}:
+        receipt = project.repository_knowledge_receipts.first()
+        if receipt is None:
+            raise ValueError("REPOSITORY_BASELINE_REQUIRED")
+        return lifecycle.sync(
+            project,
+            commit_sha=receipt.source_version,
+            actor=actor,
+            approval_reference=approval_reference,
+        )
+    raise ValueError("REPOSITORY_ACTION_INVALID")
 
 
 def _strings(value: object) -> list[str]:

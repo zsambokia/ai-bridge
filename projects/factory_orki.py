@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 from collections.abc import Mapping
 from typing import Any
 
@@ -32,11 +31,6 @@ from .operational_reasoning import (
 )
 from .planning_engine import planning_projection, record_plan
 from .product_owner_model import product_owner_projection, record_product_owner_profile
-from .providers import (
-    credential_value,
-    model_identifier,
-    select_model_provider,
-)
 from .recommendation_engine import recommendation_projection
 
 logger = logging.getLogger(__name__)
@@ -44,29 +38,6 @@ logger = logging.getLogger(__name__)
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-class ModelProviderSelectionUnavailable(ValueError):
-    """No eligible model provider was selected by the registry query."""
-
-
-class ModelProviderAuthenticationUnavailable(ValueError):
-    """A selected model provider has no usable credential at dispatch time."""
-
-
-def _provider() -> tuple[Any, str]:
-    identity = os.environ.get("AI_BRIDGE_FACTORY_ORKI_PROVIDER", "openai")
-    try:
-        entry = select_model_provider(identity)
-    except ValueError as exc:
-        raise ModelProviderSelectionUnavailable(str(exc)) from exc
-    # credential_value validates the non-secret binding and environment reference;
-    # its return value is deliberately never stored or returned.
-    try:
-        credential_value(entry)
-    except ValueError as exc:
-        raise ModelProviderAuthenticationUnavailable(str(exc)) from exc
-    return entry, model_identifier(entry)
 
 
 def availability(session: FactoryChatSession | None = None) -> dict[str, str]:
@@ -504,9 +475,11 @@ def record_runtime_cognitive_observation(
         "recommendation_confidence",
         "repository_proposal",
     }
-    has_delivery_mission = FactoryMission.objects.filter(session=session).exclude(
-        phase="DISCOVERY"
-    ).exists()
+    has_delivery_mission = (
+        FactoryMission.objects.filter(session=session)
+        .exclude(phase="DISCOVERY")
+        .exists()
+    )
     if (
         structured_route
         and not has_delivery_mission
@@ -536,14 +509,11 @@ def record_runtime_cognitive_observation(
     questions = readiness.get("questions", []) if isinstance(readiness, Mapping) else []
     if not mission.requirements_sufficient and questions:
         rendered_questions = "\n".join(
-            f"{index}. {question}"
-            for index, question in enumerate(questions, start=1)
+            f"{index}. {question}" for index, question in enumerate(questions, start=1)
         )
         confidence = readiness.get("confidence", 0.0)
         confidence_percent = (
-            f"{float(confidence):.0%}"
-            if isinstance(confidence, (float, int))
-            else "0%"
+            f"{float(confidence):.0%}" if isinstance(confidence, (float, int)) else "0%"
         )
         return (
             "Planning még nem indítható. A Runtime kritikus, megválaszolatlan "

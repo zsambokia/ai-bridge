@@ -41,7 +41,7 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
         self.assertEqual(accepted.status_code, 202)
         return accepted.json()
 
-    @patch("projects.factory_orki._provider")
+    @patch("projects.provider_gateway.select_factory_chat_model")
     @patch("projects.orki_runtime.model_adapter_for")
     @patch("projects.orki_runtime.model_text_response")
     def test_e2e_underspecified_mission_waits_for_runtime_generated_questions(
@@ -96,7 +96,7 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
         self.assertIn('"messages"', payload)
         self.assertIn("event: snapshot", payload)
 
-    @patch("projects.factory_orki._provider")
+    @patch("projects.provider_gateway.select_factory_chat_model")
     @patch("projects.orki_runtime.model_adapter_for")
     @patch("projects.orki_runtime.model_text_response")
     def test_e2e_multiple_question_rounds_remain_waiting_for_user(
@@ -148,7 +148,7 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
         self.assertIsNone(mission.plan)
         self.assertLess(first_confidence, mission.recommendation_confidence)
 
-    @patch("projects.factory_orki._provider")
+    @patch("projects.provider_gateway.select_factory_chat_model")
     @patch("projects.orki_runtime.model_adapter_for")
     @patch("projects.orki_runtime.model_text_response")
     def test_e2e_planning_starts_only_after_critical_unknowns_are_resolved(
@@ -211,9 +211,10 @@ class FactoryChatRuntimeIntegrationTests(TestCase):
         token = accepted.json()["execution"]["token"]
 
         with patch(
-            "projects.factory_orki._provider",
+            "projects.provider_gateway.select_factory_chat_model",
             side_effect=__import__(
-                "projects.factory_orki", fromlist=["ModelProviderSelectionUnavailable"]
+                "projects.provider_gateway",
+                fromlist=["ModelProviderSelectionUnavailable"],
             ).ModelProviderSelectionUnavailable(),
         ):
             response = self.client.post(

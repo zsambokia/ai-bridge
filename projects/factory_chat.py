@@ -19,7 +19,15 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from .factory_coding import coding_projection
 from .factory_memory import memory_projection
-from .factory_missions import human_projection, mission_for
+from .factory_missions import (
+    ConversationEventDispatchError,
+    human_projection,
+    mission_for,
+    receive_conversation_event,
+    record_plan_approval,
+    request_factory_plan,
+    request_repository_lifecycle_action,
+)
 from .factory_orki import availability, get_or_create_session, messages_for
 from .factory_planning import (
     approve_plan,
@@ -27,12 +35,10 @@ from .factory_planning import (
     request_plan_changes,
 )
 from .factory_workspace import approval_projection, cognitive_workspace_projection
-from .github_repository_provider import GitHubRepositoryProvider
 from .knowledge import review_candidate
 from .models import (
     ConversationOrchestration,
     ExecutableScope,
-    ExecutionProvider,
     ExecutionRun,
     FactoryChatMessage,
     FactoryChatSession,
@@ -44,14 +50,7 @@ from .models import (
     RepositoryKnowledgeReceipt,
     RuntimeDeployment,
 )
-from .orki_runtime import (
-    create_factory_plan_in_shadow,
-    dispatch_factory_chat_execution,
-    execution_projection,
-    observe_factory_plan_approval,
-    start_factory_chat_execution,
-)
-from .repository_lifecycle import RepositoryBootstrapLifecycle
+from .orki_runtime import execution_projection
 
 SESSION_KEY = "factory_chat"
 MAX_MESSAGE_LENGTH = 12_000
@@ -276,23 +275,7 @@ def _response(request: HttpRequest, project: Project, mode: str) -> HttpResponse
 def _continue_after_plan_approval(plan: FactoryPlan, actor: str) -> FactoryPlan:
     """Record one plan approval without starting repository or execution work."""
     approved_plan = approve_plan(plan.pk, plan.project, actor)
-    observe_factory_plan_approval(approved_plan, actor=actor)
-    session = (
-        FactoryChatSession.objects.filter(project=plan.project)
-        .order_by("-updated_at")
-        .first()
-    )
-    if session:
-        mission = mission_for(session)
-        mission.phase = mission.Phase.PLAN_APPROVED
-        mission.delivery_status = {
-            "state": "execution_preparation",
-            "next": (
-                "A jóváhagyott terv és a dokumentum-projekciók elkészültek. "
-                "A végrehajtás külön, kanonikus szerződés alapján indítható."
-            ),
-        }
-        mission.save(update_fields=["phase", "delivery_status", "updated_at"])
+    record_plan_approval(approved_plan, actor=actor)
     return approved_plan
 
 
@@ -339,11 +322,17 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
             "mode": mode,
             "panel": panel,
             "workspace_navigation": (
-                ("home", "Home"), ("orki", "Orki"), ("projects", "Projects"),
-                ("knowledge", "Knowledge"), ("repository", "Repository"),
-                ("execution", "Execution"), ("roadmap", "Roadmap"),
-                ("decisions", "Decisions"), ("runtime", "Runtime"),
-                ("evidence", "Evidence"), ("administration", "Administration"),
+                ("home", "Home"),
+                ("orki", "Orki"),
+                ("projects", "Projects"),
+                ("knowledge", "Knowledge"),
+                ("repository", "Repository"),
+                ("execution", "Execution"),
+                ("roadmap", "Roadmap"),
+                ("decisions", "Decisions"),
+                ("runtime", "Runtime"),
+                ("evidence", "Evidence"),
+                ("administration", "Administration"),
             ),
             # A generous display window keeps a long working conversation useful,
             # while the transcript remains separate from canonical memory/state.
@@ -368,46 +357,17 @@ def workspace_repository_action(request: HttpRequest) -> JsonResponse:
             {"ok": False, "error": {"code": "APPROVAL_REFERENCE_REQUIRED"}},
             status=400,
         )
-    provider = ExecutionProvider.objects.filter(
-        kind=ExecutionProvider.Kind.GITHUB,
-        role=ExecutionProvider.Role.REPOSITORY_SERVICE,
-        status=ExecutionProvider.Status.ACTIVE,
-        enabled=True,
-    ).first()
-    if provider is None:
-        return JsonResponse(
-            {"ok": False, "error": {"code": "REPOSITORY_PROVIDER_UNAVAILABLE"}},
-            status=409,
-        )
     action = request.POST.get("action", "")
-    lifecycle = RepositoryBootstrapLifecycle(GitHubRepositoryProvider(provider))
     try:
-        if action == "bootstrap":
-            mode = request.POST.get("mode", "import")
-            receipts = lifecycle.bootstrap(
-                project,
-                mode=mode,
-                actor=request.user.get_username(),
-                approval_reference=approval_reference,
-            )
-        elif action in {"sync", "reindex"}:
-            receipt = project.repository_knowledge_receipts.first()
-            if receipt is None:
-                raise ValueError("REPOSITORY_BASELINE_REQUIRED")
-            # Reindex is deliberately an incremental lifecycle refresh.  The
-            # Workspace must not touch AKB or the vector store directly.
-            receipts = lifecycle.sync(
-                project,
-                commit_sha=receipt.source_version,
-                actor=request.user.get_username(),
-                approval_reference=approval_reference,
-            )
-        else:
-            raise ValueError("REPOSITORY_ACTION_INVALID")
-    except ValueError as exc:
-        return JsonResponse(
-            {"ok": False, "error": {"code": str(exc)}}, status=409
+        receipts = request_repository_lifecycle_action(
+            project,
+            action=action,
+            mode=request.POST.get("mode", "import"),
+            actor=request.user.get_username(),
+            approval_reference=approval_reference,
         )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": {"code": str(exc)}}, status=409)
     return JsonResponse(
         {
             "ok": True,
@@ -450,22 +410,18 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
         )
     execution: OrkiExecution | None = None
     try:
-        execution = start_factory_chat_execution(
+        runtime_async = request.headers.get("X-Orki-Runtime-Async") == "1"
+        execution = receive_conversation_event(
             project=project,
             session=get_or_create_session(request, project),
             text=text,
             correlation_id=correlation_id,
             actor=request.user.get_username(),
+            dispatch=not runtime_async,
         )
-        # Existing clients retain their synchronous response shape, but the
-        # work is still exclusively executed by the Runtime.  The Live Runtime
-        # Monitor explicitly opts into the two-step ingress/stream contract.
-        runtime_async = request.headers.get("X-Orki-Runtime-Async") == "1"
-        if not runtime_async:
-            dispatch_factory_chat_execution(
-                str(execution.token), actor=request.user.get_username()
-            )
     except (OSError, TimeoutError, ValueError, RuntimeError) as exc:
+        if isinstance(exc, ConversationEventDispatchError):
+            execution = exc.execution
         logger.warning(
             "factory_chat_request_failed",
             extra={
@@ -539,7 +495,7 @@ def factory_plan_create(request: HttpRequest) -> HttpResponse:
         lifecycle=Project.Lifecycle.ACTIVE,
     )
     try:
-        create_factory_plan_in_shadow(
+        request_factory_plan(
             project,
             {
                 "outcome": request.POST.get("outcome", ""),

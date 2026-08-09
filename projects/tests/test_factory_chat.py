@@ -164,7 +164,7 @@ class FactoryChatTests(TestCase):
     ) -> None:
         self.client.force_login(self.user)
         with patch(
-            "projects.factory_chat.dispatch_factory_chat_execution",
+            "projects.factory_missions.dispatch_factory_chat_execution",
             side_effect=RuntimeError("secret server stack trace"),
         ):
             response = self.client.post(
@@ -603,7 +603,7 @@ class FactoryChatTests(TestCase):
         chat_start = html.index('id="chat-messages"')
         chat_end = html.index('id="orki-thinking"')
         sidebar_start = html.index('id="context-status"')
-        sidebar_end = html.index('</aside>', sidebar_start)
+        sidebar_end = html.index("</aside>", sidebar_start)
 
         self.assertIn("data-plan-review", html[chat_start:chat_end])
         self.assertNotIn(
@@ -907,7 +907,7 @@ class FactoryChatTests(TestCase):
         self.client.force_login(self.user)
         request_id = "e3196b9d-c29a-4a98-99b2-640dedbdcb8a"
         with patch(
-            "projects.factory_chat.dispatch_factory_chat_execution",
+            "projects.factory_missions.dispatch_factory_chat_execution",
             side_effect=OSError("database down"),
         ):
             response = self.client.post(

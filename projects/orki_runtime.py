@@ -30,6 +30,13 @@ from .models import (
     Project,
     RuntimeKnowledgeCandidate,
     RuntimeReflectionCandidate,
+    Task,
+)
+from .provider_gateway import (
+    ProviderGatewayError,
+    invoke_factory_chat_model,
+    model_adapter_for,
+    model_text_response,
 )
 from .runtime_contract import (
     RUNTIME_CANDIDATE_SCHEMA_VERSION,
@@ -37,12 +44,9 @@ from .runtime_contract import (
     RuntimeKnowledgeCandidateValidator,
     RuntimeReflectionCandidateValidator,
 )
-from .providers import model_adapter_for, model_text_response
 from .workflow_engine import (
-    ProviderTaskError,
     WorkflowTaskFailure,
     create_workflow_candidate,
-    execute_chat_provider_task,
     execute_task_adapter,
 )
 
@@ -379,7 +383,7 @@ def _observe_approval_locked(
 def observe_factory_plan_approval(
     factory_plan: FactoryPlan, *, actor: str
 ) -> OrkiExecution:
-    """Observe the existing approval; Runtime neither creates nor changes it."""
+    """Observe approval and apply the canonical mission-state transition."""
     with transaction.atomic():
         execution = (
             OrkiExecution.objects.select_for_update()
@@ -394,7 +398,30 @@ def observe_factory_plan_approval(
         observed_plan = execution.plan.factory_plan
         if observed_plan is None:
             raise RuntimeTransitionError("RUNTIME_APPROVAL_PLAN_REQUIRED")
-        return _observe_approval_locked(execution, observed_plan, actor=actor)
+        observed_execution = _observe_approval_locked(
+            execution, observed_plan, actor=actor
+        )
+        session = observed_execution.plan.goal.source_session
+        if session is None:
+            session = (
+                FactoryChatSession.objects.filter(project=factory_plan.project)
+                .order_by("-updated_at")
+                .first()
+            )
+        if session is not None:
+            from .factory_missions import mission_for
+
+            mission = mission_for(session)
+            mission.phase = FactoryMission.Phase.PLAN_APPROVED
+            mission.delivery_status = {
+                "state": "execution_preparation",
+                "next": (
+                    "A jóváhagyott terv készen áll a kanonikus "
+                    "végrehajtási szerződésre."
+                ),
+            }
+            mission.save(update_fields=["phase", "delivery_status", "updated_at"])
+        return observed_execution
 
 
 def _explicit_plan_approval(text: str) -> bool:
@@ -1235,10 +1262,12 @@ def _chat_failure(
 def dispatch_factory_chat_execution(
     execution_token: str, *, actor: str
 ) -> OrkiExecution:
-    """Dispatch a previously planned chat execution through the provider adapter.
+    """Dispatch a chat observation through the Provider Gateway.
 
-    The provider boundary is reached only here.  The Runtime owns all lifecycle
-    transitions, error reasons, verification, reflection and AKB hand-off.
+    ``ExecutionJob`` remains the repository's only queue, worker, lease and
+    recovery implementation.  Factory Chat has not yet been migrated into that
+    governed execution path, so this compatibility dispatch records no second
+    operational work item or lifecycle.
     """
     with transaction.atomic():
         execution = (
@@ -1276,27 +1305,39 @@ def dispatch_factory_chat_execution(
         owner = FactoryChatMessage.objects.get(
             pk=execution.provider_context["owner_message_id"]
         )
+    from .factory_orki import _bounded_context, _decode, _prompt
 
-    # The Engine owns provider selection, prompt construction and invocation as
-    # an AI Task. The Runtime only consumes its adapter result for mission flow.
+    # Workflow records its domain task/WSM evidence.  This retained compatibility
+    # path invokes only the Provider Gateway; it must be replaced by the
+    # ExecutionRequest -> MSM -> ExecutionJob migration before Phase 1 can pass.
     try:
-        provider_result = execute_chat_provider_task(
+        provider_result = execute_task_adapter(
             execution,
-            session=session,
-            owner_body=owner.body,
-            model_adapter_resolver=model_adapter_for,
-            model_text_decoder=model_text_response,
+            task_key="factory.chat.provider",
+            kind=Task.Kind.AI,
+            input_data={"owner_message": owner.body},
+            operation=lambda: invoke_factory_chat_model(
+                session=session,
+                owner_body=owner.body,
+                context_builder=_bounded_context,
+                prompt_builder=_prompt,
+                response_decoder=_decode,
+                model_adapter_resolver=model_adapter_for,
+                model_text_decoder=model_text_response,
+            ),
         )
     except WorkflowTaskFailure as error:
         cause = error.cause
+        gateway_error = cause
         error_code = (
-            cause.code
-            if isinstance(cause, ProviderTaskError)
-            else type(cause).__name__.upper() if cause else type(error).__name__.upper()
+            gateway_error.code
+            if isinstance(gateway_error, ProviderGatewayError)
+            else type(gateway_error).__name__.upper()
+            if gateway_error
+            else type(error).__name__.upper()
         )
         failure_message = (
-            "A Runtime nem ér el konfigurált modellprovidert. "
-            "A kérés helyreállítható."
+            "A Runtime nem ér el konfigurált modellprovidert. A kérés helyreállítható."
             if error_code == "MODEL_PROVIDER_UNAVAILABLE"
             else (
                 "A Runtime nem ér el használható provider-hitelesítést. "
@@ -1351,6 +1392,8 @@ def dispatch_factory_chat_execution(
             attempt_count=int(provider_result["attempts"]),
             token_usage=usage,
         )
+        if not isinstance(understanding, Mapping):
+            understanding = {}
         try:
             replacement_response = record_runtime_cognitive_observation(
                 project=execution.plan.goal.project,
