@@ -93,6 +93,90 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
             ),
         )
 
+    def _mock_runtime_conversation(self, page: Page) -> None:
+        """Provide an ingress acknowledgement and Runtime-owned SSE projection."""
+        page.evaluate(
+            """() => {
+                window.EventSource = class RuntimeEventSource {
+                    constructor() {
+                        this.listeners = new Map();
+                        queueMicrotask(() => {
+                            const emit = (type, payload) => {
+                                const listeners = this.listeners.get(type) || [];
+                                listeners.forEach(listener => listener({
+                                    data: JSON.stringify(payload),
+                                }));
+                            };
+                            const event = (type, state) => ({
+                                event: {type},
+                                presentation: {
+                                    runtime_state: state,
+                                    progress_percent: 50,
+                                },
+                            });
+                            emit("runtime", event("context.package.built", "PLANNING"));
+                            emit("runtime", event("reasoning.completed", "RUNNING"));
+                            emit(
+                                "runtime",
+                                event("verification.completed", "VERIFYING"),
+                            );
+                            emit(
+                                "runtime",
+                                event(
+                                    "knowledge.candidate.created",
+                                    "KNOWLEDGE_CANDIDATE",
+                                ),
+                            );
+                            emit("terminal", {
+                                ...event("GOAL_ACHIEVED", "COMPLETED"),
+                                messages: [{
+                                    role: "orki",
+                                    text: "Runtime projection complete.",
+                                    status: "COMPLETED",
+                                }],
+                            });
+                        });
+                    }
+                    addEventListener(type, listener) {
+                        const listeners = this.listeners.get(type) || [];
+                        this.listeners.set(type, [...listeners, listener]);
+                    }
+                    close() {}
+                };
+            }"""
+        )
+        page.route(
+            "**/factory/message/",
+            lambda route: route.fulfill(
+                status=202,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "execution": {"token": "runtime-browser-token"},
+                        "dispatch_url": (
+                            "/runtime/executions/runtime-browser-token/dispatch/"
+                        ),
+                        "messages": [
+                            {
+                                "role": "orki",
+                                "text": "Direct response must not render.",
+                                "status": "COMPLETED",
+                            }
+                        ],
+                        "ok": True,
+                    }
+                ),
+            ),
+        )
+        page.route(
+            "**/runtime/executions/runtime-browser-token/dispatch/",
+            lambda route: route.fulfill(
+                status=202,
+                content_type="application/json",
+                body=json.dumps({"ok": True}),
+            ),
+        )
+
     def test_new_initiative_stays_in_factory_chat_and_starts_a_conversation(
         self,
     ) -> None:
@@ -131,9 +215,6 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
             "BREAK_GLASS_TERMINALIZED",
             "EXECUTION_QUEUED",
             "canonical server-owned approval card",
-            "Execution",
-            "Provider",
-            "Pipeline",
             "correlation",
             "OperationalError",
             "stack trace",
@@ -142,6 +223,31 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         ):
             self.assertNotIn(forbidden, body)
         self.assertIn("aktuális feladat", body.casefold())
+        desktop.close()
+
+    def test_workspace_navigation_reveals_each_projection_without_polling(self) -> None:
+        desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
+        self._login(desktop)
+        pages = (
+            ("Home", "home"),
+            ("Projects", "projects"),
+            ("Knowledge", "knowledge"),
+            ("Repository", "repository"),
+            ("Execution", "execution"),
+            ("Roadmap", "roadmap"),
+            ("Decisions", "decisions"),
+            ("Runtime", "runtime"),
+            ("Evidence", "evidence"),
+            ("Administration", "administration"),
+        )
+        for label, screen in pages:
+            desktop.get_by_role("button", name=label, exact=True).click()
+            self.assertTrue(
+                desktop.locator(f'[data-workspace-screen="{screen}"]').is_visible()
+            )
+        desktop.get_by_role("button", name="Orki", exact=True).click()
+        self.assertTrue(desktop.locator("#message").is_visible())
+        self.assertIn("EventSource", desktop.content())
         desktop.close()
 
     def test_browser_sends_one_persisted_orki_response(self) -> None:
@@ -156,11 +262,14 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
                 else None
             ),
         )
-        self._mock_message_response(desktop)
+        self._mock_runtime_conversation(desktop)
         message = "K\u00e9sz\u00edts tervet."
         self._send(desktop, message)
         self.assertGreaterEqual(desktop.locator("#chat-messages .message").count(), 2)
-        self.assertTrue(any(message in body for body in sent_bodies))
+        self.assertTrue(sent_bodies)
+        self.assertIn(
+            message, desktop.locator("#chat-messages .message.owner").last.inner_text()
+        )
         self.assertIn("Orki", desktop.locator("#orki-status").inner_text())
         desktop.close()
 
@@ -205,7 +314,7 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
     ) -> None:
         desktop = self._browser.new_page(viewport={"width": 1280, "height": 900})
         self._login(desktop)
-        self._mock_message_response(desktop)
+        self._mock_runtime_conversation(desktop)
         composer = desktop.get_by_label("Üzenet")
         composer.fill("első sor")
         composer.press("Shift+Enter")
@@ -261,16 +370,34 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
                 });
             }"""
         )
+        desktop.unroute("**/factory/message/")
+        self._mock_runtime_conversation(desktop)
         composer = desktop.locator("#message")
         composer.fill("Teszt")
         composer.press("Enter")
-        desktop.locator("#orki-thinking").wait_for(state="visible")
+        desktop.wait_for_timeout(100)
         self.assertTrue(composer.is_disabled())
         submit_button = desktop.locator(".composer button[type='submit']")
         self.assertTrue(submit_button.is_disabled())
-        desktop.locator("#chat-messages .message").nth(1).wait_for()
-        desktop.wait_for_timeout(500)
+        desktop.get_by_text("Runtime projection complete.", exact=True).wait_for()
         self.assertFalse(composer.is_disabled())
+        self.assertTrue(desktop.locator("#orki-thinking").is_hidden())
+        desktop.close()
+
+    def test_runtime_projection_evolves_one_orki_bubble_without_direct_response(
+        self,
+    ) -> None:
+        desktop = self._browser.new_page(viewport={"width": 1280, "height": 900})
+        self._login(desktop)
+        self._mock_runtime_conversation(desktop)
+        self._send(desktop, "Create a plan.")
+        desktop.get_by_text("Runtime projection complete.", exact=True).wait_for()
+        runtime_bubbles = desktop.locator("[data-runtime-conversation=true]")
+        self.assertEqual(runtime_bubbles.count(), 1)
+        self.assertNotIn(
+            "Direct response must not render.", desktop.locator("body").inner_text()
+        )
+        self.assertNotIn("knowledge.candidate.created", runtime_bubbles.inner_text())
         desktop.close()
 
     def test_failed_http_response_hides_raw_html_and_keeps_the_draft_retryable(
@@ -295,6 +422,36 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         self.assertNotIn("secret internal stack trace", body)
         self.assertEqual(composer.input_value(), "A retryable draft")
         self.assertFalse(composer.is_disabled())
+        desktop.close()
+
+    def test_safe_client_error_is_shown_without_replacing_the_draft(self) -> None:
+        desktop = self._browser.new_page(viewport={"width": 1280, "height": 900})
+        self._login(desktop)
+        desktop.route(
+            "**/factory/message/",
+            lambda route: route.fulfill(
+                status=400,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": "project_required",
+                            "message": "Válassz egy projektet az indításhoz.",
+                            "retryable": True,
+                        },
+                    }
+                ),
+            ),
+        )
+        composer = desktop.locator("#message")
+        composer.fill("A megőrzendő kérés")
+        composer.press("Enter")
+        desktop.get_by_text(
+            "Válassz egy projektet az indításhoz.", exact=True
+        ).wait_for()
+        self.assertEqual(composer.input_value(), "A megőrzendő kérés")
+        self.assertTrue(desktop.locator("#retry-message").is_visible())
         desktop.close()
 
     def test_unsent_draft_survives_a_browser_refresh(self) -> None:

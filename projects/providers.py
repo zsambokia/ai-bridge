@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Thread
 from typing import BinaryIO, Callable, Protocol, cast
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -108,6 +109,16 @@ class RepositoryAdapter(Protocol):
         self, entry: ExecutionProvider, repository: str, branch: str
     ) -> dict[str, object]: ...
 
+    def create_repository(
+        self,
+        entry: ExecutionProvider,
+        *,
+        owner: str,
+        name: str,
+        private: bool,
+        description: str,
+    ) -> dict[str, object]: ...
+
 
 class DataAdapter(Protocol):
     def execute_read(
@@ -199,28 +210,176 @@ class ClaudeAdapter:
 
 
 class GitHubAdapter:
-    """Bounded repository read client; writes remain governed elsewhere."""
+    """GitHub repository API client bound solely to an ExecutionProvider credential.
+
+    This adapter deliberately has no dependency on local git, ``gh`` or any
+    developer credential store.  Every request is both authenticated through
+    the provider's declared environment binding and recorded as secret-free
+    provider audit metadata.
+    """
+
+    def _request(
+        self,
+        entry: ExecutionProvider,
+        *,
+        method: str,
+        path: str,
+        body: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        token = credential_value(entry)
+        base_url = str(entry.configuration.get("base_url", "https://api.github.com"))
+        request = Request(
+            f"{base_url.rstrip('/')}/{path.lstrip('/')}",
+            data=json.dumps(body).encode("utf-8") if body is not None else None,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                **({"Content-Type": "application/json"} if body is not None else {}),
+            },
+            method=method,
+        )
+        try:
+            with urlopen(request, timeout=20) as response:  # noqa: S310
+                raw_body = response.read().decode("utf-8")
+                decoded = json.loads(raw_body) if raw_body else {}
+        except (HTTPError, URLError) as exc:
+            ProviderAuditEvent.objects.create(
+                provider=entry,
+                action="GITHUB_API_REQUEST_FAILED",
+                details={
+                    "method": method,
+                    "path": path,
+                    "error_type": type(exc).__name__,
+                    "http_status": exc.code if isinstance(exc, HTTPError) else None,
+                },
+            )
+            raise ValueError("PROVIDER_REMOTE_REQUEST_FAILED") from exc
+        if not isinstance(decoded, dict):
+            raise ValueError("PROVIDER_REMOTE_RESPONSE_INVALID")
+        ProviderAuditEvent.objects.create(
+            provider=entry,
+            action="GITHUB_API_REQUEST",
+            details={
+                "method": method,
+                "path": path,
+                "authentication": "PROVIDER_ENVIRONMENT_BINDING",
+                "credential_binding": entry.credential_binding,
+            },
+        )
+        return decoded
+
+    def delete_repository(self, entry: ExecutionProvider, *, repository: str) -> None:
+        """Delete only a disposable proof repository through the bound provider."""
+        if not repository:
+            raise ValueError("GITHUB_REPOSITORY_IDENTITY_REQUIRED")
+        self._request(entry, method="DELETE", path=f"repos/{repository}")
 
     def read_repository_state(
         self, entry: ExecutionProvider, repository: str, branch: str
     ) -> dict[str, object]:
-        token = credential_value(entry)
-        url = f"https://api.github.com/repos/{repository}/branches/{branch}"
-        request = Request(
-            url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-            },
+        return self._request(
+            entry, method="GET", path=f"repos/{repository}/branches/{branch}"
         )
-        try:
-            with urlopen(request, timeout=20) as response:  # noqa: S310
-                decoded = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError) as exc:
-            raise ValueError("PROVIDER_REMOTE_REQUEST_FAILED") from exc
-        if not isinstance(decoded, dict):
-            raise ValueError("PROVIDER_REMOTE_RESPONSE_INVALID")
-        return decoded
+
+    def read_repository(
+        self, entry: ExecutionProvider, repository: str
+    ) -> dict[str, object]:
+        """Read canonical repository metadata through the bound provider."""
+        if not repository:
+            raise ValueError("GITHUB_REPOSITORY_IDENTITY_REQUIRED")
+        return self._request(entry, method="GET", path=f"repos/{repository}")
+
+    def read_repository_tree(
+        self, entry: ExecutionProvider, *, repository: str, ref: str
+    ) -> dict[str, object]:
+        """Read a recursive tree without using a local checkout."""
+        if not repository or not ref:
+            raise ValueError("GITHUB_REPOSITORY_TREE_CONFIGURATION_INVALID")
+        return self._request(
+            entry,
+            method="GET",
+            path=f"repos/{repository}/git/trees/{quote(ref, safe='')}?recursive=1",
+        )
+
+    def read_repository_file(
+        self, entry: ExecutionProvider, *, repository: str, path: str, ref: str
+    ) -> dict[str, object]:
+        """Read one repository file at an explicit immutable ref."""
+        if not repository or not path or not ref:
+            raise ValueError("GITHUB_CONTENT_READ_CONFIGURATION_INVALID")
+        return self._request(
+            entry,
+            method="GET",
+            path=(
+                f"repos/{repository}/contents/{quote(path.lstrip('/'), safe='/')}"
+                f"?ref={quote(ref, safe='')}"
+            ),
+        )
+
+    def create_repository(
+        self,
+        entry: ExecutionProvider,
+        *,
+        owner: str,
+        name: str,
+        private: bool,
+        description: str,
+    ) -> dict[str, object]:
+        """Create a repository through the configured GitHub provider only."""
+        if not owner or not name:
+            raise ValueError("GITHUB_REPOSITORY_IDENTITY_REQUIRED")
+        identity = self._request(entry, method="GET", path="user")
+        login = str(identity.get("login") or "")
+        path = (
+            "user/repos"
+            if login.casefold() == owner.casefold()
+            else f"orgs/{owner}/repos"
+        )
+        return self._request(
+            entry,
+            method="POST",
+            path=path,
+            body={"name": name, "private": private, "description": description},
+        )
+
+    def put_repository_file(
+        self,
+        entry: ExecutionProvider,
+        *,
+        repository: str,
+        path: str,
+        content_base64: str,
+        message: str,
+        branch: str,
+        blob_sha: str = "",
+    ) -> dict[str, object]:
+        """Create or update one file without invoking a local git client."""
+        if not repository or not path or not content_base64 or not branch:
+            raise ValueError("GITHUB_CONTENT_WRITE_CONFIGURATION_INVALID")
+        body: dict[str, object] = {
+            "message": message,
+            "content": content_base64,
+            "branch": branch,
+        }
+        if blob_sha:
+            body["sha"] = blob_sha
+        return self._request(
+            entry,
+            method="PUT",
+            path=f"repos/{repository}/contents/{path.lstrip('/')}",
+            body=body,
+        )
+
+    def compare_repository_refs(
+        self, entry: ExecutionProvider, *, repository: str, base: str, head: str
+    ) -> dict[str, object]:
+        if not repository or not base or not head:
+            raise ValueError("GITHUB_COMPARE_CONFIGURATION_INVALID")
+        return self._request(
+            entry,
+            method="GET",
+            path=f"repos/{repository}/compare/{base}...{head}",
+        )
 
 
 class BigQueryAdapter:
@@ -603,6 +762,32 @@ def model_adapter_for(entry: ExecutionProvider) -> ModelAdapter:
         return adapters[entry.kind]
     except KeyError as exc:
         raise ValueError("MODEL_PROVIDER_ADAPTER_UNAVAILABLE") from exc
+
+
+def repository_adapter_for(entry: ExecutionProvider) -> RepositoryAdapter:
+    """Resolve a repository adapter from the canonical provider registry."""
+    if entry.kind == ExecutionProvider.Kind.GITHUB and entry.adapter_key == "github":
+        return GitHubAdapter()
+    raise ValueError("REPOSITORY_PROVIDER_ADAPTER_UNAVAILABLE")
+
+
+def select_repository_provider(
+    identity: str, required_capabilities: set[str] | None = None
+) -> ExecutionProvider:
+    """Select an exact active repository provider with no fallback identity."""
+    try:
+        entry = ExecutionProvider.objects.get(provider_id=identity)
+    except ExecutionProvider.DoesNotExist as exc:
+        raise ValueError("REPOSITORY_PROVIDER_UNAVAILABLE") from exc
+    required = required_capabilities or {"REPOSITORY_READ"}
+    if (
+        not entry.enabled
+        or entry.status != ExecutionProvider.Status.ACTIVE
+        or entry.role != ExecutionProvider.Role.REPOSITORY_SERVICE
+        or not required.issubset(set(entry.capabilities))
+    ):
+        raise ValueError("REPOSITORY_PROVIDER_UNAVAILABLE")
+    return entry
 
 
 def select_model_provider(identity: str) -> ExecutionProvider:

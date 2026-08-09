@@ -93,7 +93,7 @@ class StructuredDecisionRuntimeTests(TestCase):
         self.assertEqual(projection["behaviour"], "ENGINEERING")
         self.assertEqual(projection["stage"], OrkiExecution.State.COMPLETED)
         self.assertEqual(projection["provider"], "runtime-operation-gateway")
-        self.assertEqual(projection["knowledge_integration_status"], "NOT_REQUIRED")
+        self.assertEqual(projection["knowledge_integration_status"], "CANDIDATE_READY")
         self.assertEqual(
             set(execution.events.values_list("event_type", flat=True)),
             {

@@ -1,5 +1,19 @@
 # AI Bridge – Current State
 
+## Repository Bootstrap Lifecycle — 2026-08-08
+
+Repository documents can now enter the project AKB through a provider-driven,
+create/import-converged lifecycle. Content-first classification, bounded
+extraction, commit/path provenance, governed `KnowledgeEntry` promotion,
+derived `SemanticEmbedding` creation and persisted retrieval context are
+covered by executable evidence. `RepositoryKnowledgeReceipt` is durable intake
+evidence only; the AKB remains authoritative. Incremental provider diffs update
+only changed knowledge rather than rebuilding the semantic index. The existing
+GitHub adapter remains proved for branch reads only; remote clone, creation,
+history/diff and webhook capabilities are not claimed. See
+[Repository Bootstrap Lifecycle](../architecture/REPOSITORY_BOOTSTRAP_LIFECYCLE.md)
+and its [evidence package](../evidence/repository-bootstrap-lifecycle-audit/).
+
 ## AI Bridge 2.0 Sprint 07 — Cognitive & Behaviour Evolution
 
 Sprint 07 adds a project-isolated, governed learning loop above the frozen

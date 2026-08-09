@@ -629,6 +629,7 @@ class FactoryMission(models.Model):
 
     class Phase(models.TextChoices):
         DISCOVERY = "DISCOVERY", "Discovery"
+        QUESTION_REQUIRED = "QUESTION_REQUIRED", "Question required"
         REQUIREMENTS_SUFFICIENT = "REQUIREMENTS_SUFFICIENT", "Requirements sufficient"
         PLAN_READY = "PLAN_READY", "Plan ready"
         AWAITING_PRODUCT_OWNER_APPROVAL = (
@@ -1013,6 +1014,49 @@ class KnowledgePipelineReceipt(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        ordering = ["-created_at"]
+
+
+class RepositoryKnowledgeReceipt(models.Model):
+    """Durable evidence for governed repository-document intake."""
+
+    class Status(models.TextChoices):
+        DISCOVERED = "DISCOVERED", "Discovered"
+        PROMOTED = "PROMOTED", "Promoted"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="repository_knowledge_receipts"
+    )
+    source_path = models.CharField(max_length=255)
+    source_version = models.CharField(max_length=128)
+    fingerprint = models.CharField(max_length=64)
+    classification = models.CharField(max_length=64)
+    knowledge_entry = models.ForeignKey(
+        KnowledgeEntry,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="repository_knowledge_receipts",
+    )
+    embedding = models.ForeignKey(
+        SemanticEmbedding,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="repository_knowledge_receipts",
+    )
+    status = models.CharField(max_length=16, choices=Status.choices)
+    audit_trail = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "source_path", "source_version"],
+                name="unique_repository_knowledge_source_version",
+            )
+        ]
         ordering = ["-created_at"]
 
 
@@ -2004,6 +2048,11 @@ class OrkiExecution(models.Model):
 
     class State(models.TextChoices):
         CREATED = "CREATED", "Created"
+        UNDERSTANDING = "UNDERSTANDING", "Mission understanding"
+        SEMANTIC_SEARCH = "SEMANTIC_SEARCH", "Semantic search"
+        GAP_ANALYSIS = "GAP_ANALYSIS", "Gap analysis"
+        QUESTION_GENERATION = "QUESTION_GENERATION", "Question generation"
+        WAITING_USER = "WAITING_USER", "Waiting for user"
         PLANNING = "PLANNING", "Planning"
         READY = "READY", "Ready"
         WAITING = "WAITING", "Waiting"
@@ -2085,6 +2134,212 @@ class OrkiReflection(models.Model):
     analysis = models.JSONField(default=dict, blank=True)
     evidence_references = models.JSONField(default=list, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class WorkflowTemplate(models.Model):
+    """Approved, immutable workflow definition eligible for semantic selection."""
+
+    class Status(models.TextChoices):
+        CANDIDATE = "CANDIDATE", "Candidate"
+        IN_REVIEW = "IN_REVIEW", "In review"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+        RETIRED = "RETIRED", "Retired"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="workflow_templates"
+    )
+    workflow_key = models.CharField(max_length=128)
+    version = models.PositiveIntegerField(default=1)
+    definition = models.JSONField(default=dict)
+    definition_hash = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.CANDIDATE)
+    approval_reference = models.CharField(max_length=255, blank=True)
+    embedding_reference = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "workflow_key", "version"],
+                name="unique_workflow_template_version",
+            )
+        ]
+
+
+class WorkflowInstance(models.Model):
+    """Workflow Engine-owned lifecycle; deliberately independent from OESM."""
+
+    class State(models.TextChoices):
+        CREATED = "CREATED", "Created"
+        READY = "READY", "Ready"
+        RUNNING_STEP = "RUNNING_STEP", "Running step"
+        WAITING = "WAITING", "Waiting"
+        RETRY = "RETRY", "Retry"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    mission_execution = models.OneToOneField(
+        OrkiExecution, on_delete=models.PROTECT, related_name="workflow_instance"
+    )
+    template = models.ForeignKey(
+        WorkflowTemplate,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="instances",
+    )
+    workflow_key = models.CharField(max_length=128)
+    state = models.CharField(max_length=24, choices=State.choices, default=State.CREATED)
+    state_version = models.PositiveIntegerField(default=0)
+    input_data = models.JSONField(default=dict, blank=True)
+    output_data = models.JSONField(default=dict, blank=True)
+    selection_evidence = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class WorkflowStep(models.Model):
+    """A scheduled workflow unit. It may own one or more executable Tasks."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        WAITING = "WAITING", "Waiting"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    workflow = models.ForeignKey(
+        WorkflowInstance, on_delete=models.PROTECT, related_name="steps"
+    )
+    step_key = models.CharField(max_length=128)
+    sequence = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    dependencies = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow", "step_key"], name="unique_workflow_step_key"
+            )
+        ]
+
+
+class Task(models.Model):
+    """First-class executable work item, distinct from a Step and ExecutionRun."""
+
+    class Kind(models.TextChoices):
+        AI = "AI", "AI"
+        TOOL = "TOOL", "Tool"
+        HUMAN = "HUMAN", "Human"
+        WORKFLOW = "WORKFLOW", "Workflow"
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        WAITING = "WAITING", "Waiting"
+        RETRY = "RETRY", "Retry"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    workflow_step = models.ForeignKey(
+        WorkflowStep, on_delete=models.PROTECT, related_name="tasks"
+    )
+    execution_run = models.ForeignKey(
+        ExecutionRun,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="workflow_tasks",
+    )
+    task_key = models.CharField(max_length=128)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    input_data = models.JSONField(default=dict, blank=True)
+    output_data = models.JSONField(default=dict, blank=True)
+    evidence_references = models.JSONField(default=list, blank=True)
+    retry_count = models.PositiveIntegerField(default=0)
+    max_retries = models.PositiveIntegerField(default=2)
+    timeout_seconds = models.PositiveIntegerField(default=300)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow_step", "task_key"], name="unique_workflow_task_key"
+            )
+        ]
+
+
+class WorkflowEvent(models.Model):
+    """Append-only Workflow Engine evidence, separate from OrkiRuntimeEvent."""
+
+    workflow = models.ForeignKey(
+        WorkflowInstance, on_delete=models.PROTECT, related_name="events"
+    )
+    sequence = models.PositiveIntegerField()
+    event_type = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow", "sequence"], name="unique_workflow_event_sequence"
+            )
+        ]
+
+
+class WorkflowSelectionRecord(models.Model):
+    """Evidence for vector top-N and reasoning before a template is selected."""
+
+    workflow = models.OneToOneField(
+        WorkflowInstance, on_delete=models.PROTECT, related_name="selection_record"
+    )
+    query = models.TextField()
+    candidates = models.JSONField(default=list, blank=True)
+    reasoning = models.TextField(blank=True)
+    selected_template = models.ForeignKey(
+        WorkflowTemplate,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="selection_records",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class WorkflowCandidate(models.Model):
+    """Generated workflow learning artifact; approval is required before templating."""
+
+    class Status(models.TextChoices):
+        GENERATED = "GENERATED", "Generated"
+        IN_REVIEW = "IN_REVIEW", "In review"
+        APPROVED = "APPROVED", "Approved"
+        EMBEDDED = "EMBEDDED", "Embedded"
+        REJECTED = "REJECTED", "Rejected"
+
+    workflow = models.OneToOneField(
+        WorkflowInstance, on_delete=models.PROTECT, related_name="candidate"
+    )
+    reflection = models.ForeignKey(
+        OrkiReflection,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="workflow_candidates",
+    )
+    definition = models.JSONField(default=dict)
+    evidence_references = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.GENERATED)
+    approval_reference = models.CharField(max_length=255, blank=True)
+    embedding_reference = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 

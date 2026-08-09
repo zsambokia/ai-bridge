@@ -3,15 +3,14 @@
 ## Authority and scope
 
 Product Owner Factory Development Mode authority was issued in the active
-conversation for AI Bridge self-development. Local execution is authorized
+conversation for AI Bridge self-development. Local execution was authorized
 without an AI Bridge-managed provider execution, provider heartbeat, or
 Bridge-issued running execution while the managed runtime is not proven stable.
 
-Scope: evidence-driven operational proof and necessary technical repair for the
-AI Bridge 2.0 MVP Runtime, Knowledge Pipeline, AKB governance, Semantic Layer,
-derived Vector Store, Cognitive Evolution, end-to-end execution, and semantic
-layer reproducibility. Frozen architectural ownership boundaries remain in
-force.
+Scope: evidence-driven operational proof and necessary repair for Runtime,
+Knowledge Pipeline, AKB governance, Semantic Layer, derived Vector Store,
+Cognitive Evolution, GitHub Provider E2E execution, and semantic-layer
+reproducibility.
 
 ## Preflight
 
@@ -19,36 +18,43 @@ force.
 - Branch: `main` (main-only development)
 - Baseline: `246c98bbe5252d6ab2de1041a1153add6598c4e1`
 - Baseline recorded: 2026-08-08
-- Existing unrelated work preserved: `projects/tests/test_factory_chat_browser_e2e.py`
-  contains a one-line unstaged browser-test wait adjustment and is excluded
-  from this audit unless its owner separately authorizes its inclusion.
-- Additional worktrees observed and untouched:
-  `C:/Users/User/Documents/dev/ai-bridge-factory-lifecycle` and
-  `C:/Users/User/Documents/dev/ai-bridge-governed-cancellation`.
+- No commit or push was requested.
 
-## Progress
+## Completed work
 
-1. Assessment: completed against the Constitution, workflow, roadmap, AKB, and
-   Runtime, Knowledge Pipeline, Semantic and Cognitive architecture documents.
-2. Targeted executable proof: completed in
-   `projects/tests/test_semantic_intelligence.py::test_mvp_proof_semantic_layer_can_be_destroyed_and_reconstructed_from_akb`.
-3. Repair: added the missing destructive/rebuild Phase 10 regression proof;
-   no production schema or runtime repair was required.
-4. Release gates and final evidence: completed successfully on 2026-08-08.
-
-## Modified files
-
-- `projects/tests/test_semantic_intelligence.py`
-- This evidence directory
+1. Implemented provider-owned GitHub repository create, content, comparison,
+   and delete operations backed only by the credential binding.
+2. Replaced the manual admin execution path with the internal factory proof
+   endpoint and an executable suite runner.
+3. Repaired local migration readiness and semantic reconstruction so derived
+   receipt pointers are cleared before destruction and rebound after rebuild.
+4. Added automatic preflight recovery for any retained disposable proof
+   repositories.
+5. Executed three consecutive real GitHub Provider runs. Every run passed
+   bootstrap, AKB intake, semantic/vector indexing, Runtime, cognitive
+   reflection, incremental sync, semantic destruction/rebuild, and automatic
+   cleanup.
+6. Generated per-run, cleanup, and suite evidence under
+   `github-provider-e2e/`.
 
 ## Final validation state
 
-- `ruff check .` — PASS
-- `mypy .` — PASS (245 source files)
+- Three-run GitHub Provider suite — PASS; no manual interaction; all temporary
+  repositories deleted.
 - `python manage.py makemigrations --check --dry-run` — PASS
+- `python manage.py migrate --check` — PASS
 - `python manage.py validate_scopes` — PASS
-- `pytest -q` — PASS (364 passed, 107.60 s)
+- `ruff check .` and `ruff format --check .` — PASS
+- `mypy .` — PASS
+- `git diff --check` — PASS
+- `pytest -q` — PASS (373 passed in 113.50 s)
 
-No commit or push was requested. Final state is reproducible from the baseline
-plus the listed uncommitted audit files; the unrelated browser-test change
-remains excluded.
+## Closure state
+
+`PASS — READY FOR PRODUCT OWNER REVIEW`
+
+The canonical AKB remained intact through semantic-layer destruction. The
+Semantic Layer, Vector Store, and embeddings were recreated automatically from
+the AKB with equivalent retrieval and unchanged Runtime and cognitive
+behaviour. The detailed certification is in
+`FINAL_MVP_CERTIFICATION_REPORT.md`.

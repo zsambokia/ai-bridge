@@ -1,0 +1,290 @@
+{
+  "architecture_statement": "AKB is authoritative; Semantic Layer, Vector Store and embeddings are derived and reconstructable without Runtime behaviour change.",
+  "bootstrap": {
+    "commit_sha": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+    "paths": [
+      "README.md",
+      "docs/architecture.md",
+      "docs/roadmap.md"
+    ]
+  },
+  "cleanup": {
+    "status": "DELETED"
+  },
+  "cleanup_evidence_file": "docs\\evidence\\ai-bridge-2.0-mvp-proof\\github-provider-e2e\\github-provider-cleanup-20260809074810356027.json",
+  "cognitive": {
+    "baseline": {
+      "candidate_id": 6,
+      "experience_id": 6,
+      "guidance_patterns": [
+        {
+          "applicability": [
+            "github-provider-e2e",
+            "runtime"
+          ],
+          "candidate_id": 6,
+          "guidance": "Use governed AKB context and verify Runtime evidence before promotion.",
+          "strategy_key": "verify-governed-context"
+        }
+      ],
+      "status": "APPROVED"
+    },
+    "rebuilt": {
+      "candidate_id": 7,
+      "experience_id": 7,
+      "guidance_patterns": [
+        {
+          "applicability": [
+            "github-provider-e2e",
+            "runtime"
+          ],
+          "candidate_id": 6,
+          "guidance": "Use governed AKB context and verify Runtime evidence before promotion.",
+          "strategy_key": "verify-governed-context"
+        },
+        {
+          "applicability": [
+            "github-provider-e2e",
+            "runtime"
+          ],
+          "candidate_id": 7,
+          "guidance": "Use governed AKB context and verify Runtime evidence before promotion.",
+          "strategy_key": "verify-governed-context"
+        }
+      ],
+      "status": "APPROVED"
+    }
+  },
+  "incremental_sync": {
+    "paths": [
+      "docs/architecture.md"
+    ],
+    "receipt_ids": [
+      14
+    ]
+  },
+  "provider": {
+    "authentication": "PROVIDER_ENVIRONMENT_BINDING",
+    "provider_id": "github"
+  },
+  "provider_audit_actions": [
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST",
+    "GITHUB_API_REQUEST"
+  ],
+  "repository": {
+    "default_branch": "main",
+    "full_name": "zsambokia/ai-bridge-e2e-20260809074810356027",
+    "id": 1328562993
+  },
+  "reproducibility": {
+    "after": {
+      "entry_ids": [
+        14,
+        13,
+        15
+      ],
+      "package_hash": "56f453cac853f0cb2343631c11ae3a6ca7bbb05c5d3f959e7c51797a55e0b4c6",
+      "payload": {
+        "candidates": [
+          {
+            "entry_id": 14,
+            "evidence": {
+              "embedding_id": "deb1047cc270885ef9e11724187ca947f775d6cddef55faa21c44c6726e837d5",
+              "model_version": "v1",
+              "provider": "LOCAL_HASH",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d"
+            },
+            "metadata": {
+              "entry_key": "repository-document:14:5b602e69b3d928220bf08337258f9b54",
+              "freshness_status": "CURRENT",
+              "knowledge_type": "SYSTEM_DESIGN",
+              "scope": "PROJECT",
+              "source_reference": "docs/architecture.md",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+              "title": "Architecture The AKB is canonical; semantic artifacts are derived.",
+              "verification_status": "APPROVED"
+            },
+            "reason": "COSINE_SIMILARITY",
+            "score": 0.57735
+          },
+          {
+            "entry_id": 13,
+            "evidence": {
+              "embedding_id": "f1af1bb8f2194c6bb516540321048fe20671bfc1718eea3ee7cbb56cd9ce0520",
+              "model_version": "v1",
+              "provider": "LOCAL_HASH",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d"
+            },
+            "metadata": {
+              "entry_key": "repository-document:14:6961a116477059a64a42f1466d3f75ca",
+              "freshness_status": "CURRENT",
+              "knowledge_type": "GENERAL",
+              "scope": "PROJECT",
+              "source_reference": "README.md",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+              "title": "AI Bridge automated provider proof",
+              "verification_status": "APPROVED"
+            },
+            "reason": "COSINE_SIMILARITY",
+            "score": 0.0
+          },
+          {
+            "entry_id": 15,
+            "evidence": {
+              "embedding_id": "f4b0ad354b9b3adba6d268da0c24ab71e39f4957da61a1618d2312a42423c4b6",
+              "model_version": "v1",
+              "provider": "LOCAL_HASH",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d"
+            },
+            "metadata": {
+              "entry_key": "repository-document:14:0d62e9f50caea43a2b03f7008ebb1062",
+              "freshness_status": "CURRENT",
+              "knowledge_type": "ROADMAP",
+              "scope": "PROJECT",
+              "source_reference": "docs/roadmap.md",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+              "title": "Roadmap Governed repository knowledge intake.",
+              "verification_status": "APPROVED"
+            },
+            "reason": "COSINE_SIMILARITY",
+            "score": 0.0
+          }
+        ],
+        "retrieval_strategy": "SEMANTIC_VECTOR"
+      }
+    },
+    "akb_before": {
+      "approvals": 1,
+      "embeddings": 3,
+      "entries": [
+        {
+          "id": 13,
+          "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+          "status": "ACTIVE"
+        },
+        {
+          "id": 15,
+          "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+          "status": "ACTIVE"
+        },
+        {
+          "id": 14,
+          "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+          "status": "ACTIVE"
+        }
+      ],
+      "receipts": 3,
+      "revisions": 6
+    },
+    "before": {
+      "entry_ids": [
+        14,
+        13,
+        15
+      ],
+      "package_hash": "56f453cac853f0cb2343631c11ae3a6ca7bbb05c5d3f959e7c51797a55e0b4c6",
+      "payload": {
+        "candidates": [
+          {
+            "entry_id": 14,
+            "evidence": {
+              "embedding_id": "deb1047cc270885ef9e11724187ca947f775d6cddef55faa21c44c6726e837d5",
+              "model_version": "v1",
+              "provider": "LOCAL_HASH",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d"
+            },
+            "metadata": {
+              "entry_key": "repository-document:14:5b602e69b3d928220bf08337258f9b54",
+              "freshness_status": "CURRENT",
+              "knowledge_type": "SYSTEM_DESIGN",
+              "scope": "PROJECT",
+              "source_reference": "docs/architecture.md",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+              "title": "Architecture The AKB is canonical; semantic artifacts are derived.",
+              "verification_status": "APPROVED"
+            },
+            "reason": "COSINE_SIMILARITY",
+            "score": 0.57735
+          },
+          {
+            "entry_id": 13,
+            "evidence": {
+              "embedding_id": "f1af1bb8f2194c6bb516540321048fe20671bfc1718eea3ee7cbb56cd9ce0520",
+              "model_version": "v1",
+              "provider": "LOCAL_HASH",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d"
+            },
+            "metadata": {
+              "entry_key": "repository-document:14:6961a116477059a64a42f1466d3f75ca",
+              "freshness_status": "CURRENT",
+              "knowledge_type": "GENERAL",
+              "scope": "PROJECT",
+              "source_reference": "README.md",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+              "title": "AI Bridge automated provider proof",
+              "verification_status": "APPROVED"
+            },
+            "reason": "COSINE_SIMILARITY",
+            "score": 0.0
+          },
+          {
+            "entry_id": 15,
+            "evidence": {
+              "embedding_id": "f4b0ad354b9b3adba6d268da0c24ab71e39f4957da61a1618d2312a42423c4b6",
+              "model_version": "v1",
+              "provider": "LOCAL_HASH",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d"
+            },
+            "metadata": {
+              "entry_key": "repository-document:14:0d62e9f50caea43a2b03f7008ebb1062",
+              "freshness_status": "CURRENT",
+              "knowledge_type": "ROADMAP",
+              "scope": "PROJECT",
+              "source_reference": "docs/roadmap.md",
+              "source_version": "0d25cce83355a23257aea1c8cd91d9571a9ccc4d",
+              "title": "Roadmap Governed repository knowledge intake.",
+              "verification_status": "APPROVED"
+            },
+            "reason": "COSINE_SIMILARITY",
+            "score": 0.0
+          }
+        ],
+        "retrieval_strategy": "SEMANTIC_VECTOR"
+      }
+    },
+    "rebuild": {
+      "cached": 0,
+      "eligible": 3,
+      "indexed": 3
+    }
+  },
+  "run_id": "20260809074810356027",
+  "runtime": {
+    "baseline_reflection": 6,
+    "rebuilt_reflection": 7,
+    "state": "COMPLETED"
+  },
+  "status": "PASS"
+}

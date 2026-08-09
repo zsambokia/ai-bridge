@@ -75,35 +75,44 @@ class DjangoVectorStore:
         )
         indexed = cached = 0
         for entry in entries:
-            content = f"{entry.title}\n{entry.content}"
-            digest = hashlib.sha256(content.encode()).hexdigest()
-            version = entry.source_version or str(entry.version)
-            current = SemanticEmbedding.objects.filter(
+            result = self.index_entry(project, entry, force=force)
+            indexed += result["indexed"]
+            cached += result["cached"]
+        return {"indexed": indexed, "cached": cached, "eligible": entries.count()}
+
+    def index_entry(
+        self, project: Project, entry: KnowledgeEntry, *, force: bool = False
+    ) -> dict[str, int]:
+        """Index one approved entry without scanning the project semantic layer."""
+        if entry.status != KnowledgeEntry.Status.ACTIVE:
+            return {"indexed": 0, "cached": 0}
+        content = f"{entry.title}\n{entry.content}"
+        digest = hashlib.sha256(content.encode()).hexdigest()
+        version = entry.source_version or str(entry.version)
+        current = SemanticEmbedding.objects.filter(
+            entry=entry,
+            provider=self.provider.name,
+            model_version=self.provider.model_version,
+        ).first()
+        if not force and current and current.content_hash == digest:
+            return {"indexed": 0, "cached": 1}
+        identity = hashlib.sha256(
+            f"{project.pk}:{entry.pk}:{version}:{self.provider.name}:{self.provider.model_version}".encode()
+        ).hexdigest()
+        with transaction.atomic():
+            SemanticEmbedding.objects.update_or_create(
                 entry=entry,
                 provider=self.provider.name,
                 model_version=self.provider.model_version,
-            ).first()
-            if not force and current and current.content_hash == digest:
-                cached += 1
-                continue
-            identity = hashlib.sha256(
-                f"{project.pk}:{entry.pk}:{version}:{self.provider.name}:{self.provider.model_version}".encode()
-            ).hexdigest()
-            with transaction.atomic():
-                SemanticEmbedding.objects.update_or_create(
-                    entry=entry,
-                    provider=self.provider.name,
-                    model_version=self.provider.model_version,
-                    defaults={
-                        "embedding_id": identity,
-                        "source_version": version,
-                        "content_hash": digest,
-                        "vector": self.provider.embed(content),
-                        "metadata": _metadata(entry),
-                    },
-                )
-            indexed += 1
-        return {"indexed": indexed, "cached": cached, "eligible": entries.count()}
+                defaults={
+                    "embedding_id": identity,
+                    "source_version": version,
+                    "content_hash": digest,
+                    "vector": self.provider.embed(content),
+                    "metadata": _metadata(entry),
+                },
+            )
+        return {"indexed": 1, "cached": 0}
 
     def search(
         self,

@@ -1,5 +1,16 @@
 # AI Bridge Roadmap
 
+## Repository Bootstrap and Multi-Project Onboarding
+
+The provider-neutral repository knowledge lifecycle is implemented and has
+repository-wide Release Gate evidence: both create and import converge after
+provider preparation into governed AKB intake, derived semantic indexing and
+retrieval context. The next bounded capability is a credentialed GitHub
+snapshot/diff adapter, followed by separately governed remote creation and
+webhook ingestion proof. Those remote capabilities are not inferred from the
+local lifecycle evidence. Architecture:
+[Repository Bootstrap Lifecycle](../architecture/REPOSITORY_BOOTSTRAP_LIFECYCLE.md).
+
 ## Orki Orchestrator Runtime Foundation
 
 The Product Owner approved the canonical

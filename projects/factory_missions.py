@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import cast
 
 from django.db import transaction
 
 from .models import FactoryChatSession, FactoryMission
 from .orki_runtime import create_factory_plan_in_shadow
 
-CONFIDENCE_THRESHOLD = 0.70
+CONFIDENCE_THRESHOLD = 0.90
 _TEXT_FIELDS = (
     "objective",
     "primary_workflow",
@@ -28,6 +29,47 @@ _LIST_FIELDS = (
     "unresolved_decisions",
 )
 
+_CRITICAL_FIELDS: tuple[tuple[str, str], ...] = (
+    ("objective", "Mi a pontos üzleti cél és az MVP sikerkritériuma?"),
+    ("target_users", "Kik fogják használni a megoldást?"),
+    ("primary_workflow", "Mi az elsődleges, lépésről lépésre végigvitt munkafolyamat?"),
+    (
+        "required_inputs",
+        "Milyen bemenetek szükségesek (például térfogat, súly, konténertípus)?",
+    ),
+    ("required_outputs", "Milyen eredményt és megjelenítést vár a felhasználó?"),
+    ("mvp_boundary", "Mi tartozik az MVP-be, és mi marad ki belőle?"),
+    (
+        "persistence_requirements",
+        "Kell bejelentkezés, több felhasználó vagy tartós tárolás?",
+    ),
+)
+
+
+def assess_mission_readiness(mission: FactoryMission) -> dict[str, object]:
+    """Apply the Runtime-owned deterministic gate before Planning."""
+    missing = [
+        {"field": field, "question": question}
+        for field, question in _CRITICAL_FIELDS
+        if not getattr(mission, field)
+    ]
+    coverage = 1 - (len(missing) / len(_CRITICAL_FIELDS))
+    confidence = min(mission.recommendation_confidence, coverage)
+    ready = bool(
+        confidence >= CONFIDENCE_THRESHOLD
+        and not missing
+        and not mission.unresolved_decisions
+    )
+    return {
+        "confidence": confidence,
+        "provider_confidence": mission.recommendation_confidence,
+        "critical_unknowns": missing,
+        "open_questions": list(mission.unresolved_decisions),
+        "questions": [item["question"] for item in missing]
+        + list(mission.unresolved_decisions),
+        "ready_for_planning": ready,
+    }
+
 
 def mission_for(session: FactoryChatSession) -> FactoryMission:
     return FactoryMission.objects.get_or_create(session=session)[0]
@@ -39,21 +81,6 @@ def _strings(value: object) -> list[str]:
         if isinstance(value, list)
         else []
     )
-
-
-def _owner_authorized_plan_generation(message: str) -> bool:
-    """Recognise an explicit request to move from discovery to a Plan."""
-    normalized = " ".join(message.casefold().replace(",", " ").split())
-    return normalized in {
-        "ok mehet",
-        "rendben mehet",
-        "mehet",
-        "kezdheted",
-        "indulhat",
-        "készíts tervet",
-        "készítsd el a tervet",
-        "mehet a terv",
-    }
 
 
 def apply_understanding(
@@ -76,20 +103,20 @@ def apply_understanding(
     proposal = data.get("repository_proposal")
     if isinstance(proposal, dict):
         mission.repository_proposal = proposal
-    concrete = len(message.split()) >= 8
-    plan_requested = _owner_authorized_plan_generation(message)
-    mission.requirements_sufficient = bool(
-        mission.objective
-        and mission.primary_workflow
-        and not mission.unresolved_decisions
-        and (
-            mission.recommendation_confidence >= CONFIDENCE_THRESHOLD
-            or concrete
-            or plan_requested
-        )
-    )
+    readiness = assess_mission_readiness(mission)
+    readiness_confidence = readiness["confidence"]
+    if not isinstance(readiness_confidence, (int, float)):
+        raise TypeError("Mission readiness confidence must be numeric.")
+    mission.recommendation_confidence = float(readiness_confidence)
+    mission.requirements_sufficient = bool(readiness["ready_for_planning"])
+    mission.delivery_status = {
+        **mission.delivery_status,
+        "understanding": readiness,
+    }
     if mission.requirements_sufficient and mission.plan_id is None:
         mission.phase = FactoryMission.Phase.REQUIREMENTS_SUFFICIENT
+    elif mission.plan_id is None:
+        mission.phase = FactoryMission.Phase.QUESTION_REQUIRED
     mission.save()
     return mission
 
@@ -210,6 +237,7 @@ def human_projection(mission: FactoryMission | None) -> dict[str, object]:
         }
     phases = {
         "DISCOVERY": "K\u00f6vetelm\u00e9nyek \u00f6sszegy\u0171jt\u00e9se",
+        "QUESTION_REQUIRED": "Pontos\u00edt\u00e1sra v\u00e1r",
         "REQUIREMENTS_SUFFICIENT": "Terv k\u00e9sz\u00edt\u00e9se",
         "PLAN_READY": "Terv k\u00e9sz\u00edt\u00e9se",
         "AWAITING_PRODUCT_OWNER_APPROVAL": "J\u00f3v\u00e1hagy\u00e1sra v\u00e1r",
@@ -226,10 +254,12 @@ def human_projection(mission: FactoryMission | None) -> dict[str, object]:
         for item in [mission.objective, mission.primary_workflow, *mission.target_users]
         if item
     ]
+    readiness = assess_mission_readiness(mission)
+    readiness_questions = readiness["questions"]
     missing = (
-        []
-        if mission.requirements_sufficient
-        else ["A c\u00e9lcsoport vagy az els\u0151 munkafolyamat pontos\u00edt\u00e1sa"]
+        cast(list[str], readiness_questions)
+        if isinstance(readiness_questions, list)
+        else []
     )
     return {
         "phase": phases[mission.phase],

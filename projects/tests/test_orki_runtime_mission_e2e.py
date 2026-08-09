@@ -10,7 +10,14 @@ from django.test import TestCase
 
 from projects.cognitive_state import record_entry
 from projects.factory_planning import approve_plan
-from projects.models import OrkiExecution, Project
+from projects.models import (
+    OrkiExecution,
+    Project,
+    Task,
+    WorkflowCandidate,
+    WorkflowInstance,
+    WorkflowTemplate,
+)
 from projects.orki_runtime import (
     cancel_execution,
     create_factory_plan_in_shadow,
@@ -24,6 +31,7 @@ from projects.orki_runtime import (
     resume_execution,
     wait_for_user_input,
 )
+from projects.workflow_engine import execute_task_adapter, select_workflow_template
 
 
 class OrkiRuntimeMissionE2ETests(TestCase):
@@ -163,6 +171,15 @@ class OrkiRuntimeMissionE2ETests(TestCase):
         self.assertTrue(
             execution.events.filter(event_type="COGNITIVE_CONTEXT_REFERENCED").exists()
         )
+        workflow = WorkflowInstance.objects.get(mission_execution=execution)
+        task = Task.objects.get(workflow_step__workflow=workflow)
+        candidate = WorkflowCandidate.objects.get(workflow=workflow)
+        self.assertEqual(workflow.state, WorkflowInstance.State.COMPLETED)
+        self.assertEqual(task.status, Task.Status.COMPLETED)
+        self.assertEqual(task.execution_run_id, execution.execution_run_id)
+        self.assertEqual(candidate.status, WorkflowCandidate.Status.GENERATED)
+        self.assertEqual(candidate.reflection.execution_id, execution.pk)
+        self.assertTrue(workflow.events.filter(event_type="task.completed").exists())
 
     def test_recovery_loop_retries_real_operation_and_cancel_is_runtime_owned(
         self,
@@ -204,6 +221,24 @@ class OrkiRuntimeMissionE2ETests(TestCase):
             execution.events.filter(event_type="RECOVERY_REASSESSMENT_STARTED").count(),
             2,
         )
+        task = Task.objects.get(workflow_step__workflow__mission_execution=execution)
+        self.assertEqual(task.retry_count, 2)
+        self.assertEqual(task.status, Task.Status.COMPLETED)
+
+    def test_unapproved_workflow_template_is_never_selected(self) -> None:
+        WorkflowTemplate.objects.create(
+            project=self.project,
+            workflow_key="container-calculator",
+            version=1,
+            definition={"steps": ["calculate"]},
+            definition_hash="0" * 64,
+            status=WorkflowTemplate.Status.CANDIDATE,
+        )
+        template, evidence = select_workflow_template(
+            self.project, "container-calculator"
+        )
+        self.assertIsNone(template)
+        self.assertIsNone(evidence["selected_template_id"])
 
         cancelled = self._approved_execution(title="Runtime Mission Cancellation")
         cancel_execution(
@@ -213,3 +248,29 @@ class OrkiRuntimeMissionE2ETests(TestCase):
         self.assertEqual(cancelled.state, OrkiExecution.State.CANCELLED)
         self.assertEqual(cancelled.plan.goal.status, "CANCELLED")
         self.assertTrue(cancelled.events.filter(event_type="GOAL_CANCELLED").exists())
+
+    def test_workflow_engine_can_sequence_multiple_tasks_before_completion(self) -> None:
+        execution = self._approved_execution(title="Workflow Task Sequence")
+
+        execute_task_adapter(
+            execution,
+            task_key="prepare-input",
+            kind=Task.Kind.TOOL,
+            input_data={"sequence": 1},
+            operation=lambda: {"prepared": True, "evidence_references": ["task:1"]},
+            complete_workflow=False,
+        )
+        execute_task_adapter(
+            execution,
+            task_key="verify-output",
+            kind=Task.Kind.TOOL,
+            input_data={"sequence": 2},
+            operation=lambda: {"verified": True, "evidence_references": ["task:2"]},
+        )
+
+        workflow = WorkflowInstance.objects.get(mission_execution=execution)
+        self.assertEqual(workflow.state, WorkflowInstance.State.COMPLETED)
+        self.assertEqual(workflow.steps.count(), 2)
+        self.assertEqual(
+            workflow.steps.filter(tasks__status=Task.Status.COMPLETED).count(), 2
+        )

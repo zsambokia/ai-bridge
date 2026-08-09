@@ -1,0 +1,13 @@
+{
+  "baseline_commit": "bf6f886bb5a08187eafb9cccd02b662ff9856f66",
+  "branch": "main",
+  "result": "PASS — READY FOR PRODUCT OWNER REVIEW",
+  "release_gates": {
+    "pytest": {"result": "PASS", "detail": "367 passed in 108.58s"},
+    "ruff": {"result": "PASS", "detail": "all checks passed"},
+    "mypy": {"result": "PASS", "detail": "no issues in 248 source files"},
+    "scope_schema": {"result": "PASS", "detail": "all canonical scopes valid"},
+    "migration_drift": {"result": "PASS", "detail": "no changes detected"}
+  },
+  "remote_github_capabilities_certified": false
+}

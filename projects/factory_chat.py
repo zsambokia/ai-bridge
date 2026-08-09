@@ -15,7 +15,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonR
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.text import slugify
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from .factory_coding import coding_projection
 from .factory_memory import memory_projection
@@ -27,10 +27,12 @@ from .factory_planning import (
     request_plan_changes,
 )
 from .factory_workspace import approval_projection, cognitive_workspace_projection
+from .github_repository_provider import GitHubRepositoryProvider
 from .knowledge import review_candidate
 from .models import (
     ConversationOrchestration,
     ExecutableScope,
+    ExecutionProvider,
     ExecutionRun,
     FactoryChatMessage,
     FactoryChatSession,
@@ -39,6 +41,7 @@ from .models import (
     KnowledgeContextPackage,
     OrkiExecution,
     Project,
+    RepositoryKnowledgeReceipt,
     RuntimeDeployment,
 )
 from .orki_runtime import (
@@ -48,6 +51,7 @@ from .orki_runtime import (
     observe_factory_plan_approval,
     start_factory_chat_execution,
 )
+from .repository_lifecycle import RepositoryBootstrapLifecycle
 
 SESSION_KEY = "factory_chat"
 MAX_MESSAGE_LENGTH = 12_000
@@ -152,6 +156,12 @@ def _context(
         "runtime": execution_projection(runtime_execution)
         if runtime_execution is not None
         else None,
+        # Read-only Workspace projections.  The browser never owns or mutates
+        # repository, roadmap, or AKB records.
+        "roadmap_items": project.roadmap_items.order_by("item_key")[:20],
+        "repository_receipts": RepositoryKnowledgeReceipt.objects.filter(
+            project=project
+        ).order_by("-updated_at")[:20],
     }
     context["artifact"] = (
         run
@@ -328,11 +338,90 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
             "context": _context(project, mode, str(state.get("memory_query", ""))),
             "mode": mode,
             "panel": panel,
+            "workspace_navigation": (
+                ("home", "Home"), ("orki", "Orki"), ("projects", "Projects"),
+                ("knowledge", "Knowledge"), ("repository", "Repository"),
+                ("execution", "Execution"), ("roadmap", "Roadmap"),
+                ("decisions", "Decisions"), ("runtime", "Runtime"),
+                ("evidence", "Evidence"), ("administration", "Administration"),
+            ),
             # A generous display window keeps a long working conversation useful,
             # while the transcript remains separate from canonical memory/state.
             "messages": messages_for(orki_session)[-100:],
             "orki_availability": availability(orki_session),
         },
+    )
+
+
+@login_required
+@require_POST
+def workspace_repository_action(request: HttpRequest) -> JsonResponse:
+    """Invoke repository intake only through its canonical lifecycle owner."""
+    project = _selected_project(request)
+    if project is None:
+        return JsonResponse(
+            {"ok": False, "error": {"code": "PROJECT_REQUIRED"}}, status=409
+        )
+    approval_reference = request.POST.get("approval_reference", "").strip()
+    if not approval_reference:
+        return JsonResponse(
+            {"ok": False, "error": {"code": "APPROVAL_REFERENCE_REQUIRED"}},
+            status=400,
+        )
+    provider = ExecutionProvider.objects.filter(
+        kind=ExecutionProvider.Kind.GITHUB,
+        role=ExecutionProvider.Role.REPOSITORY_SERVICE,
+        status=ExecutionProvider.Status.ACTIVE,
+        enabled=True,
+    ).first()
+    if provider is None:
+        return JsonResponse(
+            {"ok": False, "error": {"code": "REPOSITORY_PROVIDER_UNAVAILABLE"}},
+            status=409,
+        )
+    action = request.POST.get("action", "")
+    lifecycle = RepositoryBootstrapLifecycle(GitHubRepositoryProvider(provider))
+    try:
+        if action == "bootstrap":
+            mode = request.POST.get("mode", "import")
+            receipts = lifecycle.bootstrap(
+                project,
+                mode=mode,
+                actor=request.user.get_username(),
+                approval_reference=approval_reference,
+            )
+        elif action in {"sync", "reindex"}:
+            receipt = project.repository_knowledge_receipts.first()
+            if receipt is None:
+                raise ValueError("REPOSITORY_BASELINE_REQUIRED")
+            # Reindex is deliberately an incremental lifecycle refresh.  The
+            # Workspace must not touch AKB or the vector store directly.
+            receipts = lifecycle.sync(
+                project,
+                commit_sha=receipt.source_version,
+                actor=request.user.get_username(),
+                approval_reference=approval_reference,
+            )
+        else:
+            raise ValueError("REPOSITORY_ACTION_INVALID")
+    except ValueError as exc:
+        return JsonResponse(
+            {"ok": False, "error": {"code": str(exc)}}, status=409
+        )
+    return JsonResponse(
+        {
+            "ok": True,
+            "action": action,
+            "receipts": [
+                {
+                    "path": receipt.source_path,
+                    "version": receipt.source_version,
+                    "status": receipt.status,
+                    "classification": receipt.classification,
+                }
+                for receipt in receipts
+            ],
+        }
     )
 
 

@@ -19,3 +19,8 @@ if not os.environ.get("MCP_API_TOKEN") and os.environ.get("MCP_TEST_API_TOKEN"):
 from .base import *  # noqa: E402, F403
 
 DEBUG = True
+
+# The local development server is deliberately reached through loopback in the
+# browser and in end-to-end tests.  Production host allow-listing remains in
+# the base settings; these entries only complete the local profile.
+ALLOWED_HOSTS = [*ALLOWED_HOSTS, "localhost", "127.0.0.1", "[::1]"]  # noqa: F405

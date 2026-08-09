@@ -243,16 +243,24 @@ def test_mvp_proof_semantic_layer_can_be_destroyed_and_reconstructed_from_akb() 
     KnowledgeContextPackage.objects.filter(project=project).delete()
     assert not SemanticEmbedding.objects.filter(entry__project=project).exists()
     assert not KnowledgeContextPackage.objects.filter(project=project).exists()
-    assert list(
-        KnowledgeEntry.objects.filter(project=project)
-        .order_by("pk")
-        .values("pk", "entry_key", "content", "status", "version", "approval_reference")
-    ) == akb_snapshot
-    assert list(
-        KnowledgeRevision.objects.filter(entry__project=project)
-        .order_by("entry_id", "new_version")
-        .values("entry_id", "new_version", "content_snapshot", "approval_reference")
-    ) == revision_snapshot
+    assert (
+        list(
+            KnowledgeEntry.objects.filter(project=project)
+            .order_by("pk")
+            .values(
+                "pk", "entry_key", "content", "status", "version", "approval_reference"
+            )
+        )
+        == akb_snapshot
+    )
+    assert (
+        list(
+            KnowledgeRevision.objects.filter(entry__project=project)
+            .order_by("entry_id", "new_version")
+            .values("entry_id", "new_version", "content_snapshot", "approval_reference")
+        )
+        == revision_snapshot
+    )
     assert GovernanceApproval.objects.filter(project=project).count() == approval_count
 
     assert store.index_project(project) == {"indexed": 2, "cached": 0, "eligible": 2}

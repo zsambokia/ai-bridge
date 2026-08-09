@@ -9,16 +9,19 @@
 </head>
 <body>
   <header class="app-header"><div class="brand"><span class="brand-mark">O</span><div><strong>Orki</strong><small>AI Bridge · digitális COO</small></div></div><span id="orki-status" class="availability" data-state="{{ orki_availability.state }}">{{ orki_availability.label }}</span></header>
-  <main class="workspace" data-workspace>
+  <nav class="workspace-nav" aria-label="Orki Workspace">{% for view, label in workspace_navigation %}<button type="button" data-workspace-view="{{ view }}">{{ label }}</button>{% endfor %}</nav>
+  <style>.workspace-nav{display:flex;gap:.25rem;overflow:auto;padding:.45rem clamp(1rem,4vw,3rem);background:#fff;border-bottom:1px solid var(--line)}.workspace-nav button{white-space:nowrap;background:transparent;color:var(--muted);padding:.4rem .55rem;font-size:.78rem}.workspace-nav button[aria-current="page"]{background:var(--accent-wash);color:var(--accent)}.workspace-dossier{max-width:1540px;margin:0 auto;padding:1rem}.workspace-screen{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:clamp(1rem,3vw,2rem)}.workspace-screen h1{margin:.15rem 0 1rem}.workspace-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.workspace-cards>div,.workspace-cards>a{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:12px;padding:.8rem;background:#fff}.workspace-cards p{margin:.35rem 0}.workspace-dossier[hidden]{display:none}</style>
+  <main class="workspace" data-workspace data-workspace-orki>
     <aside class="shell projects" aria-label="Projektek"><p class="rail-heading">Kezdeményezések</p>{% for project in projects %}<a class="project" {% if context.project == project %}aria-current="page"{% endif %} href="?project={{ project.project_id|urlencode }}">{{ project.display_name }}</a>{% empty %}<p class="muted">Még nincs projekt.</p>{% endfor %}<form method="post" action="{% url 'factory-chat-new-project' %}" data-new-project>{% csrf_token %}<button class="new-project" type="submit">Új kezdeményezés</button></form></aside>
     <section class="shell conversation" aria-label="Beszélgetés Orkival"><div class="conversation-head"><span class="eyebrow">A Factory operatív társa</span><h1>Miben vigyem előre a Factoryt?</h1><p class="muted">Mondd el a célt vagy a helyzetet. Orki összefoglalja, javaslatot tesz, és csak akkor kér döntést, amikor az valóban szükséges.</p><p id="interaction-feedback" class="feedback" aria-live="polite"></p><button id="retry-message" class="quiet-button" type="button" hidden>Újrapróbálás</button></div>
-      <div id="chat-messages" class="messages" aria-live="polite" aria-busy="false">{% for message in messages %}<article class="message {{ message.role }}{% if message.status == 'FAILED' %} failed{% endif %}" data-message-id="{{ message.id }}" data-correlation-id="{{ message.correlation_id }}"><strong>{% if message.role == 'owner' %}Ön{% else %}Orki{% endif %}</strong><br>{{ message.text }}</article>{% empty %}<div class="empty-chat"><h2>Indítsuk el a beszélgetést.</h2><p class="muted">Például: „Szeretnék egy belső eszközt, amely gyorsítja az ügyfélszolgálat munkáját.”</p></div>{% endfor %}</div>
+      <div id="chat-messages" class="messages" aria-live="polite" aria-busy="false">{% for message in messages %}<article class="message {{ message.role }}{% if message.status == 'FAILED' %} failed{% endif %}" data-message-id="{{ message.id }}" data-correlation-id="{{ message.correlation_id }}"><strong>{% if message.role == 'owner' %}Ön{% else %}Orki{% endif %}</strong><br>{{ message.text }}</article>{% empty %}<div class="empty-chat"><h2>Indítsuk el a beszélgetést.</h2><p class="muted">Például: „Szeretnék egy belső eszközt, amely gyorsítja az ügyfélszolgálat munkáját.”</p></div>{% endfor %}{% include "projects/factory_plan_review.html" %}</div>
       <div id="orki-thinking" class="thinking" role="status" aria-live="polite" hidden><strong>Orki dolgozik.</strong> <span id="orki-thinking-detail">Összerendezi a következő lépést.</span></div>
       <form class="composer" method="post" action="{% url 'factory-chat-message' %}" data-chat-form>{% csrf_token %}<input type="hidden" name="request_id"><label class="sr-only" for="message">Üzenet</label><textarea id="message" name="message" maxlength="12000" required placeholder="Írd le, mit szeretnél elérni…" rows="1"></textarea><span class="shortcut">Enter küld · Shift+Enter új sor</span><button type="submit">Küldés</button></form></section>
     <aside class="mission" aria-label="A beszélgetés munkatérképe"><div id="context-status">{% include "projects/factory_context_status.html" %}</div></aside>
   </main><nav class="mobile-nav" aria-label="Mobil nézetek"><button type="button" data-panel="chat" aria-pressed="true">Chat</button><button type="button" data-panel="context" aria-pressed="false">Állapot</button><button type="button" data-panel="projects" aria-pressed="false">Projektek</button></nav>
   <script>
     const statusUrl="{% url 'factory-chat-status' %}",messages=document.getElementById('chat-messages'),composer=document.getElementById('message'),chatForm=document.querySelector('[data-chat-form]'),thinking=document.getElementById('orki-thinking'),thinkingDetail=document.getElementById('orki-thinking-detail'),workspace=document.querySelector('[data-workspace]'),retryButton=document.getElementById('retry-message');let busy=false,thinkingTimer,projectId='{{ context.project.project_id|default:"new"|escapejs }}',pending=null;
+    document.addEventListener('DOMContentLoaded',()=>{const dossier=document.querySelector('[data-workspace-dossier]'),screens=[...document.querySelectorAll('[data-workspace-screen]')],workspaceTabs=[...document.querySelectorAll('[data-workspace-view]')];const selectWorkspace=view=>{const isOrki=view==='orki';workspace.hidden=!isOrki;dossier.hidden=isOrki;screens.forEach(screen=>screen.hidden=screen.dataset.workspaceScreen!==view);workspaceTabs.forEach(tab=>tab.setAttribute('aria-current',String(tab.dataset.workspaceView===view?'page':false)));if(isOrki)composer.focus()};workspaceTabs.forEach(tab=>tab.addEventListener('click',()=>selectWorkspace(tab.dataset.workspaceView)));selectWorkspace('orki');const repositoryForm=document.querySelector('[data-repository-action]');if(repositoryForm){repositoryForm.addEventListener('submit',async event=>{event.preventDefault();const submitter=event.submitter,feedback=repositoryForm.querySelector('[data-repository-feedback]'),payload=new FormData(repositoryForm);payload.set('action',submitter.value);feedback.textContent='Repository Lifecycle fut...';try{const response=await fetch(repositoryForm.action,{method:'POST',headers:{'X-Requested-With':'OrkiWorkspace'},body:payload}),data=await response.json();feedback.textContent=data.ok?`${data.action}: ${data.receipts.length} receipt`:(data.error?.code||'A Lifecycle művelet nem indítható.');if(data.ok)window.setTimeout(()=>window.location.reload(),300)}catch(error){feedback.textContent='A Lifecycle művelet eredménye nem olvasható.'}})}});
     const draftKey=()=>`factory-chat-draft:${projectId}`,pendingKey=()=>`factory-chat-pending:${projectId}`,nearBottom=()=>messages.scrollHeight-messages.scrollTop-messages.clientHeight<80,requestId=()=>crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`;
     const autoGrow=()=>{composer.style.height='auto';composer.style.height=Math.min(composer.scrollHeight,160)+'px'},feedback=(text,error=false)=>{const node=document.getElementById('interaction-feedback');node.textContent=text;node.classList.toggle('error',error)};
     const setThinkingDetail=()=>{const steps=['Összerendezi, mit értett meg.','Ellenőrzi a következő biztonságos lépést.','Javaslattá formálja a választ.'];let step=0;thinkingDetail.textContent=steps[step];thinkingTimer=window.setInterval(()=>{step=(step+1)%steps.length;thinkingDetail.textContent=steps[step]},1100)};
@@ -29,7 +32,7 @@
     const showFailure=(data=null)=>{const message=data?.error?.message||data?.messages?.at(-1)?.text||'Most nem sikerült elküldeni az üzenetet. Kérlek, próbáld újra.';feedback(message,true);retryButton.hidden=!pending;};
     const restoreDraft=()=>{pending=JSON.parse(sessionStorage.getItem(pendingKey())||'null');composer.value=sessionStorage.getItem(draftKey())||pending?.text||'';autoGrow();if(pending)retryButton.hidden=false};restoreDraft();composer.addEventListener('input',()=>{sessionStorage.setItem(draftKey(),composer.value);autoGrow()});composer.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&!busy){e.preventDefault();e.currentTarget.form.requestSubmit()}});
     const setPanel=panel=>{workspace.classList.remove('show-projects','show-context');if(panel!=='chat')workspace.classList.add('show-'+panel);document.querySelectorAll('[data-panel]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.panel===panel)))};document.querySelectorAll('[data-panel]').forEach(button=>button.addEventListener('click',()=>setPanel(button.dataset.panel)));document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();composer.focus()}if(event.key==='Escape')setPanel('chat')});
-    const refresh=async()=>{try{const response=await fetch(statusUrl,{headers:{'X-Requested-With':'FactoryChat'}});if(response.ok)document.getElementById('context-status').innerHTML=await response.text()}catch(_){/* The conversation remains usable while context refresh recovers. */}};
+    const refresh=async()=>{try{const response=await fetch(statusUrl,{headers:{'X-Requested-With':'FactoryChat'}});if(!response.ok)return;const contextStatus=document.getElementById('context-status');contextStatus.innerHTML=await response.text();messages.querySelectorAll('[data-plan-review]').forEach(card=>card.remove());const review=contextStatus.querySelector('template[data-plan-review-fragment]');if(review?.content.querySelector('[data-plan-review]'))messages.append(review.content.cloneNode(true))}catch(_){/* The conversation remains usable while context refresh recovers. */}};
     retryButton.addEventListener('click',()=>{if(!pending||busy)return;composer.value=pending.text;sessionStorage.setItem(draftKey(),composer.value);chatForm.requestSubmit()});
     document.addEventListener('submit',async event=>{const form=event.target;if(!form.matches('[data-chat-form],[data-new-project],[data-factory-action]'))return;event.preventDefault();if(busy||form.dataset.busy)return;const isChat=form.matches('[data-chat-form]'),expectsPayload=isChat||form.matches('[data-new-project]'),text=isChat?composer.value:'';if(isChat&&!text.trim()){feedback('Üres üzenetet nem lehet küldeni.',true);return}const following=nearBottom(),formData=new FormData(form);let currentRequestId='';if(isChat){currentRequestId=pending?.text===text?pending.id:requestId();pending={id:currentRequestId,text};sessionStorage.setItem(pendingKey(),JSON.stringify(pending));formData.set('request_id',currentRequestId);addMessage({role:'owner',text,clientRequestId:currentRequestId},following,true)}form.dataset.busy='1';retryButton.hidden=true;setBusy(true,isChat?'Összerendezi a célodat és a következő lépést.':'Rögzíti a döntést.');try{const response=await fetch(form.action,{method:'POST',body:formData,headers:{'X-Requested-With':'FactoryChat',...(isChat?{'X-Orki-Runtime-Async':'1'}:{})}}),data=await safeJson(response);if(!response.ok||(expectsPayload&&!data)){showFailure(data);return}if(expectsPayload){if(form.matches('[data-new-project]'))messages.replaceChildren();syncMessages(data.messages,following,currentRequestId);if(isChat&&data.execution){document.dispatchEvent(new CustomEvent('orki-runtime-projection',{detail:data.execution}));if(data.dispatch_url){const dispatchResponse=await fetch(data.dispatch_url,{method:'POST',body:new FormData(form),headers:{'X-Requested-With':'FactoryChat'}}),dispatchData=await safeJson(dispatchResponse);if(!dispatchResponse.ok||!dispatchData){showFailure(dispatchData);return}syncMessages(dispatchData.messages,following,currentRequestId);document.dispatchEvent(new CustomEvent('orki-runtime-projection',{detail:dispatchData.execution||dispatchData}))}}if(data.orki_availability){const status=document.getElementById('orki-status');status.textContent=data.orki_availability.label;status.dataset.state=data.orki_availability.state}if(!data.ok){showFailure(data);return}pending=null;sessionStorage.removeItem(pendingKey());sessionStorage.removeItem(draftKey());composer.value='';autoGrow();setPanel('chat')}await refresh()}catch(_){showFailure()}finally{delete form.dataset.busy;setBusy(false)}});messages.scrollTop=messages.scrollHeight;window.setInterval(()=>{if(!busy)refresh()},7000);
   </script>
@@ -58,6 +61,18 @@
       <dt>Evidence</dt><dd data-runtime="evidence">—</dd>
     </dl>
     <p class="runtime-message" data-runtime="message">A Runtime még nem indított végrehajtást.</p>
+  </section>
+  <section class="workspace-dossier" data-workspace-dossier hidden>
+    <article class="workspace-screen" data-workspace-screen="home"><span class="eyebrow">Home · live project projection</span><h1>{{ context.project.display_name|default:"Nincs kiválasztott projekt" }}</h1><div class="workspace-cards"><div><b>Mission</b><p>{{ context.mission.objective|default:context.next_step }}</p></div><div><b>Aktív végrehajtás</b><p>{{ context.runtime.human_message|default:context.state_text }}</p></div><div><b>Repository readiness</b><p>{{ context.project.get_onboarding_status_display|default:"—" }}</p></div><div><b>Knowledge freshness</b><p>{% if context.memory %}{{ context.memory.created_at }} · {{ context.memory.package_hash }}{% else %}Nincs Context Package.{% endif %}</p></div><div><b>Pending approval</b><p>{{ context.plan.get_status_display|default:"Nincs" }}</p></div><div><b>Evidence</b><p>{{ context.runtime.evidence_count|default:"0" }} Runtime evidence</p></div></div></article>
+    <article class="workspace-screen" data-workspace-screen="projects" hidden><span class="eyebrow">Projects</span><h1>Projektválasztó</h1><div class="workspace-cards">{% for project in projects %}<a href="?project={{ project.project_id|urlencode }}"><b>{{ project.display_name }}</b><br><small>{{ project.get_onboarding_status_display }} · {{ project.repository_full_name }}</small></a>{% empty %}<p>Nincs aktív projekt.</p>{% endfor %}</div></article>
+    <article class="workspace-screen" data-workspace-screen="knowledge" hidden><span class="eyebrow">Knowledge · canonical Context Package</span><h1>Context és szemantikus evidence</h1><div class="workspace-cards"><div><b>Package hash</b><p>{{ context.memory.package_hash|default:"Még nincs csomag" }}</p></div><div><b>Work context</b><p>{{ context.memory.work_context_id|default:"—" }}</p></div><div><b>Forrásverziók</b><p>{{ context.memory.source_versions|default:"—" }}</p></div><div><b>Freshness</b><p>{{ context.memory.stale_warnings|default:"Nincs jelzett elavulás" }}</p></div></div><p class="muted">Csak a Knowledge Pipeline és a Context Package által kiadott, attribútált adat jelenik meg.</p></article>
+    <article class="workspace-screen" data-workspace-screen="repository" hidden><span class="eyebrow">Repository Lifecycle</span><h1>Repository intake</h1><p class="muted">Bootstrap, Sync és Reindex a Repository Lifecycle governált műveletei; a Workspace nem hív közvetlenül GitHubot.</p><form action="{% url 'workspace-repository-action' %}" method="post" data-repository-action>{% csrf_token %}<label>Approval reference <input name="approval_reference" required></label><label>Bootstrap mode <select name="mode"><option value="import">Import</option><option value="create">Create</option></select></label><button name="action" value="bootstrap" type="submit">Bootstrap</button><button name="action" value="sync" type="submit">Sync</button><button name="action" value="reindex" type="submit">Reindex</button><output aria-live="polite" data-repository-feedback></output></form><div class="workspace-cards">{% for receipt in context.repository_receipts %}<details><summary><b>{{ receipt.source_path }}</b> · {{ receipt.status }}</summary><p>{{ receipt.classification }} · {{ receipt.source_version }}</p><small>Fingerprint: {{ receipt.fingerprint }} · provenance: {{ receipt.audit_trail }}</small></details>{% empty %}<div><b>Nincs repository receipt</b><p>Az első governált lifecycle futás után jelenik meg.</p></div>{% endfor %}</div></article>
+    <article class="workspace-screen" data-workspace-screen="execution" hidden><span class="eyebrow">Execution</span><h1>Végrehajtás</h1><div class="workspace-cards"><div><b>Scope</b><p>{{ context.scope.reference|default:"Nincs nyitott scope" }}</p></div><div><b>Execution run</b><p>{{ context.run.lifecycle|default:"Nincs futás" }}</p></div><div><b>Runtime</b><p>{{ context.runtime.state|default:"Nincs aktív Runtime" }}</p></div></div></article>
+    <article class="workspace-screen" data-workspace-screen="roadmap" hidden><span class="eyebrow">Roadmap · governed records</span><h1>Roadmap</h1><div class="workspace-cards">{% for item in context.roadmap_items %}<div><b>{{ item.item_key }} · {{ item.title }}</b><p>{{ item.get_state_display }} · engineering: {{ item.engineering_status }} · operational: {{ item.operational_status }}</p><small>{{ item.evidence_references }}</small></div>{% empty %}<p>Nincs roadmap item.</p>{% endfor %}</div><p class="muted">A módosítás a kanonikus roadmap/governance folyamaton át történik; ez a felület nem szerkeszt fájlokat.</p></article>
+    <article class="workspace-screen" data-workspace-screen="decisions" hidden><span class="eyebrow">Decision intelligence</span><h1>Intent, context és döntés</h1><div class="workspace-cards">{% for item in context.workspace.decisions %}<div><b>{{ item.label }}</b><p>{{ item.text }}</p><small>Confidence: {{ item.confidence|default:"n/a" }} · {{ item.source }}</small></div>{% empty %}<p>Nincs nyitott döntés a kanonikus Cognitive State-ben.</p>{% endfor %}</div></article>
+    <article class="workspace-screen" data-workspace-screen="runtime" hidden><span class="eyebrow">Runtime · OESM owned</span><h1>Élő Runtime monitor</h1><div class="workspace-cards"><div><b>Állapot</b><p>{{ context.runtime.state|default:"Nincs aktív végrehajtás" }}</p></div><div><b>Előrehaladás</b><p>{{ context.runtime.progress.percent|default:"0" }}%</p></div><div><b>Recovery</b><p>{{ context.runtime.recovery_events|default:"Nincs" }}</p></div><div><b>Reflection / knowledge</b><p>{{ context.runtime.reflection_status|default:"—" }} / {{ context.runtime.knowledge_integration_status|default:"—" }}</p></div></div><p class="muted">A Runtime EventSource-on frissül; a böngésző nem birtokolja az OESM-et.</p></article>
+    <article class="workspace-screen" data-workspace-screen="evidence" hidden><span class="eyebrow">Evidence</span><h1>Evidence browser</h1><div class="workspace-cards">{% for event in context.runtime.events %}<div><b>{{ event.type }}</b><p>{{ event.created_at }} · {{ event.actor }}</p><small>{{ event.evidence_references }}</small></div>{% empty %}<p>Nincs Runtime evidence az aktuális projekthez.</p>{% endfor %}</div></article>
+    <article class="workspace-screen" data-workspace-screen="administration" hidden><span class="eyebrow">Administration</span><h1>Governed administration</h1><p>A Workspace kizárólag kanonikus projekt-, execution- és governance-projekciókat használ. Provider credential és domain ownership itt nem módosítható.</p></article>
   </section>
   <script>
   (() => {
@@ -110,19 +125,18 @@
       stream.addEventListener("completed", event => {
         const data = JSON.parse(event.data);
         project(data);
-        renderMessages(data.messages);
         stream.close();
         stream = null;
       });
       stream.addEventListener("failed", event => {
         const data = JSON.parse(event.data);
         project(data);
-        renderMessages(data.messages);
         stream.close();
         stream = null;
       });
       stream.addEventListener("terminal", event => {
-        project(JSON.parse(event.data));
+        const data = JSON.parse(event.data);
+        project(data);
         stream.close();
         stream = null;
       });
@@ -181,6 +195,176 @@
       const execution = event.detail;
       project(execution);
       if (execution && execution.token && !stream) openStream(execution.token);
+    });
+  })();
+  </script>
+  <script>
+  (() => {
+    "use strict";
+
+    const form = document.querySelector("[data-chat-form]");
+    const composer = document.querySelector("#message");
+    const messages = document.querySelector("#chat-messages");
+    const submit = form && form.querySelector("button[type=submit]");
+    const thinking = document.querySelector("#orki-thinking");
+    const retry = document.querySelector("#retry-message");
+    if (!form || !composer || !messages) return;
+    const initialOrkiMessages = new Set(messages.querySelectorAll(".message.orki"));
+
+    const stages = {
+      "FACTORY_CHAT_INGRESS_ACCEPTED": ["Küldetés", "Rögzítettem a kérést, és előkészítem a következő biztonságos lépést."],
+      "GOAL_CREATED": ["Küldetés", "A cél rögzítve van."],
+      "understanding.started": ["Megértés", "Összerendezem a kérést és a meglévő működési keretet."],
+      "semantic_candidates.selected": ["Tudáskeresés", "A releváns, jóváhagyott tudást keresem."],
+      "context.package.built": ["Kontextus összeállítása", "Az ellenőrzött kontextuscsomag elkészült."],
+      "reasoning.started": ["Értelmezés és mérlegelés", "A rendelkezésre álló információk alapján dolgozom."],
+      "reasoning.completed": ["Értelmezés és mérlegelés", "Az értelmezés elkészült."],
+      "planning.ready": ["Tervezés", "A következő lépés terve elkészült."],
+      "approval.not_required": ["Jóváhagyás", "Ehhez a lépéshez nincs külön jóváhagyásra szükség."],
+      "provider.selection.started": ["Végrehajtás", "Elindítottam a szükséges végrehajtást."],
+      "provider.response.received": ["Végrehajtás", "A végrehajtás eredménye megérkezett."],
+      "verification.completed": ["Ellenőrzés", "Ellenőriztem az eredményt és a hozzá tartozó bizonyítékot."],
+      "reflection.completed": ["Reflexió", "Értékeltem a lezárt lépés tanulságát."],
+      "knowledge.candidate.created": ["Tudásfrissítés", "Létrejött egy ellenőrzött tudásjelölt későbbi értékelésre."],
+      "GOAL_ACHIEVED": ["Lezárva", "A folyamat lezárult."],
+    };
+    const runtimeStages = {
+      PLANNING: ["Tervezés", "A következő lépést készítem elő."],
+      WAITING_APPROVAL: ["Jóváhagyás", "A szükséges jóváhagyásra várok."],
+      DISPATCHING: ["Végrehajtás", "A végrehajtás előkészítése folyamatban van."],
+      RUNNING: ["Végrehajtás", "A szükséges lépés folyamatban van."],
+      VERIFYING: ["Ellenőrzés", "Az eredményt ellenőrzöm."],
+      REFLECTING: ["Reflexió", "A tanulságokat értékelem."],
+      KNOWLEDGE_CANDIDATE: ["Tudásfrissítés", "Az ellenőrzött tudásjelölt elkészült."],
+      COMPLETED: ["Lezárva", "A folyamat lezárult."],
+      WAITING_EXTERNAL: ["Folytatás szükséges", "Egy külső feltétel miatt most nem tudok továbbmenni. Újrapróbálhatod."],
+      FAILED: ["Folytatás szükséges", "Ez a lépés most nem fejezhető be. Újrapróbálhatod."],
+    };
+    let stream = null;
+    let busy = false;
+    let bubble = null;
+
+    const saveDraft = value => sessionStorage.setItem("factory-chat-draft", value);
+    const setBusy = value => {
+      busy = value;
+      if (submit) submit.disabled = value;
+      composer.disabled = value;
+      if (thinking) thinking.hidden = true;
+    };
+    const addOwner = text => {
+      const item = document.createElement("article");
+      item.className = "message owner";
+      const body = document.createElement("p");
+      body.textContent = text;
+      item.append(body);
+      messages.append(item);
+    };
+    const ensureBubble = () => {
+      if (bubble) return bubble;
+      bubble = document.createElement("article");
+      bubble.className = "message orki";
+      bubble.dataset.runtimeConversation = "true";
+      const heading = document.createElement("strong");
+      heading.className = "message-label";
+      heading.textContent = "Orki";
+      const stage = document.createElement("p");
+      stage.className = "conversation-stage";
+      const body = document.createElement("p");
+      body.className = "conversation-body";
+      bubble.append(heading, stage, body);
+      messages.append(bubble);
+      return bubble;
+    };
+    const show = (stageText, bodyText, percent) => {
+      const target = ensureBubble();
+      target.querySelector(".conversation-stage").textContent = stageText;
+      target.querySelector(".conversation-body").textContent = bodyText;
+      target.dataset.runtimeProgress = String(percent || 0);
+      messages.scrollTop = messages.scrollHeight;
+    };
+    const projection = data => {
+      if (!data) return;
+      const eventType = data.event && data.event.type;
+      const state = data.presentation && data.presentation.runtime_state;
+      const detail = stages[eventType] || runtimeStages[state];
+      if (detail) show(detail[0], detail[1], data.presentation && data.presentation.progress_percent);
+      if (["WAITING_EXTERNAL", "FAILED"].includes(state)) setBusy(false);
+      if (state === "COMPLETED") {
+        const transcript = Array.isArray(data.messages) ? data.messages : [];
+        const reply = [...transcript].reverse().find(message => message.role === "orki" && message.status === "COMPLETED");
+        if (reply) show("Lezárva", reply.text, 100);
+        setBusy(false);
+      }
+    };
+    const openStream = token => {
+      if (stream) stream.close();
+      stream = new EventSource(`/runtime/executions/${encodeURIComponent(token)}/events/stream/`);
+      ["runtime", "snapshot", "terminal"].forEach(kind => stream.addEventListener(kind, event => {
+        try { projection(JSON.parse(event.data)); } catch (_) { show("Folytatás szükséges", "Az állapotfrissítés nem értelmezhető. Újrapróbálhatod."); setBusy(false); }
+        if (kind === "terminal" && stream) { stream.close(); stream = null; }
+      }));
+      stream.onerror = () => {
+        if (busy) show("Kapcsolat helyreállítása", "Kapcsolatot állítok helyre az állapotfrissítéshez.");
+      };
+    };
+    // Submission belongs to the canonical Factory Chat handler.  This handler
+    // is retained only as the Runtime-stream projection adapter.
+    const legacySubmit = async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const text = composer.value.trim();
+      if (!text) {
+        const feedback = document.querySelector("#interaction-feedback");
+        if (feedback) feedback.textContent = "Üres üzenetet nem lehet küldeni.";
+        return;
+      }
+      if (busy) return;
+      addOwner(text);
+      ensureBubble();
+      show("Küldetés", "Rögzítem a kérésedet.");
+      setBusy(true);
+      if (retry) retry.hidden = true;
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          headers: { "X-Requested-With": "FactoryChat", "X-Orki-Runtime-Async": "1" },
+          body: new FormData(form),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.execution || !data.execution.token) throw new Error("runtime-ingress-unavailable");
+        composer.value = "";
+        saveDraft("");
+        openStream(data.execution.token);
+        if (data.dispatch_url) await fetch(data.dispatch_url, {
+          method: "POST",
+          headers: { "X-Requested-With": "FactoryChat" },
+          body: new FormData(form),
+        });
+      } catch (_) {
+        show("Folytatás szükséges", "A kérés most nem indítható el. Az üzenet megmaradt, újrapróbálhatod.");
+        composer.value = text;
+        saveDraft(text);
+        setBusy(false);
+        if (retry) retry.hidden = false;
+      }
+    };
+
+    // The canonical Factory Chat handler owns form submission and safe error
+    // reporting.  This adapter only projects the execution it announces into
+    // the Runtime conversation view.
+    document.addEventListener("orki-runtime-projection", event => {
+      const execution = event.detail;
+      if (!execution || !execution.token) return;
+      // Ingress may contain a provisional textual response.  Once a Runtime
+      // execution is available, its projected conversation is the sole Orki
+      // response for this turn.
+      [...messages.querySelectorAll(".message.orki")]
+        .filter(message => !initialOrkiMessages.has(message))
+        .forEach(message => message.remove());
+      setBusy(true);
+      ensureBubble();
+      show("Küldetés", "A Runtime végrehajtását követem.");
+      openStream(execution.token);
     });
   })();
   </script>

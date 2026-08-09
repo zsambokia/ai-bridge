@@ -25,7 +25,7 @@ from .factory_missions import (
 from .initiative_engine import derive_initiatives, initiative_projection
 from .memory_engine import memory_projection, record_memory
 from .mission_understanding import mission_projection, record_mission_understanding
-from .models import FactoryChatMessage, FactoryChatSession, Project
+from .models import FactoryChatMessage, FactoryChatSession, FactoryMission, Project
 from .operational_reasoning import (
     operational_reasoning_projection,
     record_operational_reasoning,
@@ -149,18 +149,16 @@ def _prompt(context: dict[str, object], message: str) -> str:
                     "plain language."
                 ),
                 (
-                    "Conversation is the primary interface. Do not behave as a "
-                    "questionnaire or enumerate discovery questions."
+                    "Conversation is the primary workspace. The Runtime, not the "
+                    "provider, decides whether Planning may start."
                 ),
                 (
-                    "First summarize the useful understanding and recommend a "
-                    "safe default when one is available. Ask at most one question, "
-                    "and only when its answer materially changes the next step."
+                    "Identify critical unknowns precisely. Ask the smallest useful "
+                    "set of clarification questions when information is missing."
                 ),
                 (
-                    "For a concrete request, move the work forward with a proposed "
-                    "outcome, boundary, risk, or next action instead of asking for "
-                    "more form-like details."
+                    "Never claim that a mission is ready for a plan or that Planning "
+                    "can start; the deterministic Runtime gate owns that decision."
                 ),
                 (
                     "initiative_state contains deterministic, state-derived "
@@ -177,8 +175,9 @@ def _prompt(context: dict[str, object], message: str) -> str:
                 ),
                 "Return JSON only with keys reply, understanding and plan.",
                 (
-                    "plan must be null until the requested outcome, acceptance "
-                    "checks, and constraints are sufficiently clear."
+                    "plan must always be null. The provider supplies understanding, "
+                    "known and unknown facts, questions, confidence, and a suggested "
+                    "next action; it never supplies planning authority."
                 ),
                 (
                     "understanding is an object with objective, target_users, "
@@ -187,7 +186,7 @@ def _prompt(context: dict[str, object], message: str) -> str:
                     "cost_impacting_dependencies, "
                     "risks, assumptions, recommendations, unresolved_decisions, "
                     "recommendation_confidence, repository_proposal, "
-                    "mission_understanding, operational_reasoning, decision, planning, "
+                    "mission_understanding, operational_reasoning, decision, "
                     "memory, and product_owner_profile. "
                     "mission_understanding is either null or "
                     "an object with stated_intent, inferred_business_goal, "
@@ -237,18 +236,6 @@ def _prompt(context: dict[str, object], message: str) -> str:
                     "plan, grants governance approval, or executes work."
                 ),
                 (
-                    "planning is null unless mission and recommendation evidence "
-                    "support an explainable plan. When present it is an object with "
-                    "plan_key, objective, business_value, architecture, alternatives, "
-                    "chosen_strategy, rejected_strategy, risks, dependencies, "
-                    "acceptance, release_strategy, operational_strategy, "
-                    "recovery_strategy, future_evolution, evidence_attributes, and "
-                    "confidence. alternatives contains at least two objects with "
-                    "option and summary; chosen_strategy and rejected_strategy name "
-                    "different alternatives. A plan is a reasoning artefact only: it "
-                    "never creates a FactoryPlan, governance approval, or execution."
-                ),
-                (
                     "memory is null unless active evidence supports reusable "
                     "knowledge. When present it is an object with memory_key, "
                     "statement, tags, evidence_attributes, and confidence. "
@@ -271,11 +258,9 @@ def _prompt(context: dict[str, object], message: str) -> str:
                     "profile evidence."
                 ),
                 (
-                    "When the owner explicitly authorizes plan preparation "
-                    "after a summary (for example 'ok, mehet' or 'készíts "
-                    "tervet'), return the complete current understanding, "
-                    "clear resolved decisions with an empty list, and do not "
-                    "promise a plan later."
+                    "An affirmative owner message never fills in missing critical "
+                    "mission facts. Preserve unknown facts and formulate only the "
+                    "questions needed to resolve them."
                 ),
             ],
             "context": context,
@@ -436,9 +421,9 @@ def record_runtime_cognitive_observation(
     State transitions.  The return value is an optional canonical chat response
     replacement created by the established Factory Mission workflow.
     """
+    # A provider may describe its understanding, but it cannot supply a plan
+    # fallback. Planning authority stays with the deterministic Runtime gate.
     observation = dict(understanding)
-    if plan and not observation:
-        observation = dict(plan)
     mission_observation = observation.get("mission_understanding")
     recommendation_observation = observation.get("recommendation")
     operational_reasoning_observation = observation.get("operational_reasoning")
@@ -496,6 +481,37 @@ def record_runtime_cognitive_observation(
                 project, observation=product_owner_observation, provenance=provenance
             )
         derive_initiatives(project)
+
+    # Cognitive observations (a decision, recommendation, or memory) do not
+    # constitute a delivery mission. Recording one must not manufacture
+    # unanswered delivery requirements or advance a mission phase. A mission
+    # becomes Runtime-gated only after a canonical mission field is supplied;
+    # later question-only turns keep updating that active mission.
+    mission_fields = {
+        "objective",
+        "target_users",
+        "primary_workflow",
+        "required_inputs",
+        "required_outputs",
+        "mvp_boundary",
+        "persistence_requirements",
+        "integrations",
+        "cost_impacting_dependencies",
+        "risks",
+        "assumptions",
+        "recommendations",
+        "unresolved_decisions",
+        "recommendation_confidence",
+        "repository_proposal",
+    }
+    has_delivery_mission = FactoryMission.objects.filter(session=session).exclude(
+        phase="DISCOVERY"
+    ).exists()
+    if (
+        structured_route
+        and not has_delivery_mission
+        and not any(field in observation for field in mission_fields)
+    ):
         return None
 
     mission = apply_understanding(session, observation, owner_message.body)
@@ -516,9 +532,28 @@ def record_runtime_cognitive_observation(
     before_plan_id = mission.plan_id
     mission = create_plan_when_sufficient(mission, actor)
     derive_initiatives(project)
+    readiness = mission.delivery_status.get("understanding", {})
+    questions = readiness.get("questions", []) if isinstance(readiness, Mapping) else []
+    if not mission.requirements_sufficient and questions:
+        rendered_questions = "\n".join(
+            f"{index}. {question}"
+            for index, question in enumerate(questions, start=1)
+        )
+        confidence = readiness.get("confidence", 0.0)
+        confidence_percent = (
+            f"{float(confidence):.0%}"
+            if isinstance(confidence, (float, int))
+            else "0%"
+        )
+        return (
+            "Planning még nem indítható. A Runtime kritikus, megválaszolatlan "
+            f"információkat talált; jelenlegi bizonyossága: {confidence_percent}.\n\n"
+            f"Nyitott kérdések:\n{rendered_questions}"
+        )
     if not before_plan_id and mission.plan_id:
         return (
-            "Már elegendő információm van a tervhez. Elkészítettem a javasolt "
-            "megoldást és a Sprint-felosztást a jobb oldali tervben."
+            "A Runtime minden kritikus kérdést feloldottnak talált. Elkészítettem "
+            "a javasolt tervet a beszélgetésben; a következő lépés a Product Owner "
+            "jóváhagyása."
         )
     return None

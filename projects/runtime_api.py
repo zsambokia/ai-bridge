@@ -101,7 +101,7 @@ def runtime_execution_event_stream(
         sequence = 0
         for _ in range(120):  # bounded connection; browser reconnects if needed
             execution = get_object_or_404(OrkiExecution, token=token)
-            projection = execution_projection(execution)
+            projection = _projection_with_chat_messages(execution)
             for event in projection["events"]:
                 if event["sequence"] > sequence:
                     sequence = event["sequence"]

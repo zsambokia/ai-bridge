@@ -272,9 +272,8 @@ class FactoryChatTests(TestCase):
             )
             prompt = adapter_for.return_value.invoke_model.call_args.args[1]
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()["messages"][-1]["text"],
-            "Mi az elfogad\u00e1si felt\u00e9tel?",
+        self.assertIn(
+            "Planning még nem indítható", response.json()["messages"][-1]["text"]
         )
         message = FactoryChatMessage.objects.filter(
             role=FactoryChatMessage.Role.ORKI
@@ -357,7 +356,7 @@ class FactoryChatTests(TestCase):
             role=FactoryChatMessage.Role.ORKI
         ).latest("pk")
         self.assertEqual(message.status, FactoryChatMessage.Status.COMPLETED)
-        self.assertEqual(message.body, "Rendben.")
+        self.assertIn("Planning még nem indítható", message.body)
 
     def test_sufficient_understanding_creates_a_canonical_plan_artifact(self) -> None:
         ExecutionProvider.objects.create(
@@ -428,10 +427,10 @@ class FactoryChatTests(TestCase):
         assert mission.plan is not None
         self.assertEqual(mission.plan.plan_document["objective"], "Konténerkalkulátor")
 
-    def test_explicit_plan_request_closes_a_resolved_question_and_creates_plan(
+    def test_explicit_plan_request_cannot_bypass_unresolved_critical_information(
         self,
     ) -> None:
-        """A short confirmation must not return Orki to a question-by-question mode."""
+        """An affirmative phrase never substitutes for missing mission facts."""
         ExecutionProvider.objects.create(
             provider_id="plan-request-openai",
             name="Plan request OpenAI",
@@ -479,14 +478,13 @@ class FactoryChatTests(TestCase):
             )
         self.assertRedirects(response, reverse("factory-chat"))
         mission = FactoryMission.objects.get(session=session)
-        self.assertTrue(mission.requirements_sufficient)
+        self.assertFalse(mission.requirements_sufficient)
         self.assertEqual(mission.unresolved_decisions, [])
-        self.assertEqual(
-            mission.phase, FactoryMission.Phase.AWAITING_PRODUCT_OWNER_APPROVAL
-        )
+        self.assertEqual(mission.phase, FactoryMission.Phase.QUESTION_REQUIRED)
+        self.assertIsNone(mission.plan)
         self.assertContains(
             self.client.get(reverse("factory-chat")),
-            "Már elegendő információm van a tervhez.",
+            "Planning még nem indítható",
         )
 
     def test_plan_approval_stops_at_execution_preparation(self) -> None:
@@ -561,7 +559,33 @@ class FactoryChatTests(TestCase):
         self.assertContains(response, "Hol tart a tervez&#233;s?")
         self.assertNotContains(response, "AWAITING_PRODUCT_OWNER_APPROVAL")
 
-    def test_pending_plan_renders_top_level_approval_quick_actions(self) -> None:
+    def test_workspace_shell_projects_canonical_views_and_repository_actions(
+        self,
+    ) -> None:
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("factory-chat"))
+        self.assertContains(response, 'data-workspace-view="home"')
+        self.assertContains(response, 'data-workspace-view="orki"')
+        self.assertContains(response, 'data-workspace-screen="knowledge"')
+        self.assertContains(response, 'data-workspace-screen="runtime"')
+        self.assertContains(response, reverse("workspace-repository-action"))
+        self.assertContains(response, "Repository Lifecycle")
+        self.assertContains(response, "EventSource")
+
+    def test_repository_workspace_action_requires_governed_approval_reference(
+        self,
+    ) -> None:
+        self.client.force_login(self.user)
+        self.client.get(reverse("factory-chat"))
+        response = self.client.post(
+            reverse("workspace-repository-action"), {"action": "bootstrap"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["error"]["code"], "APPROVAL_REFERENCE_REQUIRED"
+        )
+
+    def test_pending_plan_renders_the_review_and_decision_in_the_chat(self) -> None:
         self.client.force_login(self.user)
         self.client.post(
             reverse("factory-plan-create"),
@@ -575,7 +599,17 @@ class FactoryChatTests(TestCase):
         response = self.client.get(reverse("factory-chat"))
         plan = FactoryPlan.objects.get(project=self.project)
 
-        self.assertContains(response, "data-plan-approval")
+        html = response.content.decode()
+        chat_start = html.index('id="chat-messages"')
+        chat_end = html.index('id="orki-thinking"')
+        sidebar_start = html.index('id="context-status"')
+        sidebar_end = html.index('</aside>', sidebar_start)
+
+        self.assertIn("data-plan-review", html[chat_start:chat_end])
+        self.assertNotIn(
+            "Product Owner döntés szükséges", html[sidebar_start:sidebar_end]
+        )
+        self.assertIn("data-plan-review-fragment", html[sidebar_start:sidebar_end])
         self.assertContains(response, "data-quick-action")
         self.assertContains(response, f"/factory/plans/{plan.pk}/approve/")
         self.assertContains(response, f"/factory/plans/{plan.pk}/changes/")

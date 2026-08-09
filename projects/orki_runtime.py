@@ -31,12 +31,19 @@ from .models import (
     RuntimeKnowledgeCandidate,
     RuntimeReflectionCandidate,
 )
-from .providers import model_adapter_for, model_text_response
 from .runtime_contract import (
     RUNTIME_CANDIDATE_SCHEMA_VERSION,
     RuntimeCandidateValidationError,
     RuntimeKnowledgeCandidateValidator,
     RuntimeReflectionCandidateValidator,
+)
+from .providers import model_adapter_for, model_text_response
+from .workflow_engine import (
+    ProviderTaskError,
+    WorkflowTaskFailure,
+    create_workflow_candidate,
+    execute_chat_provider_task,
+    execute_task_adapter,
 )
 
 
@@ -45,7 +52,38 @@ class RuntimeTransitionError(ValueError):
 
 
 _TRANSITIONS: dict[str, set[str]] = {
-    OrkiExecution.State.CREATED: {OrkiExecution.State.PLANNING},
+    OrkiExecution.State.CREATED: {
+        OrkiExecution.State.PLANNING,
+        OrkiExecution.State.UNDERSTANDING,
+    },
+    OrkiExecution.State.UNDERSTANDING: {
+        OrkiExecution.State.SEMANTIC_SEARCH,
+        OrkiExecution.State.WAITING_EXTERNAL,
+        OrkiExecution.State.PAUSED,
+        OrkiExecution.State.CANCELLED,
+    },
+    OrkiExecution.State.SEMANTIC_SEARCH: {
+        OrkiExecution.State.DISPATCHING,
+        OrkiExecution.State.WAITING_EXTERNAL,
+        OrkiExecution.State.PAUSED,
+        OrkiExecution.State.CANCELLED,
+    },
+    OrkiExecution.State.GAP_ANALYSIS: {
+        OrkiExecution.State.QUESTION_GENERATION,
+        OrkiExecution.State.PLANNING,
+        OrkiExecution.State.WAITING_EXTERNAL,
+        OrkiExecution.State.PAUSED,
+        OrkiExecution.State.CANCELLED,
+    },
+    OrkiExecution.State.QUESTION_GENERATION: {
+        OrkiExecution.State.WAITING_USER,
+        OrkiExecution.State.PAUSED,
+        OrkiExecution.State.CANCELLED,
+    },
+    OrkiExecution.State.WAITING_USER: {
+        OrkiExecution.State.PAUSED,
+        OrkiExecution.State.CANCELLED,
+    },
     OrkiExecution.State.PLANNING: {
         OrkiExecution.State.READY,
         OrkiExecution.State.WAITING_APPROVAL,
@@ -66,6 +104,7 @@ _TRANSITIONS: dict[str, set[str]] = {
     },
     OrkiExecution.State.DISPATCHING: {
         OrkiExecution.State.RUNNING,
+        OrkiExecution.State.GAP_ANALYSIS,
         OrkiExecution.State.WAITING_EXTERNAL,
         OrkiExecution.State.PAUSED,
         OrkiExecution.State.FAILED,
@@ -102,6 +141,7 @@ _TRANSITIONS: dict[str, set[str]] = {
     },
     OrkiExecution.State.WAITING_EXTERNAL: {
         OrkiExecution.State.PLANNING,
+        OrkiExecution.State.SEMANTIC_SEARCH,
         OrkiExecution.State.DISPATCHING,
         OrkiExecution.State.PAUSED,
         OrkiExecution.State.CANCELLED,
@@ -442,7 +482,7 @@ def _complete_factory_plan_approval(
         reflection = OrkiReflection.objects.create(
             execution=execution,
             analysis={"factory_plan_id": approved_plan.pk, "approval_observed": True},
-            evidence_references=verification["evidence_references"],
+            evidence_references=cast(list[str], verification["evidence_references"]),
             completed_at=timezone.now(),
         )
         _event(
@@ -655,8 +695,14 @@ def execute_shadow_operation(
         _event(execution, "EXECUTION_OPERATION_STARTED", actor=actor)
 
     try:
-        result = dict(operation())
-    except Exception as error:  # Operational failure is a recoverable Runtime fact.
+        result = execute_task_adapter(
+            execution,
+            task_key="shadow.acceptance.operation",
+            kind="TOOL",
+            input_data={"mode": execution.mode, "behaviour": execution.behaviour},
+            operation=operation,
+        )
+    except WorkflowTaskFailure as error:  # The Engine owns task retry evidence.
         with transaction.atomic():
             execution = OrkiExecution.objects.select_for_update().get(
                 token=execution_token
@@ -712,7 +758,7 @@ def execute_shadow_operation(
                 "verification": verification,
                 "knowledge_candidate": result.get("knowledge_candidate"),
             },
-            evidence_references=verification["evidence_references"],
+            evidence_references=cast(list[str], verification["evidence_references"]),
             completed_at=timezone.now(),
         )
         _event(
@@ -721,6 +767,7 @@ def execute_shadow_operation(
             actor=actor,
             payload={"reflection_id": reflection.pk},
         )
+        create_workflow_candidate(execution)
         _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
         execution.plan.status = OrkiPlan.Status.COMPLETED
         execution.plan.save(update_fields=["status", "updated_at"])
@@ -868,8 +915,14 @@ def execute_structured_decision(
             payload={"gateway": execution.provider_context.get("provider")},
         )
     try:
-        result = dict(operation())
-    except Exception as error:
+        result = execute_task_adapter(
+            execution,
+            task_key="structured.decision.operation",
+            kind="TOOL",
+            input_data={"behaviour": execution.behaviour},
+            operation=operation,
+        )
+    except WorkflowTaskFailure as error:
         with transaction.atomic():
             execution = OrkiExecution.objects.select_for_update().get(
                 token=execution_token
@@ -978,6 +1031,7 @@ def execute_structured_decision(
             payload={"candidate_id": candidate.pk},
             evidence_references=evidence,
         )
+        create_workflow_candidate(execution)
         _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
         execution.plan.status = OrkiPlan.Status.COMPLETED
         execution.plan.save(update_fields=["status", "updated_at"])
@@ -1122,21 +1176,23 @@ def start_factory_chat_execution(
             actor=actor,
             payload={"goal_token": str(goal.token), "owner_message_id": owner.pk},
         )
-        _transition(execution, OrkiExecution.State.PLANNING, actor=actor)
-        _event(execution, "understanding.started", actor=actor)
-        _event(
-            execution,
-            "semantic_candidates.selected",
-            actor=actor,
-            payload={"sources": ["COGNITIVE_STATE_REFERENCE", "CHAT_TRANSCRIPT"]},
-        )
-        _event(execution, "planning.ready", actor=actor, payload={"plan_version": 1})
         if approval_plan:
+            _transition(execution, OrkiExecution.State.PLANNING, actor=actor)
             _transition(
                 execution,
                 OrkiExecution.State.WAITING_APPROVAL,
                 actor=actor,
                 reason={"factory_plan_id": approval_plan.pk},
+            )
+        else:
+            _transition(execution, OrkiExecution.State.UNDERSTANDING, actor=actor)
+            _event(execution, "understanding.started", actor=actor)
+            _transition(execution, OrkiExecution.State.SEMANTIC_SEARCH, actor=actor)
+            _event(
+                execution,
+                "semantic_search.started",
+                actor=actor,
+                payload={"sources": ["COGNITIVE_STATE_REFERENCE"]},
             )
         return execution
 
@@ -1196,7 +1252,7 @@ def dispatch_factory_chat_execution(
             return execution
         is_approval = bool(execution.provider_context.get("approval_plan_id"))
         if execution.state not in {
-            OrkiExecution.State.PLANNING,
+            OrkiExecution.State.SEMANTIC_SEARCH,
             OrkiExecution.State.WAITING_EXTERNAL,
             OrkiExecution.State.WAITING_APPROVAL,
         } or (
@@ -1208,7 +1264,7 @@ def dispatch_factory_chat_execution(
         if execution.state == OrkiExecution.State.WAITING_EXTERNAL:
             _transition(
                 execution,
-                OrkiExecution.State.PLANNING,
+                OrkiExecution.State.SEMANTIC_SEARCH,
                 actor=actor,
                 reason={"retry": True},
             )
@@ -1221,70 +1277,52 @@ def dispatch_factory_chat_execution(
             pk=execution.provider_context["owner_message_id"]
         )
 
-    # Importing the established adapter helpers here avoids a module cycle and
-    # preserves the provider-neutral registry boundary.
-    from time import perf_counter
-
-    from .factory_orki import (
-        ModelProviderAuthenticationUnavailable,
-        ModelProviderSelectionUnavailable,
-        _bounded_context,
-        _decode,
-        _hash,
-        _prompt,
-        _provider,
-        record_runtime_cognitive_observation,
-    )
-
+    # The Engine owns provider selection, prompt construction and invocation as
+    # an AI Task. The Runtime only consumes its adapter result for mission flow.
     try:
-        entry, model = _provider()
-    except ModelProviderSelectionUnavailable:
-        return _chat_failure(
-            execution_token,
-            actor=actor,
-            error_code="MODEL_PROVIDER_UNAVAILABLE",
-            message=(
-                "A Runtime várakozik: nincs kiválasztható modellprovider konfigurálva."
-            ),
+        provider_result = execute_chat_provider_task(
+            execution,
+            session=session,
+            owner_body=owner.body,
+            model_adapter_resolver=model_adapter_for,
+            model_text_decoder=model_text_response,
         )
-    except ModelProviderAuthenticationUnavailable:
+    except WorkflowTaskFailure as error:
+        cause = error.cause
+        error_code = (
+            cause.code
+            if isinstance(cause, ProviderTaskError)
+            else type(cause).__name__.upper() if cause else type(error).__name__.upper()
+        )
+        failure_message = (
+            "A Runtime nem ér el konfigurált modellprovidert. "
+            "A kérés helyreállítható."
+            if error_code == "MODEL_PROVIDER_UNAVAILABLE"
+            else (
+                "A Runtime nem ér el használható provider-hitelesítést. "
+                "A kérés helyreállítható."
+                if error_code == "PROVIDER_CREDENTIAL_UNAVAILABLE"
+                else (
+                    "A Runtime várakozik: a provider válasza nem érkezett meg. "
+                    "A futás helyreállítható."
+                )
+            )
+        )
         return _chat_failure(
             execution_token,
             actor=actor,
-            error_code="PROVIDER_CREDENTIAL_UNAVAILABLE",
-            message=(
-                "A Runtime várakozik: a kiválasztott provider hitelesítése "
-                "nem elérhető."
-            ),
+            error_code=error_code,
+            message=failure_message,
         )
 
-    prompt = _prompt(_bounded_context(session), owner.body)
-    started = perf_counter()
-    try:
-        adapter = model_adapter_for(entry)
-        raw: dict[str, object] | None = None
-        attempts = 0
-        for attempts in range(1, 3):
-            try:
-                raw = adapter.invoke_model(entry, prompt)
-                break
-            except (OSError, TimeoutError):
-                if attempts == 2:
-                    raise
-        if raw is None:
-            raise OSError("ORKI_MODEL_REQUEST_FAILED")
-        response_text = model_text_response(entry, raw)
-        response, provider_plan, understanding = _decode(response_text)
-    except (ValueError, OSError, TimeoutError) as error:
-        return _chat_failure(
-            execution_token,
-            actor=actor,
-            error_code=type(error).__name__.upper(),
-            message=(
-                "A Runtime várakozik: a provider válasza nem érkezett meg. "
-                "A futás helyreállítható."
-            ),
-        )
+    from .factory_orki import record_runtime_cognitive_observation
+
+    response = str(provider_result["response"])
+    provider_plan = provider_result.get("provider_plan")
+    understanding = provider_result.get("understanding")
+    raw = provider_result.get("raw")
+    provider_id = str(provider_result["provider_id"])
+    model = str(provider_result["model"])
 
     with transaction.atomic():
         execution = (
@@ -1294,18 +1332,23 @@ def dispatch_factory_chat_execution(
         )
         session = execution.plan.goal.source_session
         assert session is not None
-        usage = raw.get("usage", {}) if isinstance(raw.get("usage", {}), dict) else {}
+        raw_payload = raw if isinstance(raw, dict) else {}
+        usage = (
+            raw_payload.get("usage", {})
+            if isinstance(raw_payload.get("usage", {}), dict)
+            else {}
+        )
         reply = FactoryChatMessage.objects.create(
             session=session,
             role=FactoryChatMessage.Role.ORKI,
             body=response,
             correlation_id=str(execution.provider_context.get("correlation_id", "")),
-            provider_id=entry.provider_id,
+            provider_id=provider_id,
             model=model,
-            prompt_hash=_hash(prompt),
-            response_hash=_hash(response_text),
-            latency_ms=round((perf_counter() - started) * 1000),
-            attempt_count=attempts,
+            prompt_hash=str(provider_result["prompt_hash"]),
+            response_hash=str(provider_result["response_hash"]),
+            latency_ms=int(provider_result["latency_ms"]),
+            attempt_count=int(provider_result["attempts"]),
             token_usage=usage,
         )
         try:
@@ -1318,7 +1361,7 @@ def dispatch_factory_chat_execution(
                 correlation_id=str(
                     execution.provider_context.get("correlation_id", "")
                 ),
-                provider_id=entry.provider_id,
+                provider_id=provider_id,
                 model=model,
                 actor=actor,
             )
@@ -1348,61 +1391,66 @@ def dispatch_factory_chat_execution(
         if replacement_response:
             response = replacement_response
             reply.body = response
-            reply.response_hash = _hash(response)
+            reply.response_hash = hashlib.sha256(response.encode("utf-8")).hexdigest()
             reply.save(update_fields=["body", "response_hash"])
         context = dict(execution.provider_context)
         context.update(
             {
                 "reply_message_id": reply.pk,
-                "provider_id": entry.provider_id,
+                "provider_id": provider_id,
                 "model": model,
             }
         )
         execution.provider_context = context
         execution.save(update_fields=["provider_context", "updated_at"])
-        _transition(execution, OrkiExecution.State.RUNNING, actor=actor)
         _event(
             execution,
             "provider.response.received",
             actor=actor,
-            payload={"provider_id": entry.provider_id},
+            payload={"provider_id": provider_id},
         )
-        _transition(execution, OrkiExecution.State.VERIFYING, actor=actor)
-        verification = {
-            "passed": bool(response.strip()),
-            "evidence_references": [f"factory-chat-message:{reply.pk}"],
-        }
-        _event(execution, "verification.completed", actor=actor, payload=verification)
-        _transition(execution, OrkiExecution.State.REFLECTING, actor=actor)
-        reflection = OrkiReflection.objects.create(
-            execution=execution,
-            analysis={
-                "response_message_id": reply.pk,
-                "understanding_present": bool(understanding),
-            },
-            evidence_references=verification["evidence_references"],
-            completed_at=timezone.now(),
-        )
+        _transition(execution, OrkiExecution.State.GAP_ANALYSIS, actor=actor)
+        mission = FactoryMission.objects.filter(session=session).first()
+        readiness = mission.delivery_status.get("understanding", {}) if mission else {}
+        if mission is not None and not mission.requirements_sufficient:
+            _event(
+                execution,
+                "gap_analysis.completed",
+                actor=actor,
+                payload={
+                    "confidence": readiness.get("confidence", 0),
+                    "critical_unknowns": readiness.get("critical_unknowns", []),
+                },
+            )
+            _transition(execution, OrkiExecution.State.QUESTION_GENERATION, actor=actor)
+            _event(
+                execution,
+                "questions.generated",
+                actor=actor,
+                payload={"questions": readiness.get("questions", [])},
+            )
+            _transition(
+                execution,
+                OrkiExecution.State.WAITING_USER,
+                actor=actor,
+                reason={
+                    "message": response,
+                    "confidence": readiness.get("confidence", 0),
+                    "questions": readiness.get("questions", []),
+                    "critical_unknowns": readiness.get("critical_unknowns", []),
+                },
+            )
+            return execution
         _event(
-            execution,
-            "reflection.completed",
-            actor=actor,
-            payload={"reflection_id": reflection.pk},
+            execution, "gap_analysis.completed", actor=actor, payload={"ready": True}
         )
-        # Provider understanding is an observation, not an AKB mutation.  The
-        # Factory-chat path has no RuntimeCandidate.v1 contract and therefore
-        # ends at reflection; a separately governed Knowledge Pipeline may
-        # consume only an explicit RuntimeKnowledgeCandidate.v1.
-        _transition(execution, OrkiExecution.State.COMPLETED, actor=actor)
-        execution.plan.status = OrkiPlan.Status.COMPLETED
-        execution.plan.save(update_fields=["status", "updated_at"])
-        execution.plan.goal.status = OrkiGoal.Status.ACHIEVED
-        execution.plan.goal.save(update_fields=["status", "updated_at"])
-        _event(
+        _transition(execution, OrkiExecution.State.PLANNING, actor=actor)
+        _event(execution, "planning.ready", actor=actor, payload={"plan_version": 1})
+        _transition(
             execution,
-            "GOAL_ACHIEVED",
+            OrkiExecution.State.WAITING_APPROVAL,
             actor=actor,
-            payload={"response_message_id": reply.pk},
+            reason={"factory_plan_id": mission.plan_id if mission else None},
         )
         return execution
 
@@ -1463,6 +1511,26 @@ def runtime_presentation(
         OrkiExecution.State.CREATED: (
             "A Runtime rögzítette a kérést.",
             "A cél és a terv előkészítése következik.",
+        ),
+        OrkiExecution.State.UNDERSTANDING: (
+            "The Runtime is interpreting the mission.",
+            "Relevant knowledge sources are reviewed next.",
+        ),
+        OrkiExecution.State.SEMANTIC_SEARCH: (
+            "The Runtime is reviewing project knowledge and prior decisions.",
+            "Critical information gaps are analyzed next.",
+        ),
+        OrkiExecution.State.GAP_ANALYSIS: (
+            "The Runtime is checking whether Planning is allowed.",
+            "Critical gaps produce clarification questions.",
+        ),
+        OrkiExecution.State.QUESTION_GENERATION: (
+            "The Runtime is generating the minimum useful clarification questions.",
+            "It will wait for the user's answer.",
+        ),
+        OrkiExecution.State.WAITING_USER: (
+            "The Runtime is waiting for answers to critical open questions.",
+            "Mission understanding will run again after the answer.",
         ),
         OrkiExecution.State.PLANNING: (
             "A Runtime a célt végrehajtható tervvé rendezi.",
@@ -1570,11 +1638,19 @@ def runtime_presentation(
 def execution_projection(execution: OrkiExecution) -> dict[str, Any]:
     """Stable, provider-neutral read projection suitable for UI/API/audit consumers."""
     execution = OrkiExecution.objects.select_related(
-        "plan__goal", "execution_run", "reflection__knowledge_integration"
+        "plan__goal",
+        "execution_run",
+        "reflection__knowledge_integration",
+        "knowledge_candidate",
     ).get(pk=execution.pk)
     progress_by_state = {
         OrkiExecution.State.CREATED: 0,
-        OrkiExecution.State.PLANNING: 20,
+        OrkiExecution.State.UNDERSTANDING: 8,
+        OrkiExecution.State.SEMANTIC_SEARCH: 15,
+        OrkiExecution.State.GAP_ANALYSIS: 22,
+        OrkiExecution.State.QUESTION_GENERATION: 26,
+        OrkiExecution.State.WAITING_USER: 26,
+        OrkiExecution.State.PLANNING: 30,
         OrkiExecution.State.WAITING_APPROVAL: 30,
         OrkiExecution.State.WAITING_GOVERNANCE: 40,
         OrkiExecution.State.DISPATCHING: 60,
@@ -1611,6 +1687,8 @@ def execution_projection(execution: OrkiExecution) -> dict[str, Any]:
             execution.reflection.knowledge_integration.status
             if hasattr(execution, "reflection")
             and hasattr(execution.reflection, "knowledge_integration")
+            else "CANDIDATE_READY"
+            if hasattr(execution, "knowledge_candidate")
             else "NOT_REQUIRED"
         ),
         "behaviour": execution.behaviour or "UNSPECIFIED",

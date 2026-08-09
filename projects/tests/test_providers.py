@@ -1,26 +1,216 @@
 from __future__ import annotations
 
+import json
 from io import BytesIO
 from pathlib import Path
 from subprocess import CompletedProcess
+from typing import cast
+from urllib.request import Request
 
 import pytest
 from django.core.exceptions import ValidationError
 
 from projects.governed_mcp import invoke_public_tool
-from projects.models import ExecutionProvider
+from projects.models import ExecutionProvider, ProviderAuditEvent
 from projects.provider_events import project_provider_line
 from projects.providers import (
     CodexCliAdapter,
+    GitHubAdapter,
     OpenAIAdapter,
     check_health,
     credential_value,
     model_adapter_for,
     public_provider,
+    repository_adapter_for,
     select_model_provider,
     select_provider,
+    select_repository_provider,
     structured_model_response,
 )
+
+
+@pytest.mark.django_db
+def test_github_repository_writes_use_only_provider_binding_and_are_audited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = ExecutionProvider.objects.create(
+        provider_id="github-provider-e2e-test",
+        name="GitHub provider E2E test",
+        kind=ExecutionProvider.Kind.GITHUB,
+        role=ExecutionProvider.Role.REPOSITORY_SERVICE,
+        status=ExecutionProvider.Status.ACTIVE,
+        adapter_key="github-provider-e2e-test-adapter",
+        enabled=True,
+        capabilities=["REPOSITORY_WRITE"],
+        credential_binding="AI_BRIDGE_GITHUB_PROVIDER_TOKEN",
+    )
+    requests: list[Request] = []
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            if requests[-1].get_method() == "GET":
+                return b'{"login": "zsambokia"}'
+            return b'{"id": 42, "full_name": "zsambokia/new-repo"}'
+
+    def fake_urlopen(request: Request, timeout: int) -> Response:
+        requests.append(request)
+        assert timeout == 20
+        return Response()
+
+    monkeypatch.setenv("AI_BRIDGE_GITHUB_PROVIDER_TOKEN", "test-provider-token")
+    monkeypatch.setattr("projects.providers.urlopen", fake_urlopen)
+
+    result = GitHubAdapter().create_repository(
+        entry,
+        owner="zsambokia",
+        name="new-repo",
+        private=True,
+        description="provider-only bootstrap test",
+    )
+
+    assert result["id"] == 42
+    assert requests[0].full_url == "https://api.github.com/user"
+    request = requests[1]
+    assert request.full_url == "https://api.github.com/user/repos"
+    assert request.get_method() == "POST"
+    assert request.data is not None
+    request_body = cast(bytes, request.data)
+    assert json.loads(request_body.decode("utf-8")) == {
+        "name": "new-repo",
+        "private": True,
+        "description": "provider-only bootstrap test",
+    }
+    assert request.get_header("Authorization") == "Bearer test-provider-token"
+    event = ProviderAuditEvent.objects.get(
+        provider=entry,
+        action="GITHUB_API_REQUEST",
+        details__path="user/repos",
+    )
+    assert event.action == "GITHUB_API_REQUEST"
+    assert event.details == {
+        "method": "POST",
+        "path": "user/repos",
+        "authentication": "PROVIDER_ENVIRONMENT_BINDING",
+        "credential_binding": "AI_BRIDGE_GITHUB_PROVIDER_TOKEN",
+    }
+    assert "test-provider-token" not in str(event.details)
+
+
+@pytest.mark.django_db
+def test_github_adapter_reads_repository_content_at_explicit_ref(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = ExecutionProvider.objects.create(
+        provider_id="github-read-test",
+        name="GitHub read test",
+        kind=ExecutionProvider.Kind.GITHUB,
+        role=ExecutionProvider.Role.REPOSITORY_SERVICE,
+        status=ExecutionProvider.Status.ACTIVE,
+        adapter_key="github-read-test-adapter",
+        enabled=True,
+        capabilities=["REPOSITORY_READ"],
+        credential_binding="AI_BRIDGE_GITHUB_PROVIDER_TOKEN",
+    )
+    requests: list[Request] = []
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"content":"IyBSRUFETUU=","encoding":"base64","size":8}'
+
+    def fake_urlopen(request: Request, timeout: int) -> Response:
+        requests.append(request)
+        assert timeout == 20
+        return Response()
+
+    monkeypatch.setenv("AI_BRIDGE_GITHUB_PROVIDER_TOKEN", "test-provider-token")
+    monkeypatch.setattr("projects.providers.urlopen", fake_urlopen)
+    result = GitHubAdapter().read_repository_file(
+        entry,
+        repository="zsambokia/proof",
+        path="docs/read me.md",
+        ref="a" * 40,
+    )
+
+    assert result["encoding"] == "base64"
+    assert requests[0].full_url.endswith("contents/docs/read%20me.md?ref=" + "a" * 40)
+
+
+@pytest.mark.django_db
+def test_github_adapter_deletes_disposable_repository_and_accepts_empty_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = ExecutionProvider.objects.create(
+        provider_id="github-delete-test",
+        name="GitHub delete test",
+        kind=ExecutionProvider.Kind.GITHUB,
+        role=ExecutionProvider.Role.REPOSITORY_SERVICE,
+        status=ExecutionProvider.Status.ACTIVE,
+        adapter_key="github-delete-test-adapter",
+        enabled=True,
+        capabilities=["REPOSITORY_WRITE"],
+        credential_binding="AI_BRIDGE_GITHUB_PROVIDER_TOKEN",
+    )
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b""
+
+    request_seen: list[Request] = []
+
+    def fake_urlopen(request: Request, timeout: int) -> Response:
+        request_seen.append(request)
+        return Response()
+
+    monkeypatch.setenv("AI_BRIDGE_GITHUB_PROVIDER_TOKEN", "test-provider-token")
+    monkeypatch.setattr("projects.providers.urlopen", fake_urlopen)
+    GitHubAdapter().delete_repository(entry, repository="zsambokia/disposable-proof")
+    assert request_seen[0].get_method() == "DELETE"
+    assert request_seen[0].full_url.endswith("repos/zsambokia/disposable-proof")
+
+
+@pytest.mark.django_db
+def test_repository_provider_selection_is_exact_and_requires_capabilities() -> None:
+    entry = ExecutionProvider.objects.create(
+        provider_id="github-selection-test",
+        name="GitHub selection test",
+        kind=ExecutionProvider.Kind.GITHUB,
+        role=ExecutionProvider.Role.REPOSITORY_SERVICE,
+        status=ExecutionProvider.Status.ACTIVE,
+        adapter_key="github-selection-test-adapter",
+        enabled=True,
+        capabilities=["REPOSITORY_READ", "REPOSITORY_WRITE"],
+    )
+
+    assert (
+        select_repository_provider(
+            entry.provider_id, {"REPOSITORY_READ", "REPOSITORY_WRITE"}
+        ).pk
+        == entry.pk
+    )
+    canonical = ExecutionProvider.objects.get(provider_id="github")
+    assert isinstance(repository_adapter_for(canonical), GitHubAdapter)
+    entry.enabled = False
+    entry.save(update_fields=["enabled"])
+    with pytest.raises(ValueError, match="REPOSITORY_PROVIDER_UNAVAILABLE"):
+        select_repository_provider(entry.provider_id)
 
 
 @pytest.mark.django_db

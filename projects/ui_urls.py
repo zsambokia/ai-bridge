@@ -16,7 +16,9 @@ from .factory_chat import (
     factory_plan_create,
     factory_plan_reject,
     factory_plan_request_changes,
+    workspace_repository_action,
 )
+from .github_provider_e2e_api import github_provider_e2e_proof
 from .runtime_api import (
     runtime_execution_detail,
     runtime_execution_dispatch,
@@ -27,6 +29,11 @@ from .runtime_api import (
 )
 
 urlpatterns = [
+    path(
+        "factory/proofs/github-provider/",
+        github_provider_e2e_proof,
+        name="github-provider-e2e-proof",
+    ),
     path("reasoning/decision", reasoning_decision, name="reasoning-decision"),
     path(
         "reasoning/decision/<uuid:decision_id>",
@@ -53,6 +60,11 @@ urlpatterns = [
         name="factory-plan-reject",
     ),
     path("factory/status/", factory_chat_status, name="factory-chat-status"),
+    path(
+        "workspace/repository/action/",
+        workspace_repository_action,
+        name="workspace-repository-action",
+    ),
     path("factory/memory/search/", factory_memory_search, name="factory-memory-search"),
     path(
         "factory/memory/<int:entry_id>/review/",
