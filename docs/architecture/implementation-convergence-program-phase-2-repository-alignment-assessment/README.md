@@ -2,8 +2,9 @@
 
 ## Repository Alignment Assessment
 
-**Status:** ASSESSMENT COMPLETE — READY FOR PRODUCT OWNER REVIEW  
-**Type:** Documentation / architecture assessment; no runtime, model, or application-code change  
+**Status:** ASSESSMENT COMPLETE — READY FOR PRODUCT OWNER REVIEW
+
+**Type:** Documentation / architecture assessment; no runtime, model, or application-code change
 **Baseline:** `02fa94228c67f49804a2b71b4eafe88eb0b98fdb` on `agent/architecture-convergence-docs`
 
 This assessment separates two durable workstreams:
