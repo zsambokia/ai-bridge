@@ -21,7 +21,7 @@ and AKB.
 | `Runtime` in historical Runtime 2.0, accepted evidence or generic language | Retain as historical/generic Runtime | Historical | It may describe a historical document or a broader runtime concept, not the AI Kernel. | Do not bulk-rewrite. | No. |
 | Runtime Services | Kernel Managers, Kernel Registries or Kernel Objects, according to responsibility | Kivonni / Átnevezni | `Kernel Services` is no longer a canonical umbrella term; it conflates three distinct categories. | Documentation/architecture contracts first. | Potentially. |
 | Runtime Configuration | Kernel Configuration | Átnevezni | Configuration belongs to the Kernel only where it configures its execution core. | Future configuration namespace review. | Potentially. |
-| Runtime Scheduler | Kernel Scheduler | Átnevezni | Scheduler is a Kernel Service and has no business-priority authority. | Future service/API rename. | Potentially. |
+| Runtime Scheduler | Kernel Scheduler | Átnevezni | Scheduler is a Kernel Manager and has no business-priority authority. | Future service/API rename. | Potentially. |
 | Runtime Lifecycle | Execution Lifecycle / Kernel Lifecycle | Átnevezni | Use Execution Lifecycle for state; Kernel Lifecycle only for Kernel service lifecycle. | Documentation distinction. | No now. |
 | Runtime Telemetry | Kernel Telemetry | Átnevezni | Provider-neutral execution observation is a Kernel concern. | Future metrics naming. | Potentially. |
 | Runtime Object | Kernel Object | Átnevezni | Use only for first-class technical objects in the AI Kernel boundary. | Future architecture and API terminology review. | Potentially. |

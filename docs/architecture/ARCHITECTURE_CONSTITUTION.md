@@ -1,12 +1,18 @@
 ---
-status: CANONICAL
+status: TRANSITIONAL
 owner: Architecture
 supersedes: []
-superseded_by: null
+superseded_by: Constitution Book (planned adoption)
 version: 1.0.0
 ---
 
 # AI Bridge Architecture Constitution
+
+> **Terminology status (2026-08-10):** Transitional. This document remains a
+> governance source until Constitution Book adoption. The approved target
+> terminology is governed by Article I (AKB), Article III (AI Kernel) and the
+> Terminology Convergence Matrix; historical names are not implementation
+> rename authority.
 
 ## Authority and interpretation
 
@@ -29,7 +35,7 @@ convenience is not an exception.
    Runtime coordinates Mission intent, authorization, and projections; it MUST
    NOT become a Planning, Workflow, Repository, Knowledge, or provider engine.
 3. An Engine owns one bounded domain concern and its own state. Engines MUST NOT
-   directly call one another, a Provider Gateway, a Provider, or
+   directly call one another, a Provider Integration adapter, a Provider, or
    `ExecutionRun`.
 4. The Operational Foundation is the sole canonical mechanical handoff and
    delivery boundary. All provider-bound work reaches it only through an MSM

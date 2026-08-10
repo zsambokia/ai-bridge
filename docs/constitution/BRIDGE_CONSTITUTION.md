@@ -1,10 +1,17 @@
 # Bridge Constitution v1.3
 
-**Status:** CANONICAL DRAFT  
+**Status:** TRANSITIONAL CANONICAL DRAFT
 **Owner:** Product Owner  
 **Project:** AI Bridge  
 **Canonical repository:** `zsambokia/ai-bridge`  
 **Canonical path:** `docs/constitution/BRIDGE_CONSTITUTION.md`
+
+**Convergence note (2026-08-10):** This draft remains binding for repository
+governance. Its architecture, platform-scope and terminology statements are
+being converged into the Constitution Book. Where the approved target Book
+entries use a more specific canonical term, they are the terminology source;
+material product-scope conflicts require the recorded ADR and Book-adoption
+process.
 
 ---
 
@@ -14,7 +21,11 @@ AI Bridge is the operating system of a one-person AI-assisted software and consu
 
 It coordinates work across ChatGPT, GitHub, Codex, owned software products, customer projects, support, testing, release, deployment, documentation, and operational knowledge.
 
-Bridge is not a generic software factory, multi-tenant platform, organization simulator, marketplace, or abstraction layer built for hypothetical future use cases.
+Bridge is not a generic marketplace or an abstraction layer built for
+hypothetical future use cases. Its target architecture is scope-aware,
+tenant-ready, organization-ready and workspace-ready; this is an architectural
+readiness requirement, not a claim that the present product serves multiple
+customers or organizations.
 
 This Constitution defines the binding principles for every Bridge sprint, Codex handoff, implementation, repair, migration, repository operation, and self-development task.
 

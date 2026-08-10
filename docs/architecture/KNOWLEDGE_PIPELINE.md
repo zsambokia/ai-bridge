@@ -1,12 +1,17 @@
 ---
-status: SUPPORTING
+status: TRANSITIONAL
 owner: Architecture
 supersedes: []
-superseded_by: null
+superseded_by: AKB Constitution Book Article I (target terminology)
 version: 1.0.0
 ---
 
 # Knowledge Pipeline and AKB Evolution
+
+> **Terminology status (2026-08-10):** Transitional implementation record.
+> `RuntimeKnowledgeCandidate.v1` is a retained contract name, and Provider
+> Gateway is historical adapter vocabulary. Article I and Article III define
+> the target Knowledge Object and AI Kernel terminology.
 
 ## Status
 

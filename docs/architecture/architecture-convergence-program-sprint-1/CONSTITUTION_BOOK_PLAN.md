@@ -12,6 +12,12 @@ architecture written beside the existing one. Adoption happens in a later,
 explicitly approved Constitution amendment Sprint. Until then the existing
 Bridge Constitution and Runtime 2.0 Constitution remain authoritative.
 
+Terminology Finalization is tracked in
+[Architecture Convergence Program – Sprint 4](../architecture-convergence-program-sprint-4-terminology-finalization/README.md).
+Its classification register distinguishes approved target terms from
+transitional governance and immutable historical records; it does not itself
+adopt the Constitution Book.
+
 ## Proposed Book structure
 
 | Book part | Starting material | Planned treatment |

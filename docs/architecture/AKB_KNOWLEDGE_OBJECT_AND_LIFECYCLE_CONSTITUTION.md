@@ -107,7 +107,7 @@ immutable version, source/provenance and selection evidence. This preserves
 reuse, reproducibility and auditability when one object participates in more
 than one Context Package.
 
-Knowledge Reference is not a runtime instance and MUST NOT contain mutable
+Knowledge Reference is not a Kernel Object instance and MUST NOT contain mutable
 execution state. Context Package freshness, invalidation and stale-consumption
 policy are governed by Article II and ADR-032.
 
@@ -116,7 +116,7 @@ policy are governed by Article II and ADR-032.
 ### AKB-201 — Independent architectural subsystem
 
 Knowledge Lifecycle Management (KLM) SHALL be an independent architectural
-subsystem. It is not part of the Runtime Engine, AKB storage domain or Provider
+subsystem. It is not part of the AI Kernel, AKB storage domain or Provider
 layer. It maintains evolving, searchable and reproducible knowledge through
 controlled lifecycle operations rather than direct representation edits.
 
@@ -191,5 +191,5 @@ MUST preserve the prior historical record.
    audit history.
 3. A VectorDB, document store or graph database is an implementation choice and
    never defines AKB architectural ownership.
-4. Runtime can emit evidence-bearing candidates, but it neither publishes AKB
+4. The AI Kernel can emit evidence-bearing candidates, but it neither publishes AKB
    knowledge nor owns KLM planning, synchronization or freshness decisions.
