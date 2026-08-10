@@ -1,12 +1,17 @@
 ---
-status: CANONICAL
+status: TRANSITIONAL
 owner: Architecture
 supersedes: []
-superseded_by: null
+superseded_by: Constitution Book (planned adoption)
 version: 1.0.0
 ---
 
 # Engine Constitution
+
+> **Terminology status (2026-08-10):** Transitional. An Engine is a
+> capability implementation; where precision is required the target term is
+> **Capability Engine**. Capability addressing and Provider Integration are
+> defined by the Constitution Book target and do not rename existing code.
 
 An Engine is the exclusive owner of one bounded domain concern, such as
 Planning, Workflow, Repository, Knowledge, Reflection, Learning, Deployment,
@@ -22,7 +27,7 @@ An Engine:
   immutable Execution Request;
 - MUST NOT create an Operational Work Item or a Mission transition;
 - MUST NOT directly invoke another Engine, the Operational Foundation's
-  internals, Provider Gateway, Provider, or `ExecutionRun`;
+  internals, a Provider Integration adapter, Provider, or `ExecutionRun`;
 - MUST NOT write another Engine's state;
 - MUST NOT ask the Product Owner directly; unresolved intent is reported to the
   MSM through an Execution Request or result.

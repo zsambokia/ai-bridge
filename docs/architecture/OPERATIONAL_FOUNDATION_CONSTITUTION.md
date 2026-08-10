@@ -1,12 +1,17 @@
 ---
-status: CANONICAL
+status: TRANSITIONAL
 owner: Operational Foundation
 supersedes: []
-superseded_by: null
+superseded_by: Constitution Book (planned adoption)
 version: 1.0.0
 ---
 
 # Operational Foundation Constitution
+
+> **Terminology status (2026-08-10):** Transitional. Operational Foundation
+> remains a separate architectural layer. The target technical execution core
+> is the **AI Kernel**; a Provider Gateway is only a Provider Integration
+> adapter, never a first-class architectural object.
 
 The Operational Foundation is common delivery infrastructure, not a business
 or Mission authority.
@@ -27,5 +32,5 @@ or Mission authority.
    evidence that the MSM and relevant Engine may consume.
 
 The Runtime and MSM use the Foundation through its declared handoff contract
-only. A Provider Gateway is a Foundation-owned transport adapter, not a domain
+only. A Provider Gateway is a Foundation-owned Provider Integration transport adapter, not a domain
 service.

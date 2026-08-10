@@ -1,8 +1,8 @@
 ---
-status: CANONICAL
+status: TRANSITIONAL
 owner: Runtime
 supersedes: []
-superseded_by: null
+superseded_by: Constitution Book (planned adoption)
 version: 1.0.0
 ---
 
@@ -12,6 +12,13 @@ version: 1.0.0
 **Execution mode:** Factory Development Mode (documentation and architecture only)  
 **Version:** 1.0.0  
 **Date:** 2026-08-09
+
+**Terminology status (2026-08-10):** This is a transitional Runtime 2.0
+specification. `Runtime` remains its historical title. Within its technical
+execution boundary, the target canonical term is **AI Kernel** and the
+canonical provider boundary is **Provider Integration -> Provider Resolver ->
+Provider -> Provider Executor**. Legacy terms retain their stated historical
+meaning until the Book-adoption ADRs are accepted.
 
 ## Constitutional scope and interpretation
 
@@ -81,7 +88,7 @@ Operational Work Item
 Operational Engine Foundation
         │
         ▼
-ExecutionRun → Provider Gateway → Provider
+ExecutionRun → Provider Integration adapter → Provider
 ```
 
 Domain Engines are outside this execution chain. They support Mission decisions
@@ -98,7 +105,7 @@ its own internal state machine. Planning, Workflow, Repository, Knowledge,
 Reflection, Learning, Deployment, and Documentation are examples. Engines MAY
 consume their authorized Work Items, persist their own state, produce evidence,
 and declare a new Execution Request. Engines MUST NOT call another Engine,
-Provider Gateway, Provider, or `ExecutionRun` directly.
+Provider Integration adapter, Provider, or `ExecutionRun` directly.
 
 ### 1.5 Mission Resolution capability
 
@@ -111,7 +118,7 @@ business decision unresolved by those sources is projected to the Product Owner.
 ### 1.6 Conversation and persona boundary
 
 The Conversation Layer knows only Mission and its authorized projections. It
-does not own Planning, Workflow, Repository, Knowledge, or Runtime state. It
+does not own Planning, Workflow, Repository, Knowledge, or Kernel State. It
 MUST NOT directly steer Engine state or execution. It presents the minimum
 decision or status projection required for a human interaction; Orki is a
 persona on this boundary, not a privileged control path.
@@ -125,7 +132,7 @@ persona on this boundary, not a privileged control path.
 | Mission lifecycle and governance | MSM | Mission state, context, decision, Work Item | executing a Domain Engine |
 | Domain reasoning and internal state | relevant Domain Engine | result, evidence, Execution Request | creating Work Item or provider call |
 | Work lifecycle and delivery mechanics | Operational Foundation | lease, retry, heartbeat, run state | mission authorization |
-| Provider transport | Provider Gateway adapter | provider receipt | governance or Mission transition |
+| Provider transport | Provider Integration adapter | provider receipt | governance or Mission transition |
 | Business decision | Product Owner through Conversation projection | decision response | direct Engine control |
 | Conversation presentation | Conversation Layer | projection and input | Planning/Workflow/Repository/Knowledge authority |
 
@@ -209,7 +216,7 @@ and `requestVersion`.
 
 `policyContext` SHALL contain, or reference by immutable hash, `policyVersion`,
 `policySnapshotHash`, `governanceVersion`, and `authorizationSnapshotHash`.
-Runtime policy mutation MUST NOT alter the original authorization context.
+Kernel Policy mutation MUST NOT alter the original authorization context.
 
 ### 3.3 Idempotency
 
@@ -223,7 +230,7 @@ deduplication, merge, retry, and replay are safe.
 
 | Layer | Proves | Minimum example |
 | --- | --- | --- |
-| Static architecture | prohibited imports, references, and calls | Engine → Provider Gateway/Provider/ExecutionRun is forbidden |
+| Static architecture | prohibited imports, references, and calls | Engine → Provider Integration adapter/Provider/ExecutionRun is forbidden |
 | Runtime governance | authorization is enforced at runtime | no ExecutionRun begins without MSM-authorized Work Item |
 | Evidence verification | test outcome is traceable and retained lawfully | result points to versioned Evidence Records |
 
@@ -336,7 +343,7 @@ not a Mission or Engine state machine.
 
 Ports are the only permitted external boundary. The Adapter Registry binds a
 configured adapter to a Port under governance. Provider adapters are reachable
-only through Provider Gateway ports. Future Engines SHALL adopt this same
+only through Provider Integration adapter ports. Future Engines SHALL adopt this same
 contract rather than introduce bespoke queues, hidden schedulers, or direct
 cross-engine calls.
 
@@ -368,7 +375,7 @@ MSM (Mission)
  └─ Learning State Machine (Learning Engine)
              │
              ▼
-Operational Engine Foundation → ExecutionRun → Provider Gateway → Provider
+Operational Foundation → ExecutionRun → Provider Integration adapter → Provider
 ```
 
 The MSM owns Mission state only. Each listed Domain Engine owns its own
@@ -397,7 +404,7 @@ The only conforming execution chain is:
 ```text
 Domain Engine → immutable Execution Request → MSM
 → authorized Operational Work Item → Operational Foundation
-→ ExecutionRun → Provider Gateway → Provider
+→ ExecutionRun → Provider Integration adapter → Provider
 ```
 
 An ExecutionRun SHALL have a traceable authorized Work Item, Mission,

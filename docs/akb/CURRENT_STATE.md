@@ -982,3 +982,33 @@ platform is planned to become scope-, tenant- and localization-ready. No
 Runtime, model, Workflow Engine, application code or migration was changed.
 The proposed Constitution Book and controlled migration map are in the
 [Sprint 1 convergence package](../architecture/architecture-convergence-program-sprint-1/README.md).
+
+### Provider Architecture v2.0 addendum
+
+The Product Owner-approved Provider target is now recorded in the Sprint 1
+convergence package. A Provider is a stateless resource definition that
+declares supported capabilities, configuration and limits; it does not own
+per-call context, lease, retry, persona, evidence, telemetry or output. A
+stateful Provider Executor performs and records an external call. The
+Operational Foundation's Provider Resolver selects an eligible Provider using
+capability, health, cost, priority and capacity policy, while the selected
+Provider owns its Executor pool and resource limits. This records a target
+architecture only: it does not claim that the existing fixed `codex-cli`
+provider path or provider gateway has been migrated. The required decision is
+proposed as ADR-029.
+
+## Architecture Convergence Program Sprint 2 — AKB Knowledge Object & Lifecycle (2026-08-10)
+
+Sprint 2 records an approved target entry for the Constitution Book: the AKB
+stores versioned, lifecycle-managed, graph-related Knowledge Objects rather
+than treating documents, embeddings or files as its primary unit. A Context
+Package consumes immutable, version-bound Knowledge References. Knowledge
+Lifecycle Management is planned as an independent subsystem responsible for
+change detection, update planning, synchronization, freshness, publication and
+context invalidation; it is not Runtime, AKB storage or Provider ownership.
+Current `KnowledgeEntry`, `KnowledgeRevision`, `EngineeringEntity`, pipeline
+receipt, embedding and Context Package foundations remain working transitional
+components, not a claim of target compliance. ADR-030 through ADR-032 and the
+separate documentation Sprint define the required controlled migration path:
+[AKB Knowledge Object & Lifecycle Constitution](../architecture/AKB_KNOWLEDGE_OBJECT_AND_LIFECYCLE_CONSTITUTION.md) and
+[Sprint 2 record](../architecture/architecture-convergence-program-sprint-2-akb-knowledge-object-lifecycle/README.md).

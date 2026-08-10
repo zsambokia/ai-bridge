@@ -1,12 +1,17 @@
 ---
-status: CANONICAL
+status: HISTORICAL
 owner: Architecture
 supersedes: []
-superseded_by: null
+superseded_by: Constitution Book navigation (planned adoption)
 version: 1.0.0
 ---
 
 # AI Bridge Architecture Map
+
+> **Historical architecture snapshot (2026-08-10):** Preserved unchanged as
+> evidence of the pre-Constitution-Book topology. Its Runtime and Provider
+> Gateway labels are historical aliases, not canonical target terminology. Use
+> the Constitution Book plan and Article III for current target navigation.
 
 This is the sole technical-architecture entry point. Read it before choosing a
 component, changing a boundary, or interpreting an architecture document.

@@ -2,6 +2,8 @@
 status: SUPPORTING
 version: 0.1.0
 scope: Architecture Convergence Program – Sprint 1
+amendments:
+  - Provider Architecture v2.0 Addendum (2026-08-10)
 ---
 
 # Architecture Convergence Program – Sprint 1
@@ -22,6 +24,18 @@ explicit:
 - [ADR recommendations](ADR_RECOMMENDATION_LIST.md)
 - [Compliance matrix](COMPLIANCE_MATRIX.md)
 - [Repository transformation matrix](REPOSITORY_TRANSFORMATION_MATRIX.md)
+- [Provider Architecture v2.0](PROVIDER_ARCHITECTURE_V2.md)
+- [Provider addendum record](SPRINT_1_PROVIDER_ADDENDUM.md)
 
 No application code, schema, migration, Runtime, Workflow Engine, or existing
 normative Constitution was changed by this Sprint.
+
+## Provider Architecture v2.0 addendum
+
+The Product Owner has completed and approved the Provider target architecture.
+It is recorded additively: a Provider is a stateless resource definition and
+the stateful unit of external work is a Provider Executor. The Provider Resolver
+is part of the Operational Foundation and selects among eligible Providers;
+the Provider manages capacity and its Executor pool. This is a target decision,
+not an authorization or claim that the current provider implementation has been
+migrated.

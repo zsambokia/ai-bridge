@@ -1,12 +1,17 @@
 ---
-status: CANONICAL
+status: TRANSITIONAL
 owner: Architecture
 supersedes: []
-superseded_by: null
+superseded_by: Constitution Book (planned adoption)
 version: 1.0.0
 ---
 
 # State Machine Constitution
+
+> **Terminology status (2026-08-10):** Transitional. MSM remains the business
+> state-machine owner. Article III defines the target AI Kernel technical
+> state machine and Kernel Events; this document does not authorize model or
+> event-stream renames.
 
 Every durable lifecycle SHALL have one named state-machine owner and an
 explicit transition contract.

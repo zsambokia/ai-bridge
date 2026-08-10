@@ -1,12 +1,17 @@
 ---
-status: CANONICAL
+status: HISTORICAL
 owner: Architecture
 supersedes: []
-superseded_by: null
+superseded_by: Constitution Book evolution record (planned adoption)
 version: 1.0.0
 ---
 
 # Architecture Evolution
+
+> **Historical architecture snapshot (2026-08-10):** This timeline preserves
+> prior repository terminology and topology as evidence. Its Runtime and
+> Provider Gateway labels are not target terminology; use the Constitution
+> Book plan and Article III for approved target terms.
 
 ## Interpretation
 
