@@ -36,8 +36,9 @@ behaviour.
 1. Add Article III as an approved target Constitution Book entry with sections
    3.1–3.19.
 2. Incorporate the final Provider rules: stateless Provider, stateful Provider
-   Executor, immutable Provider Binding, same-Provider recovery and Runtime
-   Profile.
+   Executor, immutable Provider Binding, same-Provider recovery and Kernel
+   Profile, using Provider Integration and Provider Resolver rather than a
+   first-class Provider Gateway.
 3. Record the Execution-first model, capability-first routing, immutable
    Context Package integration, Kernel Events, leases, recovery, scheduling,
    telemetry, evidence and security invariants.
@@ -58,10 +59,10 @@ automatic Provider fallback.
 
 | Current foundation | Target treatment |
 | --- | --- |
-| `ExecutionRun`, `ExecutionJob`, recovery and progress events | Retain as migration input; map to target Execution only through ADR-023. |
+| `ExecutionRun`, `ExecutionJob`, recovery and progress events | Retain as migration input; map to target Execution only through ADR-023; decide `ExecutionJob` compatibility or an Execution Attempt model through ADR-034. |
 | `projects/runtime_contract.py` and `projects/decision_contract/framework.py` | Retain immutable-contract patterns; do not equate current `ExecutionRequest` with final aggregate without ADR-023. |
-| Operational Foundation and Provider Gateway | Retain operational mechanics; converge boundary/terminology only after ADR-029 and ADR-033. |
-| Provider Architecture v2.0 addendum | Modify to record immutable binding, same-Provider recovery and Runtime Profile. |
+| Operational Foundation and Provider Gateway | Retain operational mechanics; retain any Gateway only as a non-canonical implementation boundary after ADR-029 and ADR-033. |
+| Provider Architecture v2.0 addendum | Modify to record immutable binding, same-Provider recovery, Provider Integration/Resolver and Kernel Profile. |
 | Existing Runtime/Engine documentation | Keep as current or historical evidence; classify, do not silently rewrite. |
 
 ## Required ADR recommendations
@@ -72,15 +73,22 @@ automatic Provider fallback.
 | ADR-024 | Capability declaration and resolution contract. | Capability-first routing cannot be inferred from current Engine paths. |
 | ADR-025 | Context Package contract. | The Kernel must bind one immutable, reproducible package. |
 | ADR-027 | Kernel Event envelope and replay compatibility. | Existing event streams are heterogeneous. |
-| ADR-029 | Provider binding, Executor lifecycle, Runtime Profile and same-Provider recovery. | Prevents accidental cross-provider fallback or ownership ambiguity. |
+| ADR-029 | Provider Integration/Resolver, Provider binding, Executor lifecycle, Kernel Profile and same-Provider recovery. | Prevents accidental cross-provider fallback or ownership ambiguity. |
 | ADR-033 | AI Kernel boundary and terminology transition. | Separates target terminology from legacy Runtime symbols safely. |
+| ADR-034 | `ExecutionJob` retention, mapping to Execution Attempt or retirement. | Queue, retry and recovery semantics require an explicit compatibility decision. |
 
 ## Controlled migration map
+
+Phase 0 also requires ADR-034. The subsequent contract work uses the canonical
+terms **Kernel Managers**, **Kernel Registries**, **Kernel Objects** and
+**Kernel Profile**; it keeps the Engine Definition Registry and Capability
+Registry separate. Any Provider Gateway remains an implementation adapter, not
+a first-class Kernel Object.
 
 | Phase | Outcome | Dependencies | Required proof |
 | --- | --- | --- | --- |
 | 0 – Ratify | Adopt Article III and ADRs into the Constitution Book. | Book adoption, ADR-023–029, ADR-033. | Canonical amendment and accepted ADRs. |
-| 1 – Contracts | Define Execution, Provider Binding, Runtime Profile, Context and event compatibility contracts. | Phase 0. | Contract and transition tests. |
+| 1 – Contracts | Define Execution, Provider Binding, Kernel Profile, Context and event compatibility contracts. | Phase 0. | Contract and transition tests. |
 | 2 – Kernel boundary | Introduce Kernel-owned registry/state machine while retaining legacy mechanics behind adapters. | ADR-023, ADR-027, ADR-033. | Identity, event and recovery compatibility evidence. |
 | 3 – Provider convergence | Implement capability resolution, immutable binding and same-Provider Executor recovery. | ADR-024, ADR-029. | No cross-provider fallback and profile-enforcement evidence. |
 | 4 – Terminology retirement | Deprecate aliases only after compatibility proof and consumer migration. | Phases 1–3. | Search, API, migration and historical-preservation evidence. |
@@ -92,12 +100,14 @@ automatic Provider fallback.
 2. Execution is Kernel-owned and Provider binding is immutable throughout an
    Execution.
 3. Provider Executor replacement/recovery stays within the bound Provider and
-   Runtime Profile governs supported technical behaviour.
+   Kernel Profile governs supported technical behaviour.
 4. The terminology matrix preserves required canonical terms and marks every
    proposed change as retain, rename, alias, deprecated or historical.
 5. The Constitution Book and ADR plan distinguish target architecture from
    current implementation.
 6. No implementation artifact is changed; standard documentation gates pass.
+7. Provider Gateway is classified only as an implementation adapter; the two
+   registries remain separate, and `ExecutionJob` has an explicit ADR path.
 
 ## Required evidence
 

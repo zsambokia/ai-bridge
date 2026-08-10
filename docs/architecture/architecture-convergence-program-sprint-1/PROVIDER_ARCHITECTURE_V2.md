@@ -8,10 +8,15 @@ scope: Architecture Convergence Program – Sprint 1 addendum
 
 ## Decision
 
-The AI Kernel addresses external execution through Provider contracts, never by
+The AI Kernel addresses external execution through Provider Integration, never by
 coupling directly to a vendor such as OpenAI, Anthropic, Codex or an MCP
 server. A Provider does not execute a request itself: it supplies or reserves
 a Provider Executor that performs the external call.
+
+The canonical Provider Integration sequence is `Provider Integration → Provider
+Resolver → Provider → Provider Executor`. A Provider Gateway MAY exist only as
+an implementation boundary or adapter; it is not a first-class architectural
+object or canonical contract.
 
 This is an approved target architecture. It is not an implementation change,
 an amendment to an existing canonical Constitution, or a claim that the
@@ -31,14 +36,15 @@ current fixed-provider path is compliant.
    usage, cost, output and lifecycle state.
 3. **Provider-owned resources.** The Provider owns executor-pool reservation
    and release, concurrency limits, rate limits, quota, connection resources
-   and provider-specific cost limits. The Runtime does not reimplement those
+   and provider-specific cost limits. The AI Kernel does not reimplement those
    resource details.
 4. **Capability independence.** A Capability is resolved independently of a
    Provider. The same Capability may be fulfilled through more than one
    eligible Provider. Provider support is an eligibility declaration, not
    Capability ownership.
-5. **Foundation-owned selection.** The Provider Resolver is an Operational
-   Foundation component. It selects an eligible Provider according to
+5. **Provider Integration selection.** The Provider Resolver is the pre-binding
+   selection component of Provider Integration. Operational Foundation supplies
+   its admission, authorization and policy inputs. The Resolver selects an eligible Provider according to
    capability, policy, health, priority, cost and capacity, and applies
    governed fallback, failover and load-balancing policy.
 6. **Explicit capacity outcomes.** If no Executor can be reserved, the
@@ -52,7 +58,7 @@ current fixed-provider path is compliant.
    reattached only by the same bound Provider. If recovery is unavailable or
    unsafe, the Execution becomes an explicit awaiting-provider, blocked or
    failed outcome; it never silently uses a different Provider.
-9. **Runtime Profile.** Every Provider publishes a versioned Runtime Profile
+9. **Kernel Profile.** Every Provider publishes a versioned Kernel Profile
    declaring supported checkpoint, resume, recovery, migration, streaming,
    lease, timeout, concurrency and retry behaviour. The Kernel and Foundation
    enforce that declared profile rather than inferring provider behaviour.
@@ -63,7 +69,7 @@ current fixed-provider path is compliant.
 | --- | --- | --- |
 | Capability Resolver | Capability discovery and eligibility of implementations | Vendor selection, executor capacity or external-call state |
 | Engine | Domain capability implementation and bounded-context business state | Operational execution state |
-| Operational Foundation / Provider Resolver | Policy-governed pre-binding Provider selection, fallback decision and correlation | Provider-specific pool mechanics or post-binding provider switching |
+| Provider Integration / Provider Resolver | Policy-governed pre-binding Provider selection, fallback decision and correlation | Provider-specific pool mechanics or post-binding provider switching |
 | Provider | Stateless definition and provider-specific resource/pool management | Per-call execution state or Mission authority |
 | Provider Executor | One external-call lifecycle, lease/retry/evidence/telemetry/output | Mission authority or cross-provider selection policy |
 
@@ -71,7 +77,7 @@ current fixed-provider path is compliant.
 
 ```text
 Mission → MSM → Operational Foundation → immutable Execution Request
-  → AI Kernel → Capability Resolution → Provider Resolver → bind Provider
+  → AI Kernel → Capability Resolution → Provider Integration → Provider Resolver → bind Provider
   → reserve Provider Executor → External Service → result/evidence/telemetry
   → Execution update / Kernel Event → MSM
 ```
@@ -96,7 +102,7 @@ evidence and resource-release requirements have been satisfied.
 [ADR-029](ADR_RECOMMENDATION_LIST.md) is required before implementation. It
 must decide persistence and identity of Provider Executors, pool topology,
 pre-binding selection/fallback policy, immutable Provider Binding,
-same-Provider recovery, Runtime Profile schema, capacity/error contracts,
+same-Provider recovery, Kernel Profile schema, capacity/error contracts,
 authorization, secrets, event/replay compatibility, and the migration from the
 existing fixed-provider gateway. No current provider model, AI Kernel/Runtime,
 Workflow Engine, schema or adapter is changed by this addendum.

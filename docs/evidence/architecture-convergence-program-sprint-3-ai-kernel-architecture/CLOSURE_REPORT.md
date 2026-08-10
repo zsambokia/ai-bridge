@@ -8,7 +8,8 @@ closure_state: PASS — READY FOR PRODUCT OWNER REVIEW
 ## Outcome
 
 Sprint 3 documents the approved Article III target, final Provider constraints
-and terminology convergence path. It introduces no executable change.
+and terminology convergence path, including the Architecture Review
+refinements. It introduces no executable change.
 
 ## Required closure conditions
 
@@ -27,5 +28,8 @@ and terminology convergence path. It introduces no executable change.
 
 Article III is recorded as approved target architecture; the Provider target,
 Constitution Book plan, ADR recommendation register, transformation map and
-terminology matrix are synchronized. No application, model, migration, API or
-runtime behaviour was modified.
+terminology matrix are synchronized. Provider Integration and Provider Resolver
+are canonical, Gateway is implementation-only, the Engine Definition and
+Capability Registries stay distinct, and ADR-034 controls the `ExecutionJob`
+decision. No application, model, migration, API or runtime behaviour was
+modified.

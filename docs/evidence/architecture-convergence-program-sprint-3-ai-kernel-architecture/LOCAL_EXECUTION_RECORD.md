@@ -22,8 +22,12 @@ changes.
   Sprint records, Provider target entry and the supplied Article III draft.
 - Recorded Article III – AI Kernel Architecture as an approved target.
 - Updated Provider Architecture v2.0 with immutable binding, same-Provider
-  recovery and Runtime Profile constraints.
+  recovery and Kernel Profile constraints.
 - Added Sprint 3 scope, terminology matrix, Book-plan and ADR updates.
+- Incorporated the Architecture Review terminology refinements: Provider
+  Integration/Resolver is canonical, Gateway is adapter-only, Kernel objects
+  use a uniform lifecycle pattern, registry responsibilities remain separate,
+  and `ExecutionJob` is deferred to ADR-034.
 
 ## Files in scope
 

@@ -26,7 +26,7 @@ provider adapters.
   exhaustion, fallback and failover are explicit policy-governed outcomes;
   after binding there is no automatic cross-provider fallback.
 - Recovery may replace a failed Provider Executor only within the Provider
-  already bound to the Execution, and only when that Provider's Runtime Profile
+  already bound to the Execution, and only when that Provider's Kernel Profile
   permits recovery.
 
 ## Sprint artefacts updated
