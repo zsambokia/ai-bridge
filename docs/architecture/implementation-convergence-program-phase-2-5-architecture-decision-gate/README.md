@@ -1,8 +1,10 @@
 # Phase 2.5 — Architecture Decision & Challenge Gate
 
-**Program:** AI Bridge Architecture Convergence Program  
-**Status:** DECISION PREPARATION COMPLETE — PRODUCT OWNER GATE  
-**Task type:** Documentation / architecture decision preparation  
+**Program:** AI Bridge Architecture Convergence Program
+
+**Status:** DECISION PREPARATION COMPLETE — PRODUCT OWNER GATE
+
+**Task type:** Documentation / architecture decision preparation
 **Baseline:** `ad0c0741c408944f52d43184de1d0074cf550e17` on `agent/architecture-convergence-docs`
 
 ## Purpose

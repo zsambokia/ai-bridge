@@ -1,7 +1,8 @@
 # Phase 2.5 Assessment Record
 
-**Scope:** Architecture Decision & Challenge Gate  
-**Baseline:** `ad0c0741c408944f52d43184de1d0074cf550e17`  
+**Scope:** Architecture Decision & Challenge Gate
+
+**Baseline:** `ad0c0741c408944f52d43184de1d0074cf550e17`
 **Branch:** `agent/architecture-convergence-docs`
 
 ## Evidence reviewed
