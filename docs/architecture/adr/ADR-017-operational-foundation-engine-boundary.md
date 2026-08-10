@@ -15,4 +15,3 @@ directly. An Engine emits an immutable Execution Request; MSM may authorize an
 immutable Operational Work Item; only then may the Operational Foundation
 deliver the work. This makes cross-domain and provider interactions durable,
 recoverable, and reconstructible.
-

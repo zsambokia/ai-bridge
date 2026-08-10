@@ -56,4 +56,3 @@ Each architecture document has front matter whose `status` is authoritative:
 describes an active migration, and `HISTORICAL` preserves prior context.
 See the evolution register before treating an existing component as target
 compliant.
-

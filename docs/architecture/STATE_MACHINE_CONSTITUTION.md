@@ -29,4 +29,3 @@ explicit transition contract.
 This constitution does not certify legacy OESM or other existing state
 implementations as compliant. Their status is governed by the evolution
 register and evidence.
-

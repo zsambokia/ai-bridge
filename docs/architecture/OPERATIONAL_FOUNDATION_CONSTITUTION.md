@@ -29,4 +29,3 @@ or Mission authority.
 The Runtime and MSM use the Foundation through its declared handoff contract
 only. A Provider Gateway is a Foundation-owned transport adapter, not a domain
 service.
-

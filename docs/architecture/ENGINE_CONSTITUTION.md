@@ -29,4 +29,3 @@ An Engine:
 
 The MSM coordinates across domains without inheriting their business logic.
 Provider output remains untrusted input until handled by the owning boundary.
-

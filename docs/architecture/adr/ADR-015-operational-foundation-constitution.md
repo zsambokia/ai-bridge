@@ -16,4 +16,3 @@ queueing, leasing, retry, recovery, `ExecutionRun`, and provider transport
 mechanics, but not Mission, domain, governance, or Product Owner authority.
 The binding rules are in the
 [Operational Foundation Constitution](../OPERATIONAL_FOUNDATION_CONSTITUTION.md).
-

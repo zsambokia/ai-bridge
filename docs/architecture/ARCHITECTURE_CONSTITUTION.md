@@ -70,4 +70,3 @@ Architecture changes SHALL identify the affected owner, boundary, state
 machine, evidence obligation, compatibility effect, and migration state.
 An ADR records a durable decision; it does not by itself certify that code is
 implemented or compliant.
-

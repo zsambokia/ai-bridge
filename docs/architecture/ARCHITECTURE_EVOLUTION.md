@@ -51,4 +51,3 @@ Migration SHALL be incremental and reversible where practical. Each change
 shall name the legacy route, affected authority, compatibility boundary,
 validation, evidence, and retirement condition. Historical records are never
 silently rewritten.
-

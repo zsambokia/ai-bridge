@@ -1,10 +1,10 @@
 # Factory Development Record — Architecture Constitution Baseline
 
-**Authority:** Product Owner Factory Development Mode instruction, 2026-08-10.  
+**Authority:** Product Owner Factory Development Mode instruction, 2026-08-10.
 **Scope:** documentation-only Architecture Constitution baseline; no runtime,
-provider, infrastructure, migration, or data mutation.  
-**Branch:** `main`  
-**Baseline:** `0d92a5be3d909f448182e4577d39c1515f6feaeb`  
+provider, infrastructure, migration, or data mutation.
+**Branch:** `main`
+**Baseline:** `0d92a5be3d909f448182e4577d39c1515f6feaeb`
 **Pre-existing unrelated work preserved:** `bridge/settings/local.py`.
 
 ## Completed work
@@ -41,6 +41,7 @@ provider, infrastructure, migration, or data mutation.
 
 ## Next action
 
-Rerun final documentation integrity checks after closure evidence is finalized,
-then hand the uncommitted documentation delivery to the Product Owner for
-review. No commit or push is authorized by this record.
+The baseline documentation was committed as `d0a45ea` after Product Owner
+authorization. This record's whitespace repair is a follow-on commit. Push the
+reviewed commits to `origin/main`; no changes to the preserved settings file
+are authorized.

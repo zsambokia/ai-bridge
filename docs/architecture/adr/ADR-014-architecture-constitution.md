@@ -28,4 +28,3 @@ repository constitution.
 
 Existing documents retain their evidence-based status and are classified
 canonical, supporting, transitional, or historical through front matter.
-

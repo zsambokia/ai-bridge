@@ -15,4 +15,3 @@ state; each Domain Engine owns its own state; the Operational Foundation owns
 delivery mechanics. Cross-domain progression uses durable events, requests,
 results, Work Items, and evidence, never direct cross-state writes. The binding
 rule is [State Machine Constitution](../STATE_MACHINE_CONSTITUTION.md).
-
