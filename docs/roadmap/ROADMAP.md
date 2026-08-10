@@ -1,5 +1,18 @@
 # AI Bridge Roadmap
 
+## Runtime 2.0 FDM Architecture Convergence
+
+The approved Runtime 2.0 Constitution is the binding target, not a claim about
+the current route. The R20-00 read-only baseline concludes `FAIL` for current
+end-to-end compliance: the reusable `ExecutionRun`/`ExecutionJob` foundation is
+bypassed by Factory Chat, and the durable Execution Request, MSM, authorized
+Operational Work Item, and mission planning gate are not established. The
+governed next sequence is R20-01 MSM/Mission Resolution, R20-02 Foundation
+normalization and Factory Chat migration, R20-03 PSM, R20-04 WSM, then R20-05
+independent final audit. See the
+[convergence program](../epics/RUNTIME_2_0_FDM_ARCHITECTURE_CONVERGENCE.md) and
+[R20-00 evidence](../evidence/bridge-ai-bridge-sprint-c763bb47-74fa-4120-85a5-f8cf745ec262/).
+
 ## Repository Bootstrap and Multi-Project Onboarding
 
 The provider-neutral repository knowledge lifecycle is implemented and has

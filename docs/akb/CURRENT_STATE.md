@@ -11,6 +11,17 @@ implemented Runtime, rewrite historical OESM/Orki records, or certify existing
 components as compliant. Phase evidence is in
 [`docs/evidence/runtime-2-0-constitution-phase-0/`](../evidence/runtime-2-0-constitution-phase-0/).
 
+## Runtime 2.0 R20-00 Compliance Baseline (2026-08-09)
+
+The approved read-only R20-00 audit has re-established that the constitutional
+route is not yet implemented end-to-end. `ExecutionRun` and `ExecutionJob`
+provide reusable operational mechanics, but Factory Chat still reaches a
+synchronous Workflow adapter/provider route; there is no durable canonical
+Execution Request, dedicated MSM, authorized Operational Work Item, or
+`MISSION_READY_FOR_PLANNING` gate. This is an audit conclusion, not a runtime
+release claim. The governed migration map is in the
+[R20-00 evidence package](../evidence/bridge-ai-bridge-sprint-c763bb47-74fa-4120-85a5-f8cf745ec262/).
+
 ## Repository Bootstrap Lifecycle — 2026-08-08
 
 Repository documents can now enter the project AKB through a provider-driven,
