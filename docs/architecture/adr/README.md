@@ -8,6 +8,16 @@ version: 1.0.0
 
 # Architecture Decision Records
 
+## Governance
+
+ADRs are Architecture Convergence records. They record durable architecture
+decisions; implementation contracts and Sprint evidence record realization
+decisions. Product Owner approval is required when an ADR materially changes a
+canonical concept, ownership/responsibility boundary, invariant, lifecycle,
+scope rule, security guarantee or compatibility exception. See [Architecture
+and Implementation Convergence Governance](../ARCHITECTURE_IMPLEMENTATION_CONVERGENCE_GOVERNANCE.md)
+for the Architecture Challenge and decision rule.
+
 The ADRs below are the durable architectural decisions for the Orki Cognitive
 Operating System. Their status describes an architectural or capability
 lifecycle; it must not be read as proof of a mature, independently judged
@@ -34,6 +44,8 @@ Digital COO behavioural result.
 | [ADR-017](ADR-017-operational-foundation-engine-boundary.md) | Operational Foundation as canonical Engine boundary | Accepted target boundary |
 | [ADR-018](ADR-018-engine-constitution.md) | Common Engine Constitution | Accepted target governance |
 | [ADR-019](ADR-019-state-machine-ownership.md) | State-machine ownership | Accepted target governance |
+| [ADR-035](ADR-035-scope-resource-and-ownership.md) | Scope, Resource and Direct Ownership | Accepted target architecture; implementation inheritance/shared-resource details remain open |
+| [ADR-037](ADR-037-localization-and-canonical-language.md) | Localization and Canonical Language | Accepted target architecture; representation mechanics remain open |
 
 For technical Epic closure evidence, see the
 [Product Owner review package](../../evidence/orki-cognitive-operating-system-closure-20260802/PRODUCT_OWNER_REVIEW_PACKAGE.md).

@@ -240,8 +240,9 @@ is attributable, traceable and suitable for audit; it is not optional logging.
 
 Kernel Security enforces authenticated, authorized and scope-aware access to
 Execution, Context, Evidence, Provider credentials and Executor resources.
-It supports the platform's tenant-ready Organization/Workspace/Repository
-scope model and prevents cross-scope data or executor access. Secrets are
+It supports the platform's tenant-ready Organization/Workspace/Project scope
+model and prevents cross-scope data or executor access. Repository is a
+scope-owned Resource, never a Scope. Secrets are
 provided only through governed Provider integration and never recorded in
 Context, Events, Telemetry or Evidence. Localization does not change canonical
 identifiers, authorization or evidence semantics.

@@ -1,5 +1,7 @@
 # Implementation Readiness Matrix
 
+> **Status: HISTORICAL ASSESSMENT.** The Scope target in this Phase 2 matrix is superseded by [Scope Architecture Constitution](../SCOPE_ARCHITECTURE_CONSTITUTION.md), Article VI, and ADR-035. The accepted target is `Organization -> Workspace -> Project` as the only Scope hierarchy; Repository is a Scope-owned Resource, never a Scope.
+
 | Component | Constitution target | Repository evidence | Gap | Readiness | First migration boundary |
 | --- | --- | --- | --- | --- | --- |
 | Mission Domain | Mission is unified intake; Conversation only human adapter | `FactoryMission`, `FactoryChatSession`, `factory_missions.py` | Non-human intake lacks a common Mission facade | Ready | Mission Intake Adapter |
@@ -8,7 +10,7 @@
 | Provider | resolver → provider → executor, immutable binding | `ExecutionProvider`, `ProviderGateway`, `providers.py` | Gateway is primary and binding/profile semantics incomplete | Partially Ready | Provider Integration facade |
 | AKB | uniform Knowledge Object graph/lifecycle/KLM | `KnowledgeEntry`, revisions, package, pipeline | entry-centric, no uniform object/reference/KLM subsystem | Partially Ready | KO identity/version projection |
 | Event | Kernel Events, immutable and provider-neutral | `ExecutionProgressEvent`, `OrkiRuntimeEvent`, workflow events | fragmented event taxonomies and names | Partially Ready | event envelope/projection |
-| Identity & Scope | organization/workspace/repository scope | `Project`, authenticated user, `ExecutableScope` | no organization/workspace ownership hierarchy | Not Ready | scope model ADR + read path |
+| Identity & Scope | Organization -> Workspace -> Project Scope hierarchy; Repository is a Scope-owned Resource | `Project`, authenticated user, `ExecutableScope` | no organization/workspace ownership hierarchy | Not Ready | scope model ADR + read path |
 | Multi-tenancy | tenant-ready, explicit owner and scope | project/platform scopes only | tenant data isolation model absent | Not Ready | identity-and-scope foundation |
 | Localization | canonical English + localized assets | no locale configuration/catalogue evidence | no localization domain model | Not Ready | localization policy and content model |
 | Security | scope-aware, secret-safe contexts/events/evidence | login, CSRF, MCP token, secret-conscious events | authorization is not scope policy | Partially Ready | scope-aware authorization |

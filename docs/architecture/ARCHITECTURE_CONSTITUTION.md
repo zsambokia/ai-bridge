@@ -10,9 +10,10 @@ version: 1.0.0
 
 > **Terminology status (2026-08-10):** Transitional. This document remains a
 > governance source until Constitution Book adoption. The approved target
-> terminology is governed by Article I (AKB), Article III (AI Kernel) and the
-> Terminology Convergence Matrix; historical names are not implementation
-> rename authority.
+> terminology is governed by Article I–II (AKB), Article III (AI Kernel),
+> Article VI (Scope Architecture), Article VII (Localization Architecture),
+> and the Terminology Convergence Matrix; historical names are not
+> implementation rename authority.
 
 ## Authority and interpretation
 
@@ -60,6 +61,10 @@ convenience is not an exception.
 ```text
 Bridge Constitution
 └── Architecture Constitution (this document)
+    ├── Article I–II — AKB Knowledge Objects and Lifecycle
+    ├── Article III — AI Kernel Architecture
+    ├── Article VI — Scope Architecture
+    ├── Article VII — Localization Architecture
     ├── Runtime 2.0 Constitution
     ├── Operational Foundation Constitution
     ├── Engine Constitution
@@ -69,6 +74,28 @@ Bridge Constitution
 The [Architecture Map](ARCHITECTURE_MAP.md) is the sole technical-architecture
 entry point. The [Architecture Evolution](ARCHITECTURE_EVOLUTION.md) records
 the relationship between current, transitional, and target material.
+
+The approved target entries are [AKB Knowledge Object & Lifecycle
+Constitution](AKB_KNOWLEDGE_OBJECT_AND_LIFECYCLE_CONSTITUTION.md), [AI Kernel
+Architecture Constitution](AI_KERNEL_ARCHITECTURE_CONSTITUTION.md), [Scope
+Architecture Constitution](SCOPE_ARCHITECTURE_CONSTITUTION.md), and
+[Localization Architecture Constitution](LOCALIZATION_ARCHITECTURE_CONSTITUTION.md).
+Their adoption into one Constitution Book remains controlled by the
+Book-adoption process.
+
+## Article VIII — Architecture and Implementation Convergence
+
+The [Architecture and Implementation Convergence
+Governance](ARCHITECTURE_IMPLEMENTATION_CONVERGENCE_GOVERNANCE.md) is a
+normative Constitution Book governance entry. Architecture Convergence defines
+the approved target architecture; Implementation Convergence realizes it in the
+repository and runtime. Implementation evidence may raise an Architecture
+Challenge, but it MUST NOT silently redefine the canonical architecture.
+
+Until MVP architecture stabilization, compatibility with development-stage
+implementation is not a default architectural requirement. Approved target
+architecture takes precedence unless the Product Owner explicitly approves a
+bounded compatibility exception.
 
 ## Change control
 

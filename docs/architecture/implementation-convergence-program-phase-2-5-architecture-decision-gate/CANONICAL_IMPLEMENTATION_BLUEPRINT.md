@@ -1,5 +1,11 @@
 # Canonical Implementation Blueprint
 
+**Classification:** Historical mixed-convergence decision-preparation record.
+Its accepted target statements are authoritative only where adopted by the
+Constitution Book or an accepted ADR. Its current-to-target mapping is
+Implementation Convergence planning. See [Architecture and Implementation
+Convergence Governance](../ARCHITECTURE_IMPLEMENTATION_CONVERGENCE_GOVERNANCE.md).
+
 ## Status and use
 
 This is the recommended canonical model for Product Owner review. It becomes an implementation contract only when the decisions in the [Architecture Challenge Register](ARCHITECTURE_CHALLENGE_REGISTER.md) are accepted. It does not amend the Constitution.
@@ -42,21 +48,21 @@ Conversation is required for human interaction, not for API, MCP, Scheduler, Web
 | Object | Owner / lifecycle authority | Persisted? | Mutability | Canonical relationship |
 | --- | --- | --- | --- | --- |
 | Organization | Identity and authorization domain | Yes | Controlled lifecycle | Tenant and authorization root. |
-| Workspace | Organization | Yes | Controlled lifecycle | Logical operating scope; contains repositories. |
-| Repository | Workspace | Yes | Controlled lifecycle | Source, knowledge, and provenance boundary. |
-| Project | Repository | Yes | Controlled lifecycle | Governed product context; root owner for operational objects. |
+| Workspace | Organization | Yes | Controlled lifecycle | Logical operating Scope; contains Projects and scope-owned Resources. |
+| Project | Workspace | Yes | Controlled lifecycle | Governed product context and Scope for normal product-development Missions and project Resources. |
+| Repository | One Scope | Yes | Controlled lifecycle | Source, knowledge, and provenance Resource; never a Scope and may be one of multiple Repositories owned by a Project. |
 | Conversation | Conversation domain | Yes | Message history is append-only; conversation state controlled | Human interaction entry only; may inform Mission intake. |
-| Mission | Mission domain / MSM | Yes | State transitions only through MSM | Expresses intent and business lifecycle. |
+| Mission | Mission domain / MSM | Yes | State transitions only through MSM | Exactly one direct Scope owner; normally Project-scoped, but Organization- and Workspace-scoped Missions remain valid target cases. |
 | Mission State Machine | Mission domain | Transition/event record | Deterministic transitions | Sole authority for Mission lifecycle and Operational Work Item authorization. |
 | OperationalWorkItem | Operational Foundation | Yes | Immutable authorized specification; separate mutable delivery state | Delivery envelope for one authorized unit of work; replaces historical `ExecutionJob`. |
 | ExecutionRequest | Operational Foundation to AI Kernel contract | Yes, as immutable contract or event payload | Immutable | Requests creation/resumption of a Kernel Execution; includes scope, capability, context reference, and work correlation. |
 | Execution | AI Kernel | Yes | State changes only through Kernel state machine and events | One first-class kernel execution. Replaces historical `ExecutionRun`; never owned by Provider or Operational Foundation. |
 | ProviderBinding | AI Kernel | Yes | Immutable once Execution is admitted | Associates exactly one Provider with an Execution. |
-| Provider | Provider Integration / definition registry | Yes | Versioned definition; stateless | Declares capabilities and Runtime Profile. |
+| Provider | Provider Integration / definition registry | Yes | Versioned definition; stateless | Scope-owned Resource that declares capabilities and Kernel Profile. |
 | ProviderExecutor | Bound Provider resource lifecycle; Kernel correlates | Durable correlation record plus volatile resource as required | Stateful, replaceable only by same Provider | Performs the bound external invocation; it does not own Execution. |
 | ContextPackage | Context / knowledge boundary | Yes | Immutable and versioned | Supplies reproducible execution context through pinned Knowledge References. |
-| KnowledgeObject | AKB | Yes | Stable identity; lifecycle controlled | Typed knowledge root with a stable `knowledge://` URI. |
-| KnowledgeObjectVersion | AKB / KLM publication | Yes | Immutable after publication | Versioned content, provenance, language, and confidence for a Knowledge Object. |
+| KnowledgeObject | AKB | Yes | Stable identity; lifecycle controlled | Typed knowledge root with a stable `knowledge://` URI and exactly one direct Scope owner. |
+| KnowledgeObjectVersion | AKB / KLM publication | Yes | Immutable after publication | Versioned content, provenance, language, and confidence for a Knowledge Object; localized representations preserve the same identity/version concept. |
 | KnowledgeRelationship | AKB / KLM publication | Yes | Versioned and provenance-bearing | Graph edge between knowledge objects/versions. |
 | KnowledgeReference | Context Package | Yes, in immutable manifest | Immutable | Pins a Knowledge Object version selected for a context. |
 | Evidence | Evidence domain / producing component | Yes | Append-only and immutable | Traceable observation, result, or decision input. |
@@ -87,10 +93,11 @@ No state machine crosses these ownership boundaries. Components exchange immutab
 | Provider Gateway | Internal Provider Integration adapter/boundary, not a first-class canonical object. |
 | Runtime Event / Runtime State | Kernel Event / Kernel State where the subject is the AI Kernel. |
 | Physical Execution Workspace | Provider executor resource; distinct from logical Workspace scope. |
+| Repository | Scope-owned Resource; never a Scope or the parent of a Project. |
 
 ## Minimum canonical persistence boundary
 
-The canonical data design is intentionally aggregate-first, not table-first. At implementation design time it must persist at least: scope hierarchy; Mission and MSM transitions; Operational Work Item and lease/delivery transitions; Execution and Kernel Events; immutable Provider Binding; executor/invocation correlation; immutable Context Package manifest; Knowledge Object identities/versions/relationships; and Evidence. No existing schema is authoritative merely because it already stores similar fields.
+The canonical data design is intentionally aggregate-first, not table-first. At implementation design time it must persist at least: the `Organization → Workspace → Project` Scope hierarchy; exact Scope ownership for Resources; Mission and MSM transitions; Operational Work Item and lease/delivery transitions; Execution and Kernel Events; immutable Provider Binding; executor/invocation correlation; immutable Context Package manifest; Knowledge Object identities/versions/relationships; and Evidence. No existing schema is authoritative merely because it already stores similar fields.
 
 ## Non-goals
 

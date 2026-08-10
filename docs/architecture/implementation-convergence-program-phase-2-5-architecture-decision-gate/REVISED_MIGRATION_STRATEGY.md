@@ -1,5 +1,10 @@
 # Revised Migration Strategy — Pre-MVP Direct Convergence
 
+**Classification:** Implementation Convergence planning, preserved in the
+historical mixed Phase 2.5 record. It realizes approved architecture and SHALL
+not amend it; a material conflict uses the [Architecture Challenge
+Gate](../ARCHITECTURE_IMPLEMENTATION_CONVERGENCE_GOVERNANCE.md#agc-002--architecture-challenge-gate).
+
 ## Decision
 
 The Phase 2 migration roadmap is valuable as repository evidence, but its compatibility-first defaults are superseded for future implementation planning by this document. Phase 3 will converge toward the accepted canonical blueprint through direct replacement and controlled rebuild where that is simpler and safer.
@@ -23,8 +28,8 @@ The Phase 2 migration roadmap is valuable as repository evidence, but its compat
 | `ExecutionJob` queue/lease record | Operational `OperationalWorkItem` | Replace name and boundary | Yes, if a queue adapter remains. |
 | Provider Gateway | Provider Integration adapter | Internalize behind resolver/binding | Yes, if external callers remain. |
 | Knowledge Entry / Revision packages | Uniform AKB primitives | Rebuild/migrate through published Knowledge Objects | Yes, if legacy reads stay enabled. |
-| Project-only scope | Organization → Workspace → Repository → Project | Establish canonical root hierarchy before dependent aggregates | Yes, if unscoped paths coexist. |
-| UI-string-only language assumptions | Versioned Localized Representation | Add only after ADR-approved object boundary | Yes, for fallback aliases or implicit translation. |
+| Project-only scope and Repository-as-scope assumption | Organization → Workspace → Project, with Repository as a scope-owned Resource | Establish the canonical Scope hierarchy and Resource ownership before dependent aggregates | Yes, if unscoped paths coexist. |
+| UI-string-only language assumptions | English canonical technical identifiers plus multilingual, traceable semantic representations | Resolve ADR-037 mechanics before implementation; never overwrite original Evidence | Yes, for fallback aliases or implicit translation. |
 
 ## Required transformation order
 

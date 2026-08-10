@@ -2,7 +2,18 @@
 
 ## Target Architecture
 
-English is canonical for normative architecture, ADRs, capabilities, and internal identifiers. UI, prompts, personas, knowledge, documentation, and business-relevant evidence are localization-ready with attributable language/version semantics.
+Article VII requires English canonical code and technical identifiers,
+including APIs, schema, Capabilities, events, states, configuration and
+internal contracts. It also requires first-class multilingual capability for
+appropriate UI, Knowledge, Persona communication, Conversation, documentation,
+descriptions, generated artifacts and human-facing summaries. Translation
+coverage is not required to be complete.
+
+Original Evidence preserves its content and language. A translation is a
+separate, traceable derived representation and MUST NOT overwrite or replace
+the source. Knowledge localization conceptually preserves `identity -> version
+-> language representations`; the detailed representation mechanics remain
+open in ADR-037.
 
 ## Current Repository
 
@@ -10,11 +21,19 @@ The inspected Django settings and application source contain no configured `LANG
 
 ## Gap Analysis
 
-**Missing:** locale policy, language metadata, canonical/source relationship, translation lifecycle, UI catalogues, localized prompts/personas/knowledge/documentation, and evidence language criteria. Existing text fields are a future migration surface.
+**Missing:** platform locale policy implementation, language metadata,
+canonical/source relationship, translation lifecycle, UI catalogues, localized
+prompts/personas/knowledge/documentation, source/derived Evidence handling and
+the ADR-037 representation design. Existing text fields are a future migration
+surface.
 
 ## Migration Strategy
 
-Approve a localization ADR first. Add language and canonical-reference metadata to new constitutional objects; introduce UI catalogue support independently. Migrate high-value assets by versioned representation, not bulk text replacement.
+The constitutional boundary is approved. A Phase 3 Sprint must first resolve
+ADR-037, then introduce the chosen representation model and UI support under
+approved implementation authority. Migrate high-value assets by versioned,
+traceable representation rather than bulk text replacement; never rewrite
+source Evidence.
 
 ## Risks and Dependencies
 
@@ -22,7 +41,9 @@ Translation can change meaning, evidence interpretation, and policy behaviour. D
 
 ## Readiness
 
-**Not Ready.** No foundational localization policy or model exists.
+**Not Ready.** The constitutional localization boundary is approved, but its
+representation, fallback and lifecycle model remains an explicit ADR-037
+decision before implementation.
 
 ## Evidence
 

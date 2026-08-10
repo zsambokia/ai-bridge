@@ -8,7 +8,7 @@
 | 1 — Constitutional seams | Mission Intake, Kernel facade, provider integration interfaces | strangler; existing path remains authoritative | Wave 0 | duplicate lifecycle ownership |
 | 2 — Durable execution | map existing run/job/lease/events to Kernel objects and OF work items | compatibility projections; no destructive rename | Wave 1 | recovery and fencing regressions |
 | 3 — Knowledge convergence | Knowledge Object/reference publication and KLM change planning | additive versioned model; dual-read | Wave 1 plus AKB ADRs | stale-context behaviour |
-| 4 — Scope platform | organization/workspace/repository ownership and authorization | additive scope columns/relations; explicit backfill | Wave 0 | tenant isolation / data migration |
+| 4 — Scope platform | historical wording superseded: canonical Organization -> Workspace -> Project hierarchy with Scope-owned Repository Resources | approach superseded by Phase 2.5; exact migration/rebuild is future Sprint authority | Article VI / ADR-035 | tenant isolation / data migration |
 | 5 — Intake and presentation | API/MCP/scheduler converge to Mission; UI uses neutral projections | adapter migration | Waves 1, 4 | client contract breakage |
 | 6 — Retirement | deprecate Runtime/Gateway transitional surfaces | strangler removal after measured adoption | all prior waves | unsupported integrations |
 

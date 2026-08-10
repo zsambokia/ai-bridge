@@ -2,6 +2,12 @@
 
 ## Repository Alignment Assessment
 
+**Classification:** HISTORICAL IMPLEMENTATION ASSESSMENT SNAPSHOT. This is
+Implementation Convergence evidence of the assessed repository baseline, not a
+canonical architecture source. Its current authority boundary is [Architecture
+and Implementation Convergence
+Governance](../ARCHITECTURE_IMPLEMENTATION_CONVERGENCE_GOVERNANCE.md).
+
 **Status:** ASSESSMENT COMPLETE — READY FOR PRODUCT OWNER REVIEW
 
 **Type:** Documentation / architecture assessment; no runtime, model, or application-code change

@@ -111,6 +111,25 @@ Knowledge Reference is not a Kernel Object instance and MUST NOT contain mutable
 execution state. Context Package freshness, invalidation and stale-consumption
 policy are governed by Article II and ADR-032.
 
+### AKB-106 -- Scope-aware knowledge and localized representations
+
+Every persistent Knowledge Object and published Knowledge Object Version SHALL
+have exactly one direct Scope owner in accordance with [Article VI -- Scope
+Architecture](SCOPE_ARCHITECTURE_CONSTITUTION.md). AKB remains the governed
+knowledge model; its graph, embeddings, indexes and retrieval infrastructure
+are representations or supporting Resources, not substitutes for Knowledge
+Object ownership.
+
+Knowledge MAY be owned at Organization, Workspace or Project Scope. The
+inheritance, sharing and override rules for knowledge between those Scopes are
+not decided by this Article and SHALL remain an explicit architecture question.
+
+Knowledge localization SHALL preserve the conceptual relationship
+`Knowledge identity -> Knowledge Version -> language representations`. A
+translation SHALL NOT automatically become an unrelated Knowledge identity.
+The representation data model, fallback, publication and lifecycle mechanics
+remain open pending ADR-037; this Article does not prescribe them.
+
 ## Article II — Knowledge Lifecycle Management
 
 ### AKB-201 — Independent architectural subsystem
