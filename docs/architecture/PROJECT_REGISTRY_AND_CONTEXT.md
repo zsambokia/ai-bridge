@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Project Registry and Context Foundation
 
 Sprint 003 establishes one runtime Project Registry model (`projects.Project`)

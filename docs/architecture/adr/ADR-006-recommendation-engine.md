@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-006 - Recommendation Engine
 
 **Status:** Implemented in ORKI-003; validated by independent Release Gate.

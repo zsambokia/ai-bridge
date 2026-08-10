@@ -1,3 +1,11 @@
+---
+status: TRANSITIONAL
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Migration strategy
 
 No phase changes the current Runtime Foundation until its stated PASS evidence exists. Each phase is independently reversible by routing new work back to the current Runtime path.

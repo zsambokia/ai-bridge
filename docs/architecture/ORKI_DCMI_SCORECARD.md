@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Digital COO Maturity Index (DCMI) Scorecard
 
 **Status:** Historical scorecard with the CVO-002 evidence-weighted measurement transition.

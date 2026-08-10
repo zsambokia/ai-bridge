@@ -1,3 +1,11 @@
+---
+status: HISTORICAL
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki COO mission ownership
 
 Issue #19 makes Orki the active planning owner of Factory Chat.  The browser is

@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Workspace Architecture — Discovery Audit
 
 **Status:** proposed target architecture; no implementation authority

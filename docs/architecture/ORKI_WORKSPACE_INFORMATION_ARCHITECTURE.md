@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Workspace Information Architecture — Discovery Audit
 
 **Status:** proposed navigation only; no UI implementation is authorized.

@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Canonical Factory Acceptance Suite
 
 This is the permanent, provider-neutral release gate for changes to Orki Runtime, Goal, Plan, OESM, Planning, Repository/Execution integration, Factory Chat integration, or Factory Development Mode. It is deterministic and repeatable. It does not redesign Governance, approvals, queueing, providers, `ExecutionRun`, or Cognitive State.

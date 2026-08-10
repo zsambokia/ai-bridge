@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-013 - Operational Reasoning Engine
 
 **Status:** Implemented in ORKI-010; full scenario-based behavioural certification remains pending.

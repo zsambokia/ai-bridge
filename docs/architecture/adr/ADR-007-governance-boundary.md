@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-007 - Governance Boundary
 
 **Status:** Accepted architectural boundary; no separate end-to-end behavioural certification claimed.

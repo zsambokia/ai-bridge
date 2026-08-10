@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Operational Reasoning Engine
 
 **Status:** Canonical architecture; ORKI-010 implementation and release-gate contract.

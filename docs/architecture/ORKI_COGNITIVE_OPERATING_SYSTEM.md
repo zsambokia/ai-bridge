@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Cognitive Operating System
 
 **Constitution:** [Orki Principles](ORKI_PRINCIPLES.md) is the immutable behavioural authority. This document describes architecture; it cannot weaken the Principles.

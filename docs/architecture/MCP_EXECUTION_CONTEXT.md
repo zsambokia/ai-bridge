@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # MCP Execution Context and Remote Server
 
 Sprint 004 extends the canonical `projects` domain; it does not create a

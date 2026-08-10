@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Autonomous repository delivery
 
 Sprint 4 makes repository publication a durable, contract-bound execution phase. A project branch policy is embedded in the execution contract as a delivery policy. Completion invokes the verifier before terminalising the run.

@@ -1,3 +1,11 @@
+---
+status: TRANSITIONAL
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Runtime Foundation Baseline
 
 **Status:** approved architectural baseline; operational validation pending

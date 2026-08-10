@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-010 - Evidence Driven Reasoning
 
 **Status:** Accepted architectural boundary; ORKI-010 provides the bounded reasoning structure, while full behavioural certification remains pending.

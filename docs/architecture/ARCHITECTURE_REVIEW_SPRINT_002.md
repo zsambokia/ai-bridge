@@ -1,3 +1,11 @@
+---
+status: HISTORICAL
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Architecture Review — Sprint 002: Project Context
 
 **Status:** CLOSED — SUPERSEDED BY SPRINT 003

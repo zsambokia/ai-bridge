@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-003 - Initiative Engine
 
 **Status:** Implemented — ORKI-007, 2026-08-02.

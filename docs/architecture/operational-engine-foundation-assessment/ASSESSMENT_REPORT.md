@@ -1,3 +1,11 @@
+---
+status: TRANSITIONAL
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Operational Engine Foundation — assessment report
 
 ## Scope and method

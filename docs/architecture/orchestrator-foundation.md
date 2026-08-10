@@ -1,3 +1,11 @@
+---
+status: TRANSITIONAL
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orchestrator foundation
 
 The orchestrator is a decision-support and lifecycle layer, not an executor. Providers implement a small `assess(context, correlation_id)` protocol. Every model call is composed outside the domain through the existing `ExecutionProvider` registry and provider-platform adapter. OpenAI is the first registered implementation, not a second SDK integration; provider choice is stored with each durable session.

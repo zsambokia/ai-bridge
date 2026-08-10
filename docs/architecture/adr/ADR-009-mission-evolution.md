@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-009 - Mission Evolution
 
 **Status:** Accepted architectural boundary; mission capability implementation is evidenced by ORKI-002.

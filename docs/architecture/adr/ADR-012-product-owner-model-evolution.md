@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-012: Product Owner Model Confidence and Drift
 
 **Status:** Implemented in ORKI-009; Product Owner model evolution accepted.

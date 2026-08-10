@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # COO Capability Acceptance
 
 **Status:** Mandatory Release Gate for the Orki Cognitive Operating System Epic.

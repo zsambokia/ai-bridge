@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Executive Checkpoints
 
 **Authority:** Product Owner Executive Directive, 2026-08-02

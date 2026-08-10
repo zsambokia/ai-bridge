@@ -1,5 +1,17 @@
 # AI Bridge – Current State
 
+## Architecture Constitution baseline — 2026-08-10
+
+The canonical technical-architecture entry point is now the
+[Architecture Map](../architecture/ARCHITECTURE_MAP.md), rooted in the
+[Architecture Constitution](../architecture/ARCHITECTURE_CONSTITUTION.md).
+It makes the existing Runtime 2.0 target hierarchy explicit: MSM owns Mission
+coordination; Domain Engines own their bounded domains; and the Operational
+Foundation is the sole provider-bound mechanical handoff. This
+documentation-only baseline does not certify the current implementation as
+Runtime 2.0 compliant or alter historical evidence. The current/transitional/
+target distinction is recorded in [Architecture Evolution](../architecture/ARCHITECTURE_EVOLUTION.md).
+
 ## Runtime 2.0 Constitution — Phase 0 (2026-08-09)
 
 The Product Owner-approved [Runtime 2.0 Constitution](../runtime/runtime_2_0_constitution.md)

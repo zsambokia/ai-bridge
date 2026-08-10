@@ -1,4 +1,12 @@
-# Orki Architecture Decision Records
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
+# Architecture Decision Records
 
 The ADRs below are the durable architectural decisions for the Orki Cognitive
 Operating System. Their status describes an architectural or capability
@@ -20,6 +28,12 @@ Digital COO behavioural result.
 | [ADR-011](ADR-011-product-owner-cognitive-model.md) | Product Owner Cognitive Model | Implemented and foundation-accepted |
 | [ADR-012](ADR-012-product-owner-model-evolution.md) | Product Owner Model Confidence and Drift | Implemented and accepted |
 | [ADR-013](ADR-013-operational-reasoning-engine.md) | Operational Reasoning Engine | Implemented; full scenario certification pending |
+| [ADR-014](ADR-014-architecture-constitution.md) | Architecture Constitution | Accepted target governance |
+| [ADR-015](ADR-015-operational-foundation-constitution.md) | Operational Foundation Constitution | Accepted target boundary |
+| [ADR-016](ADR-016-runtime-mission-coordinator.md) | Runtime as Mission coordinator only | Accepted target boundary |
+| [ADR-017](ADR-017-operational-foundation-engine-boundary.md) | Operational Foundation as canonical Engine boundary | Accepted target boundary |
+| [ADR-018](ADR-018-engine-constitution.md) | Common Engine Constitution | Accepted target governance |
+| [ADR-019](ADR-019-state-machine-ownership.md) | State-machine ownership | Accepted target governance |
 
 For technical Epic closure evidence, see the
 [Product Owner review package](../../evidence/orki-cognitive-operating-system-closure-20260802/PRODUCT_OWNER_REVIEW_PACKAGE.md).

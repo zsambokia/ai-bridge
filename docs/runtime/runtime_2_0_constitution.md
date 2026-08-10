@@ -1,3 +1,11 @@
+---
+status: CANONICAL
+owner: Runtime
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # AI Bridge Runtime 2.0 Constitution
 
 **Status:** Canonical Runtime 2.0 specification — Phase 0, Product Owner approved  

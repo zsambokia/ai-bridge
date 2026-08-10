@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ORKI-011 Factory Chat UX Decisions
 
 ## Decision 1 — one operational workspace

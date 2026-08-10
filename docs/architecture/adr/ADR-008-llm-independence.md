@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-008 - LLM Independence
 
 **Status:** Accepted architectural boundary; no separate end-to-end provider-parity certification claimed.

@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Product Owner Scenarios
 
 **Status:** Canonical acceptance scenario catalogue.

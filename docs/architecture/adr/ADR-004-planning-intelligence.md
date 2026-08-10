@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-004 - Planning Intelligence
 
 **Status:** Implemented by ORKI-005; independent Release Gate PASS.

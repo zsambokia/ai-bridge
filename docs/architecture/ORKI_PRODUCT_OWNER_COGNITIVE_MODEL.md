@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Product Owner Cognitive Model
 
 **Status:** Canonical architecture; ORKI-008 foundation and ORKI-009 evolution contract.

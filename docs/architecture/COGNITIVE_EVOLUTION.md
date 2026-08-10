@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Cognitive & Behaviour Evolution
 
 Sprint 07 adds a bounded learning layer without granting it Runtime, Reasoning,

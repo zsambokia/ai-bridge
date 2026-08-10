@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki mandatory orchestration gate
 
 Sprint 2 makes `OrchestrationSession` the durable, mandatory decision boundary

@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # SHA-bound runtime deployment and operational acceptance
 
 Sprint 5 separates repository delivery from runtime activation. A verified

@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-005 - Memory Intelligence
 
 **Status:** Implemented â€” ORKI-006.

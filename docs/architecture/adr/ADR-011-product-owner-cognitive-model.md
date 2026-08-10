@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # ADR-011: Product Owner Cognitive Model
 
 **Status:** Implemented in ORKI-008; Product Owner foundation acceptance recorded.

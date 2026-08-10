@@ -1,3 +1,11 @@
+---
+status: SUPPORTING
+owner: Architecture
+supersedes: []
+superseded_by: null
+version: 1.0.0
+---
+
 # Orki Context Package Flow — Discovery Audit
 
 **Status:** canonical lifecycle mapping and target integration rule.
