@@ -1,5 +1,7 @@
 # Migration Roadmap
 
+> **Status: SUPERSEDED FOR FUTURE IMPLEMENTATION PLANNING.** This Phase 2 roadmap remains historical repository-alignment evidence. Its compatibility-first migration assumptions are superseded by the Phase 2.5 [Revised Migration Strategy](../implementation-convergence-program-phase-2-5-architecture-decision-gate/REVISED_MIGRATION_STRATEGY.md). No implementation authority is changed by this status marker.
+
 | Wave | Outcome | Strategy | Preconditions | Key risk |
 | --- | --- | --- | --- | --- |
 | 0 — Decisions | Approve scope model and ExecutionJob disposition | ADRs only | Product Owner decisions | incompatible persistence assumptions |
