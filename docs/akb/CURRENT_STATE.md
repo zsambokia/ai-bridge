@@ -970,3 +970,15 @@ approval activates it. Only after activation does the existing vector-store
 contract create a `SemanticEmbedding`; vector retrieval then persists an
 evidence-bearing `KnowledgeContextPackage`. The legacy compatibility adapter is
 unchanged and its removal is deferred to the Runtime Cleanup migration.
+
+## Architecture Convergence Program Sprint 1 (2026-08-10)
+
+The Product Owner authorised a documentation-only Architecture Convergence
+Program. Sprint 1 records the approved target decisions and the gap between
+the current Constitutions, Runtime 2.0 target and repository implementation:
+Mission is the common intake; Conversation is the human interface; Execution,
+Context Package and Capability are first-class architectural concepts; and the
+platform is planned to become scope-, tenant- and localization-ready. No
+Runtime, model, Workflow Engine, application code or migration was changed.
+The proposed Constitution Book and controlled migration map are in the
+[Sprint 1 convergence package](../architecture/architecture-convergence-program-sprint-1/README.md).

@@ -1,0 +1,29 @@
+---
+status: PROPOSED
+version: 0.1.0
+---
+
+# Architecture Migration Map
+
+This is a dependency-ordered program map, not implementation authority.
+
+| Phase | Outcome | Prerequisites | Reuse / change boundary | Proof required before next phase |
+| --- | --- | --- | --- | --- |
+| 0 — Converge | Adopt Book and ADR decisions. | This Sprint; Product Owner approval. | Documentation only. | Traceable Book, accepted ADRs, no false compliance claim. |
+| 1 — Identity contracts | Define scope hierarchy, actor authorization, locale identity and reserved `Workspace` terminology. | ADR-021, ADR-026, ADR-028. | Reuse Project identity; do not overload physical `ExecutionWorkspace`. | Isolation and authorization contract tests. |
+| 2 — Intake and capability | Establish Mission Intake Port and Capability catalogue/resolution. | ADR-022, ADR-024; Phase 1. | Preserve Factory Chat as human interface; route API/MCP/scheduler adapters through one intake contract. | Equivalent Mission creation and denial evidence for every ingress. |
+| 3 — Execution boundary | Introduce first-class Execution and immutable Context Package; bind attempts to `ExecutionRun`. | ADR-023, ADR-025; Phase 2. | Reuse `ExecutionRun`, jobs, recovery and provider gateway mechanics; do not duplicate them. | Reproducible context, idempotent execution and recovery trace. |
+| 4 — Strangler migration | Move Factory Chat/Orki and workflow/provider direct paths behind Mission → Capability → Execution. | Phases 2–3. | Retire only adapters proven bypassed; preserve historical evidence. | E2E mission-to-provider route plus recovery and audit evidence. |
+| 5 — Scope and localization rollout | Apply scope and locale rules to UI, prompts, personas, AKB and documentation. | Phases 1–4. | Incremental backfill with explicit defaults and provenance. | Cross-scope denial, locale fallback and canonical/derived-content tests. |
+| 6 — Event convergence and retirement | Publish canonical event/outbox contract and remove proven redundant legacy routes. | ADR-027; completed strangler proof. | Map existing Execution/Provider/Orki/Workflow events; do not delete audit history. | Replay, idempotency, observability and retention evidence. |
+
+## Guardrails
+
+- No data migration precedes the corresponding ADR and backward-compatibility
+  plan.
+- A feature is tenant-ready only when scope is explicit and authorization is
+  enforced; a nullable foreign key alone is not readiness.
+- Localization never changes the canonical meaning or identifier of a
+  normative decision.
+- R20-00 remains the baseline until a new independent compliance assessment
+  proves the end-to-end target route.
