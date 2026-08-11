@@ -3,6 +3,12 @@ architecture_status: CANONICAL
 owner: Architecture
 classification: VISUAL CONSTITUTION
 language: en
+logical_source: 99_FULL_ARCHITECTURE.md
+derived_drawio: Full Architecture.drawio
+constitution: Article V — Architecture Documentation Governance
+last_reviewed: 2026-08-11
+architecture_version: 1.0.0
+related_adrs: ADR-034, ADR-038 (open)
 ---
 # Diagram 99 — Full Architecture
 
@@ -10,6 +16,10 @@ language: en
 
 The cross-layer canonical target view. It composes, but does not replace, the
 more precise numbered diagrams.
+
+The Mermaid document is the canonical logical architecture source. `Full
+Architecture.drawio` is its derived editable visual representation; if they
+ever conflict, the Mermaid model prevails.
 
 ## Responsibility and ownership
 

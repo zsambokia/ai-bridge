@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`03_MISSION_MSM.md`](03_MISSION_MSM.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Shows Mission as the first runtime business object and MSM as its exclusive
 lifecycle authority.
 

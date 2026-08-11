@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`04_OPERATIONAL_FOUNDATION.md`](04_OPERATIONAL_FOUNDATION.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Defines Operational Foundation as an independent architectural layer that
 admits, schedules, leases, and delivers MSM-authorized work to the AI Kernel.
 

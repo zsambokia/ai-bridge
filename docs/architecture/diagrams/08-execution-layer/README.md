@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`08_EXECUTION_LAYER.md`](08_EXECUTION_LAYER.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Establishes `Execution` as the sole first-class, Kernel-owned target execution
 object and makes its provider binding immutable during a run.
 

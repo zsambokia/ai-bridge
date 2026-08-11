@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`11_REPOSITORY_LIFECYCLE.md`](11_REPOSITORY_LIFECYCLE.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Shows Repository as a scoped resource whose changes can become governed
 Knowledge Lifecycle inputs rather than uncontrolled runtime knowledge.
 

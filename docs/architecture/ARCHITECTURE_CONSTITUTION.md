@@ -105,6 +105,10 @@ artifacts. Architecture diagrams have the same normative authority as their
 corresponding Architecture Constitution chapters. They SHALL describe the
 approved target architecture rather than the current implementation.
 
+The canonical logical form of an architecture diagram SHALL be Mermaid source
+embedded in a version-controlled Markdown document. This logical source is the
+reviewable, diffable, and auditable architecture-as-code representation.
+
 ### ADG-102 — Diagram Consistency
 
 Every canonical architecture diagram SHALL remain consistent with the
@@ -132,11 +136,18 @@ this assessment.
 ### ADG-105 — Repository Rule
 
 Every canonical diagram SHALL have one canonical source in the repository. For
-the canonical diagram set governed by this Article, the editable `.drawio` file
-is the only authoritative source. Generated PNG, SVG, and PDF files are derived
-artifacts only; they MAY be regenerated from the canonical source at a
-documentation release, by CI, or when a consumer needs them. Their regeneration
-is not required for every architecture-documentation commit.
+the canonical diagram set governed by this Article, that source SHALL be the
+version-controlled Markdown document containing Mermaid. Mermaid is the
+authoritative logical model when any visual representation differs.
+
+An editable `.drawio` file MAY be maintained as a derived visual architecture
+artifact for teaching, presentation, or enriched visual explanation. It SHALL
+preserve the Mermaid logical model and SHALL NOT independently introduce,
+remove, rename, or reconnect logical architecture elements. Generated PNG,
+SVG, and PDF files are derived artifacts only; they MAY be regenerated from
+Mermaid or Draw.io at a documentation release, by CI, or when a consumer needs
+them. Their regeneration is not required for every architecture-documentation
+commit.
 
 ### ADG-106 — Completion Criteria
 
@@ -147,16 +158,17 @@ approved design.
 
 ### Architecture Convergence working rule
 
-The responsible executor SHALL identify every affected canonical diagram,
-update each impacted `.drawio` source and related `README.md`, and report the
-result. If no diagram source change is necessary, the executor SHALL state that
-conclusion explicitly and preserve its justification in the Diagram Impact
-Assessment.
+The responsible executor SHALL identify every affected canonical Mermaid
+source, update each impacted source and related `README.md`, assess and update
+every affected derived `.drawio` representation, and report the result. If no
+diagram source change is necessary, the executor SHALL state that conclusion
+explicitly and preserve its justification in the Diagram Impact Assessment.
 
 ### ADG-107 — Architecture Status
 
-Every canonical diagram SHALL declare an Architecture Status in both its
-repository documentation and its visible diagram metadata. The allowed values
+Every canonical diagram SHALL declare an Architecture Status in its canonical
+Mermaid source, repository documentation, and visible derived-diagram metadata
+where a derived diagram exists. The allowed values
 are `DRAFT`, `ASSESSMENT`, `APPROVED`, `CANONICAL`, `TRANSITIONAL`,
 `HISTORICAL`, and `DEPRECATED`.
 
@@ -168,6 +180,14 @@ architecture. `DRAFT`, `ASSESSMENT`, and `APPROVED` communicate their review
 stage; `DEPRECATED` identifies an artifact retained only until governed
 retirement. A status label SHALL NOT be used to silently elevate an unresolved
 implementation model to canonical architecture.
+
+### ADG-108 â€” Diagram Governance Metadata
+
+Every canonical Mermaid diagram document SHALL declare its diagram name,
+Architecture Status, source type, derived Draw.io path when present,
+Constitution reference, last-reviewed date, architecture version, and related
+ADRs. This metadata makes source hierarchy, review status, and governance
+binding explicit without duplicating the logical model.
 
 ## Article VIII — Architecture and Implementation Convergence
 

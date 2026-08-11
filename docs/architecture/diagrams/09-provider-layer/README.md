@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`09_PROVIDER_LAYER.md`](09_PROVIDER_LAYER.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Defines the canonical technical provider route from Execution to external
 capability infrastructure.
 

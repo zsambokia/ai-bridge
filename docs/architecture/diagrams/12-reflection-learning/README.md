@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`12_REFLECTION_LEARNING.md`](12_REFLECTION_LEARNING.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Shows how attributable Evidence can inform governed Reflection and learning
 without allowing runtime output to mutate AKB directly.
 

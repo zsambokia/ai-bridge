@@ -10,7 +10,9 @@ version: 1.0.0
 
 ## Purpose
 
-This editable draw.io diagram is the canonical visual companion to the
+Canonical logical source: [`01_CONVERSATION_LAYER.md`](01_CONVERSATION_LAYER.md) (Mermaid). `Conversation Layer.drawio` is its derived, editable visual representation.
+
+The Mermaid logical source is the canonical visual companion to the
 Conversation → Mission target architecture. It shows only the human
 Conversation route and the boundary at which a governed Mission can enter the
 runtime path. It is not an implementation, class, API, data-model, or
@@ -33,9 +35,9 @@ same authority as its corresponding constitutional scope.
 
 ## Maintenance rules
 
-1. Keep the source as editable native draw.io (`.drawio`) XML.
-   `Conversation Layer.drawio` is the single canonical diagram source. The
-   SVG in `assets/` is a derived, non-canonical review preview. It MAY be
+1. Keep the Mermaid source authoritative for logical changes. Keep the native
+   draw.io (`.drawio`) XML aligned as an editable derived visual. The SVG in
+   `assets/` is a derived, non-canonical review preview. It MAY be
    regenerated for a documentation release, by CI, or when a consumer needs it;
    it is not required for every documentation change.
 2. Preserve the component order and the explicit Runtime Boundary unless an
@@ -65,4 +67,5 @@ transitional repository artifacts.
 The Article V governance amendment was assessed in
 [`DIAGRAM_IMPACT_ASSESSMENT.md`](../../../evidence/architecture-documentation-governance-article-v-20260811/DIAGRAM_IMPACT_ASSESSMENT.md).
 It changes this diagram's maintenance and authority rules only; the logical
-architecture in `Conversation Layer.drawio` was therefore not changed.
+architecture was therefore not changed. The source hierarchy is recorded in
+`01_CONVERSATION_LAYER.md`.

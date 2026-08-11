@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`06_WORKFLOW_ENGINE.md`](06_WORKFLOW_ENGINE.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Shows Workflow Engine as a stateless Capability Engine that interprets a
 versioned workflow definition without becoming a Mission lifecycle owner.
 

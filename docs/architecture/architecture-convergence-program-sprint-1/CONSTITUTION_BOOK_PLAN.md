@@ -23,7 +23,7 @@ adopt the Constitution Book.
 | Book part | Starting material | Planned treatment |
 | --- | --- | --- |
 | 0. Charter, language and authority | Bridge Constitution | Retain governance; amend the product-only/multi-tenancy language after ADR-021. English is canonical for normative content. |
-| 0a. Architecture documentation governance | Article V — Architecture Documentation Governance | New: canonical diagrams are normative architecture artifacts; each ADR and Architecture Convergence change records a Diagram Impact Assessment; editable `.drawio` sources are authoritative and every diagram declares an Architecture Status. |
+| 0a. Architecture documentation governance | Article V — Architecture Documentation Governance | New: canonical diagrams are normative architecture artifacts; each ADR and Architecture Convergence change records a Diagram Impact Assessment; Mermaid-in-Markdown is the authoritative logical source, Draw.io is derived, and every diagram declares an Architecture Status. |
 | 1. Scope, identity and tenancy | Project context, Bridge Constitution, Article VI — Scope Architecture | New: Organization → Workspace → Project scope semantics; Repository and Provider as scope-owned Resources; ownership, authorization, inheritance and correlation requirements. |
 | 2. Runtime intake and Mission | Runtime 2.0 Constitution | Modify: Mission Intake Port is unified; Conversation is only the human interface. |
 | 2a. Conversation to Mission | Article IV - Conversation to Mission Architecture | New: Factory Chat is a UI adapter; Conversation Understanding and the CSE govern human interaction; Mission Resolution is the sole human-Conversation Mission-intake boundary while MSM remains the sole Mission lifecycle owner. |
@@ -54,7 +54,7 @@ ADR-034.
 4. An ADR must be accepted before a chapter introduces a new data/authority
    contract.
 5. Historical evidence is linked, not retroactively rewritten.
-6. Every canonical diagram has one editable `.drawio` repository source;
+6. Every canonical diagram has one version-controlled Markdown/Mermaid logical source; any editable `.drawio` is derived from it;
    derived PNG, SVG, and PDF artifacts do not become a second source of
    architectural truth and need not be regenerated for every documentation
    change.

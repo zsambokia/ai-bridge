@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`07_AI_KERNEL.md`](07_AI_KERNEL.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Defines the AI Kernel as the technical execution core after Operational
 Foundation admission.
 

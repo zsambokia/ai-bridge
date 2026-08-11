@@ -8,6 +8,8 @@ language: en
 
 ## Purpose
 
+Canonical logical source: [`10_KNOWLEDGE_AKB.md`](10_KNOWLEDGE_AKB.md) (Mermaid). The `.drawio` file is its derived, editable visual representation.
+
 Defines AKB as a living graph of versioned Knowledge Objects and Context
 Packages as immutable, reproducible references to governed knowledge.
 

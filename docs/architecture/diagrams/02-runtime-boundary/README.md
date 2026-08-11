@@ -4,9 +4,13 @@ owner: Architecture
 classification: VISUAL CONSTITUTION
 language: en
 ---
+
 # Diagram 02 — Runtime Boundary
 
 ## Purpose
+
+Canonical logical source: [`02_RUNTIME_BOUNDARY.md`](02_RUNTIME_BOUNDARY.md)
+(Mermaid). The `.drawio` file is its derived, editable visual representation.
 
 Defines Mission as the unified runtime intake while preserving Conversation as
 the mandatory route for human interaction only.
@@ -32,5 +36,6 @@ remain implementation concerns.
 ## Related authority and maintenance
 
 Article IV — Conversation to Mission Architecture; Article III — AI Kernel.
-Update this source and its Diagram Impact Assessment with any intake-boundary
-change. The editable `.drawio` is canonical.
+Update the Mermaid source and its Diagram Impact Assessment with any
+intake-boundary change. The editable `.drawio` remains aligned as a derived
+visual representation.
