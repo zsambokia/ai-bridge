@@ -4,7 +4,7 @@
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
-        <mxCell id="title" value="AI Bridge — Conversation Layer&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Canonical target architecture · Article IV&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=28;fontStyle=1;fontColor=#172554;" vertex="1" parent="1">
+        <mxCell id="title" value="AI Bridge — Conversation Layer&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Architecture Status: CANONICAL · Article IV&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=28;fontStyle=1;fontColor=#172554;" vertex="1" parent="1">
           <mxGeometry x="180" y="20" width="1040" height="60" as="geometry"/>
         </mxCell>
         <mxCell id="product-owner" value="&lt;b&gt;Product Owner&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:15px&quot;&gt;Responsibility: supplies business intent, approvals, and governing decisions.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E5E7EB;strokeColor=#475569;fontColor=#0F172A;fontSize=19;align=center;verticalAlign=middle;spacing=8;" vertex="1" parent="1">

@@ -131,9 +131,12 @@ this assessment.
 
 ### ADG-105 — Repository Rule
 
-Every diagram SHALL have one canonical source in the repository. Generated
-PNG, SVG, and PDF files are derived artifacts only. The editable `.drawio`
-file is the authoritative source whenever a diagram is maintained in draw.io.
+Every canonical diagram SHALL have one canonical source in the repository. For
+the canonical diagram set governed by this Article, the editable `.drawio` file
+is the only authoritative source. Generated PNG, SVG, and PDF files are derived
+artifacts only; they MAY be regenerated from the canonical source at a
+documentation release, by CI, or when a consumer needs them. Their regeneration
+is not required for every architecture-documentation commit.
 
 ### ADG-106 — Completion Criteria
 
@@ -149,6 +152,22 @@ update each impacted `.drawio` source and related `README.md`, and report the
 result. If no diagram source change is necessary, the executor SHALL state that
 conclusion explicitly and preserve its justification in the Diagram Impact
 Assessment.
+
+### ADG-107 — Architecture Status
+
+Every canonical diagram SHALL declare an Architecture Status in both its
+repository documentation and its visible diagram metadata. The allowed values
+are `DRAFT`, `ASSESSMENT`, `APPROVED`, `CANONICAL`, `TRANSITIONAL`,
+`HISTORICAL`, and `DEPRECATED`.
+
+`CANONICAL` denotes the approved target architecture and has the normative
+authority described by ADG-101. `TRANSITIONAL` denotes an explicitly bounded
+route from the current implementation to that target. `HISTORICAL` records a
+former or current implementation fact and SHALL NOT be interpreted as target
+architecture. `DRAFT`, `ASSESSMENT`, and `APPROVED` communicate their review
+stage; `DEPRECATED` identifies an artifact retained only until governed
+retirement. A status label SHALL NOT be used to silently elevate an unresolved
+implementation model to canonical architecture.
 
 ## Article VIII — Architecture and Implementation Convergence
 

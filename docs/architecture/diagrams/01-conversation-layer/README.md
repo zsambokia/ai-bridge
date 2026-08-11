@@ -1,5 +1,5 @@
 ---
-status: APPROVED_TARGET
+architecture_status: CANONICAL
 owner: Architecture
 classification: CONSTITUTION DIAGRAM
 language: en
@@ -35,8 +35,9 @@ same authority as its corresponding constitutional scope.
 
 1. Keep the source as editable native draw.io (`.drawio`) XML.
    `Conversation Layer.drawio` is the single canonical diagram source. The
-   SVG in `assets/` is a derived, non-canonical review preview and MUST be
-   regenerated or updated with it.
+   SVG in `assets/` is a derived, non-canonical review preview. It MAY be
+   regenerated for a documentation release, by CI, or when a consumer needs it;
+   it is not required for every documentation change.
 2. Preserve the component order and the explicit Runtime Boundary unless an
    approved Constitution amendment changes the target architecture.
 3. Use logical components and responsibilities only. Do not add source-code
