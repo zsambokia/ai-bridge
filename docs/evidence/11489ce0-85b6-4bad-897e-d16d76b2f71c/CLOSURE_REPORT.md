@@ -14,6 +14,7 @@ were synchronized. The final Backend Release Gate passed.
 
 Closure state: **PASS — READY FOR PRODUCT OWNER REVIEW**.
 
-No commit or push was created: that authority was not requested. The final
-artifact is the reviewed working tree on `main`, based on
+The final artifact is committed and pushed on `main` as
+`3dbae55578e2dfcce5146607a1f97eb9721445db`
+(`Converge Factory Chat on durable Conversations`), based on
 `08534749ad8c1bc51e07c53001fd196f43957688`.

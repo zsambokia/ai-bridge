@@ -24,7 +24,7 @@
   formatting clean; mypy clean. `makemigrations --check --dry-run` also
   reported no changes.
 - Final branch binding: `main`, baseline
-  `08534749ad8c1bc51e07c53001fd196f43957688`; no commit was created because
-  commit/push authority was not requested. The final reviewed artifact is the
-  working tree recorded by this evidence set.
-- Next action: Product Owner review and, if approved, commit the final state.
+  `08534749ad8c1bc51e07c53001fd196f43957688`, committed and pushed as
+  `3dbae55578e2dfcce5146607a1f97eb9721445db`
+  (`Converge Factory Chat on durable Conversations`).
+- Next action: Product Owner review of the pushed `main` state.
