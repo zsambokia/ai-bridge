@@ -3,7 +3,7 @@ status: APPROVED_TARGET
 owner: Architecture
 classification: CONSTITUTION BOOK ENTRY
 language: en
-version: 1.0.0
+version: 1.1.0
 ---
 
 # Article IV - Conversation to Mission Architecture
@@ -77,38 +77,29 @@ is needed. The understanding capability includes:
 - AKB, Repository, and semantic retrieval.
 - Evidence-aware LLM analysis where policy permits.
 
-The retrieval order SHALL be: current Conversation, prior Missions, AKB,
-Repository, semantic retrieval, then LLM analysis. A source that is absent,
-unauthorized, or unavailable MUST be recorded as such in the resulting
-reasoning and Evidence; it MUST NOT be silently substituted with an assertion.
-The LLM is an analytical capability, not a lifecycle owner or authority.
+Conversation Understanding is a stateless service capability. Its context
+selection SHALL be adaptive and constrained by the declared Context Profile,
+the requested purpose and capability, scope, and retrieval policy; there is no
+universal mandatory retrieval sequence. A source that is absent, unauthorized,
+or unavailable MUST be recorded in the resulting provenance and Evidence; it
+MUST NOT be silently substituted with an assertion. The LLM is an analytical
+capability, not a lifecycle owner or authority.
 
 ## 4.5 Conversation State Engine
 
-The Conversation State Engine (CSE) is the sole state-machine owner for the
-Conversation Domain's durable maturity and progression state. It determines
-conversation maturity, missing information, relevant alternatives, decision
-points, appropriate proactive prompts, and whether to request Mission
+The Conversation State Engine (CSE) is a stateless service boundary that
+applies validated, attributable, versioned, evidence-linked transitions to the
+durable Conversation State. It determines missing information, alternatives,
+decision points, appropriate proactive prompts, and whether to request Mission
 Resolution. It remains outside the AI Kernel and Operational Foundation.
 
-The canonical progression is:
-
-```text
-Discussion -> Exploration -> Design -> Proposal -> Approval Candidate
--> Decision -> Knowledge Recording -> Mission Evaluation
-```
-
-The CSE MAY re-enter an earlier state when new evidence invalidates the current
-understanding. It SHALL emit attributable, versioned, evidence-linked state
-transitions. It SHALL NOT write Mission, Execution, Provider, Engine, Context
-Package, AKB, or Operational Work Item state.
-
-Conversation maturity is a business-state measure, not an LLM confidence
-score. The target bands are `0-40` open discussion, `40-70` exploration,
-`70-90` summary and structuring, `90-99` proposal ready for decision, and
-`100` closure after the required Product Owner decision or other governing
-policy decision. Exact scoring policy is an implementation concern, but any
-implementation SHALL preserve the distinction from model confidence.
+Conversation State records three independent axes: semantic state
+(`EXPLORING`, `DESIGNING`, `PROPOSAL_READY`, `DECISION_PENDING`, `DECIDED`),
+lifecycle state (`ACTIVE`, `DEFERRED`, `CLOSED`, `REJECTED`), and readiness
+facts. There is no numeric maturity score, technical `FAILED` conversation
+state, or fixed universal progression: evidence may justify a transition on one
+axis without changing the others. The CSE SHALL NOT write Mission, Execution,
+Provider, Engine, Context Package, AKB, or Operational Work Item state.
 
 ## 4.6 Mission Resolution
 
@@ -151,11 +142,15 @@ participants, never Mission or Conversation authorities.
 
 ## 4.8 Context, knowledge, and proactivity
 
-Conversation Understanding may compose a Context Package according to the
-Context Package contract. A Context Package is immutable, versioned,
-reproducible, evidence-based, and auditable. Runtime execution SHALL consume
-AKB and Repository knowledge only through an authorized Context Package; it
-does not receive an uncontrolled transcript or direct knowledge mutation path.
+Conversation Understanding may resolve a Context Profile that declares the
+persona or role, purpose, capability, scope, policy, and inputs used for a
+request. It may then compose a Context Package according to the Context
+Package contract. A Context Package is immutable, versioned, reproducible,
+evidence-based, auditable, and provenance-linked to its Context Profile.
+Runtime execution SHALL consume AKB and Repository knowledge only through an
+authorized Context Package; it does not receive an uncontrolled transcript or
+direct knowledge mutation path. Knowledge publication is a separate governed
+path; a transcript or temporary context does not become knowledge by use.
 
 Orki and other Personas MAY proactively identify missing information, risks,
 alternatives, or decision points and propose the next Conversation action.
@@ -176,8 +171,8 @@ created, without treating provider output as authority.
 1. A UI SHALL NOT create a Mission or start runtime work directly.
 2. Conversation SHALL NOT call an Engine, Provider, Provider Executor, or AI
    Kernel directly.
-3. CSE exclusively owns Conversation progression and SHALL NOT write another
-   domain's state.
+3. The durable Conversation State exclusively records Conversation state; CSE
+   applies its validated transitions and SHALL NOT write another domain's state.
 4. Mission Resolution exclusively originates a Mission creation decision for a
    human Conversation.
 5. MSM exclusively owns Mission lifecycle state, including accepting or
@@ -188,7 +183,8 @@ created, without treating provider output as authority.
    authorized work.
 8. Engines, Providers, and Provider Executors SHALL NOT become Mission or
    Conversation authorities.
-9. Context Packages are immutable; stale knowledge use requires explicit
+9. Context Profiles and Context Packages record their policy and provenance;
+   Context Packages are immutable and stale knowledge use requires explicit
    policy and evidence.
 10. Conversation transcript, temporary context, sessions, requests, and
     runtime variables are not AKB Knowledge Objects.
@@ -206,7 +202,9 @@ logical boundary only; the Mermaid view below remains a text-based companion.
 flowchart TD
     UI[Factory Chat UI] --> C[Conversation Domain]
     C --> U[Conversation Understanding]
+    C --> CS[Durable Conversation State]
     U --> CSE[Conversation State Engine]
+    CSE --> CS
     CSE --> MR[Mission Resolution]
     MR -->|new / update / close| MSM[Mission State Machine]
     MR -->|no runtime action| C
@@ -216,7 +214,9 @@ flowchart TD
     K --> CR[Capability Resolution]
     CR --> P[Provider]
     P --> PE[Provider Executor]
-    U -. Context Package .-> K
+    U --> CP[Context Profile]
+    CP --> PKG[Immutable Context Package]
+    PKG -. authorized context .-> K
     U -. governed knowledge retrieval .-> AKB[AKB / Repository]
     PE --> KE[Kernel Event and Evidence]
     KE --> MSM

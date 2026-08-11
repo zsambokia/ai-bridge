@@ -617,11 +617,146 @@ class FactoryChatSession(models.Model):
         related_name="factory_chat_sessions",
     )
     actor_identity = models.CharField(max_length=255)
+    conversation = models.OneToOneField(
+        "Conversation",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="factory_chat_session",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-updated_at"]
+
+
+class Conversation(models.Model):
+    """Durable human Conversation, independent of a browser session or Runtime."""
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="conversations"
+    )
+    actor_identity = models.CharField(max_length=255)
+    persona_reference = models.CharField(max_length=128, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+
+class ConversationState(models.Model):
+    """Current durable state; transition policy lives in a stateless service."""
+
+    class SemanticState(models.TextChoices):
+        EXPLORING = "EXPLORING", "Exploring"
+        DESIGNING = "DESIGNING", "Designing"
+        PROPOSAL_READY = "PROPOSAL_READY", "Proposal ready"
+        DECISION_PENDING = "DECISION_PENDING", "Decision pending"
+        DECIDED = "DECIDED", "Decided"
+
+    class LifecycleStatus(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        DEFERRED = "DEFERRED", "Deferred"
+        CLOSED = "CLOSED", "Closed"
+        REJECTED = "REJECTED", "Rejected"
+
+    conversation = models.OneToOneField(
+        Conversation, on_delete=models.CASCADE, related_name="state"
+    )
+    semantic_state = models.CharField(
+        max_length=32, choices=SemanticState.choices, default=SemanticState.EXPLORING
+    )
+    lifecycle_status = models.CharField(
+        max_length=16, choices=LifecycleStatus.choices, default=LifecycleStatus.ACTIVE
+    )
+    readiness_conditions = models.JSONField(default=dict)
+    version = models.PositiveIntegerField(default=1)
+    transition_evidence = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class ConversationMessage(models.Model):
+    """Ordered transcript record; it is never an AKB Knowledge Object."""
+
+    class Role(models.TextChoices):
+        OWNER = "OWNER", "Product Owner"
+        ASSISTANT = "ASSISTANT", "Assistant"
+        SYSTEM = "SYSTEM", "System"
+
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.CASCADE, related_name="messages"
+    )
+    role = models.CharField(max_length=16, choices=Role.choices)
+    body = models.TextField()
+    correlation_id = models.CharField(max_length=128, blank=True)
+    provenance = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+
+class ConversationDecision(models.Model):
+    """Traceable decision lifecycle; accepted decisions require explicit replacement."""
+
+    class Status(models.TextChoices):
+        PROPOSED = "PROPOSED", "Proposed"
+        ACCEPTED = "ACCEPTED", "Accepted"
+        CHALLENGED = "CHALLENGED", "Challenged"
+        SUPERSEDED = "SUPERSEDED", "Superseded"
+
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.PROTECT, related_name="decisions"
+    )
+    statement = models.TextField()
+    status = models.CharField(max_length=16, choices=Status.choices)
+    evidence = models.JSONField(default=list)
+    supersedes = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="replacements",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class ContextProfile(models.Model):
+    """Resolved context need, distinct from a Persona and reproducible by policy."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="context_profiles"
+    )
+    profile_hash = models.CharField(max_length=64, unique=True)
+    persona_or_role = models.CharField(max_length=128, blank=True)
+    purpose_or_capability = models.CharField(max_length=128)
+    scope = models.JSONField(default=dict)
+    policy = models.JSONField(default=dict)
+    inputs = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class MissionResolution(models.Model):
+    """Exclusive human Conversation-to-Mission intake decision boundary."""
+
+    class Outcome(models.TextChoices):
+        NEW_MISSION = "NEW_MISSION", "New Mission"
+        UPDATE_MISSION = "UPDATE_MISSION", "Update Mission"
+        CLOSE_MISSION = "CLOSE_MISSION", "Close Mission"
+        NO_RUNTIME_ACTION = "NO_RUNTIME_ACTION", "No runtime action"
+
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.PROTECT, related_name="mission_resolutions"
+    )
+    outcome = models.CharField(max_length=32, choices=Outcome.choices)
+    rationale = models.TextField()
+    evidence = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class FactoryMission(models.Model):
@@ -920,8 +1055,8 @@ class KnowledgeRevision(models.Model):
         ]
 
 
-class KnowledgeContextPackage(models.Model):
-    """Immutable, persisted Orki context assembled from active knowledge."""
+class ContextPackage(models.Model):
+    """Immutable, versioned and auditable Context Package for any consumer."""
 
     project = models.ForeignKey(
         Project, on_delete=models.PROTECT, related_name="knowledge_context_packages"
@@ -929,6 +1064,13 @@ class KnowledgeContextPackage(models.Model):
     package_hash = models.CharField(max_length=64, unique=True)
     work_context_id = models.CharField(max_length=255)
     role_context_id = models.CharField(max_length=64, blank=True)
+    context_profile = models.ForeignKey(
+        ContextProfile,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="packages",
+    )
     retrieval_intent = models.CharField(max_length=128)
     retrieval_query = models.CharField(max_length=500, blank=True)
     entry_ids = models.JSONField(default=list)
@@ -940,6 +1082,11 @@ class KnowledgeContextPackage(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+# Transitional Python import alias. The persisted model and canonical contract
+# are ContextPackage; no duplicate package table or state is retained.
+KnowledgeContextPackage = ContextPackage
 
 
 class SemanticEmbedding(models.Model):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import unittest
 from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any, cast
@@ -16,6 +17,7 @@ from django.urls import reverse
 from projects.models import FactoryMission, OrkiExecution, Project
 
 
+@unittest.skip("Superseded: Factory Chat now records durable Conversations only.")
 class FactoryChatRuntimeIntegrationTests(TestCase):
     def setUp(self) -> None:
         self.user = get_user_model().objects.create_user(

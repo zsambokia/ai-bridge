@@ -17,18 +17,16 @@ from django.urls import reverse
 from django.utils.text import slugify
 from django.views.decorators.http import require_http_methods, require_POST
 
+from .conversation import conversation_for, record_message
 from .factory_coding import coding_projection
 from .factory_memory import memory_projection
 from .factory_missions import (
-    ConversationEventDispatchError,
     human_projection,
     mission_for,
-    receive_conversation_event,
     record_plan_approval,
     request_factory_plan,
     request_repository_lifecycle_action,
 )
-from .factory_orki import availability, get_or_create_session, messages_for
 from .factory_planning import (
     approve_plan,
     reject_plan,
@@ -37,10 +35,10 @@ from .factory_planning import (
 from .factory_workspace import approval_projection, cognitive_workspace_projection
 from .knowledge import review_candidate
 from .models import (
+    ConversationMessage,
     ConversationOrchestration,
     ExecutableScope,
     ExecutionRun,
-    FactoryChatMessage,
     FactoryChatSession,
     FactoryPlan,
     GovernanceApproval,
@@ -213,6 +211,26 @@ def _request_correlation(request: HttpRequest) -> str:
         return str(uuid4())
 
 
+def _conversation_messages(conversation: Any) -> list[dict[str, object]]:
+    """Present a durable conversation without assigning presentation ownership."""
+    return [
+        {
+            "id": message.pk,
+            "role": "owner"
+            if message.role == ConversationMessage.Role.OWNER
+            else "orki",
+            "text": message.body,
+            "status": "COMPLETED",
+            "correlation_id": message.correlation_id,
+        }
+        for message in conversation.messages.order_by("created_at", "pk")
+    ]
+
+
+def _conversation_availability() -> dict[str, str]:
+    return {"state": "online", "label": "Conversation recording active"}
+
+
 def _safe_chat_error(
     request: HttpRequest,
     *,
@@ -312,7 +330,11 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
     state.update({"mode": mode, "panel": panel})
     request.session.modified = True
     project = _selected_project(request)
-    orki_session = get_or_create_session(request, project)
+    conversation = (
+        conversation_for(project=project, actor_identity=request.user.get_username())
+        if project is not None
+        else None
+    )
     return render(
         request,
         "projects/factory_chat.html",
@@ -336,8 +358,10 @@ def factory_chat(request: HttpRequest) -> HttpResponse:
             ),
             # A generous display window keeps a long working conversation useful,
             # while the transcript remains separate from canonical memory/state.
-            "messages": messages_for(orki_session)[-100:],
-            "orki_availability": availability(orki_session),
+            "messages": _conversation_messages(conversation)[-100:]
+            if conversation is not None
+            else [],
+            "orki_availability": _conversation_availability(),
         },
     )
 
@@ -408,20 +432,23 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
             status=400,
             message="A Runtime indításához előbb válassz vagy hozz létre projektet.",
         )
-    execution: OrkiExecution | None = None
     try:
-        runtime_async = request.headers.get("X-Orki-Runtime-Async") == "1"
-        execution = receive_conversation_event(
+        conversation = conversation_for(
             project=project,
-            session=get_or_create_session(request, project),
-            text=text,
-            correlation_id=correlation_id,
-            actor=request.user.get_username(),
-            dispatch=not runtime_async,
+            actor_identity=request.user.get_username(),
         )
-    except (OSError, TimeoutError, ValueError, RuntimeError) as exc:
-        if isinstance(exc, ConversationEventDispatchError):
-            execution = exc.execution
+        if not conversation.messages.filter(correlation_id=correlation_id).exists():
+            record_message(
+                conversation,
+                role=ConversationMessage.Role.OWNER,
+                body=text,
+                correlation_id=correlation_id,
+                provenance={
+                    "source": "factory_chat",
+                    "actor": request.user.get_username(),
+                },
+            )
+    except ValueError as exc:
         logger.warning(
             "factory_chat_request_failed",
             extra={
@@ -433,56 +460,29 @@ def factory_chat_message(request: HttpRequest) -> HttpResponse:
                 "factory_conversation_id": "",
             },
         )
-        if execution is not None:
-            execution.refresh_from_db()
-            projection = execution_projection(execution)
-            if _enhanced(request):
-                return JsonResponse(
-                    {
-                        "ok": False,
-                        "error": {
-                            "code": "RUNTIME_STATE_REQUIRES_ATTENTION",
-                            "message": projection["human_message"],
-                            "retryable": execution.state.startswith("WAITING_"),
-                        },
-                        "correlation_id": correlation_id,
-                        "execution": projection,
-                        "orki_availability": availability(
-                            get_or_create_session(request, project)
-                        ),
-                    },
-                    status=409,
-                )
-            return HttpResponseBadRequest(str(projection["human_message"]))
         return _safe_chat_error(
             request,
             correlation_id=correlation_id,
-            code="RUNTIME_INGRESS_FAILED",
-            status=500,
+            code="CONVERSATION_RECORDING_FAILED",
+            status=409,
             message=(
                 "A Runtime indítása a kérés rögzítése előtt megszakadt. "
                 "Kérlek, próbáld meg ismét."
             ),
         )
     if _enhanced(request):
-        execution.refresh_from_db()
-        orki_session = get_or_create_session(request, project)
-        payload = {
-            "messages": [
-                message
-                for message in messages_for(orki_session)
-                if message.get("correlation_id") == correlation_id
-            ],
-            "ok": True,
-            "orki_availability": availability(orki_session),
-            "correlation_id": correlation_id,
-            "execution": execution_projection(execution),
-        }
-        if runtime_async:
-            payload["dispatch_url"] = reverse(
-                "runtime-execution-dispatch", args=[execution.token]
-            )
-        return JsonResponse(payload, status=202 if runtime_async else 200)
+        return JsonResponse(
+            {
+                "messages": [
+                    message
+                    for message in _conversation_messages(conversation)
+                    if message.get("correlation_id") == correlation_id
+                ],
+                "ok": True,
+                "orki_availability": _conversation_availability(),
+                "correlation_id": correlation_id,
+            }
+        )
     return redirect("factory-chat")
 
 
@@ -607,9 +607,7 @@ def factory_chat_status(request: HttpRequest) -> HttpResponse:
                 str(_state(request).get("mode", "planning")),
                 str(_state(request).get("memory_query", "")),
             ),
-            "orki_availability": availability(
-                get_or_create_session(request, _selected_project(request))
-            ),
+            "orki_availability": _conversation_availability(),
         },
     )
 
@@ -622,24 +620,25 @@ def factory_chat_new_project(request: HttpRequest) -> HttpResponse:
         state = _state(request)
         state.update({"project_id": project.project_id, "mode": "planning"})
         request.session.modified = True
-        session = get_or_create_session(request, project)
-        FactoryChatMessage.objects.create(
-            session=session,
-            role=FactoryChatMessage.Role.ORKI,
+        conversation = conversation_for(
+            project=project, actor_identity=request.user.get_username()
+        )
+        record_message(
+            conversation,
+            role=ConversationMessage.Role.ASSISTANT,
             body=(
                 "Kezdjük el. Egy mondatban mondd el, milyen eredményt "
                 "szeretnél elérni; én összerakom az első javaslatot és jelzem, "
                 "ha valódi döntésre lesz szükség."
             ),
         )
-        messages = messages_for(session)
+        messages = _conversation_messages(conversation)
         if _enhanced(request):
-            orki_session = get_or_create_session(request, project)
             return JsonResponse(
                 {
                     "messages": messages,
-                    "ok": messages[-1]["status"] != FactoryChatMessage.Status.FAILED,
-                    "orki_availability": availability(orki_session),
+                    "ok": True,
+                    "orki_availability": _conversation_availability(),
                     "project": {"id": project.project_id, "name": project.display_name},
                 }
             )

@@ -1,5 +1,14 @@
 # AI Bridge Roadmap
 
+## Sprint 00/01 Factory Chat & Conversation Layer (2026-08-11)
+
+The Factory Chat presentation boundary now converges on a durable Conversation
+Domain with separately persisted messages, state axes, decisions, context
+profiles/packages, and Mission Resolution records. This Sprint deliberately
+does not claim Mission creation, MSM intake, or Runtime dispatch: a resolution
+is a durable intake decision only. The next approved scope must integrate that
+decision through MSM and the Operational Foundation, with new evidence.
+
 ## Runtime 2.0 FDM Architecture Convergence
 
 The approved Runtime 2.0 Constitution is the binding target, not a claim about

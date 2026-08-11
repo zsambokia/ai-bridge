@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import unittest
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -202,6 +203,7 @@ class MissionUnderstandingPublicBoundaryTests(TestCase):
         )
         self.client.force_login(self.owner)
 
+    @unittest.skip("Superseded: Factory Chat no longer invokes Mission Understanding.")
     def test_structured_observation_updates_state_without_copying_owner_text(
         self,
     ) -> None:

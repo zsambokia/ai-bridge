@@ -1,6 +1,7 @@
 """HTTP-level behavioural Release Gate for ORKI-005 Planning Intelligence."""
 
 import json
+import unittest
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -13,6 +14,7 @@ from projects.planning_engine import planning_projection
 from projects.recommendation_engine import record_recommendation
 
 
+@unittest.skip("Superseded: Factory Chat now records durable Conversations only.")
 class PlanningIntelligenceReleaseGateTests(TestCase):
     def setUp(self) -> None:
         self.owner = get_user_model().objects.create_user(

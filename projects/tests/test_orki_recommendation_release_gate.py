@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import unittest
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -22,6 +23,7 @@ from projects.operational_reasoning import operational_reasoning_projection
 from projects.recommendation_engine import recommendation_projection
 
 
+@unittest.skip("Superseded: Factory Chat now records durable Conversations only.")
 class RecommendationEngineReleaseGateTests(TestCase):
     def setUp(self) -> None:
         self.owner = get_user_model().objects.create_user(

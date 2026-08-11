@@ -5,15 +5,22 @@ source: Mermaid
 derived_drawio: Conversation Layer.drawio
 constitution: Article IV; Article V
 last_reviewed: 2026-08-11
-architecture_version: 1.0.0
+architecture_version: 1.1.0
 related_adrs: []
 ---
 # Diagram 01 — Conversation Layer
 ```mermaid
 flowchart LR
     PO[Product Owner] --> UI[Factory Chat] --> C[Conversation]
-    C --> U[Conversation Understanding] --> CB[Context Builder] --> MR[Mission Resolution]
-    C --> CSE[Conversation State Engine] --> MR
-    CP[Immutable Context Package] --> MR
-    MR --> M[Mission]
+    UI -->|conversation action| C
+    C --> U[Stateless Conversation Understanding]
+    C --> CS[Durable Conversation State]
+    U --> CSE[Stateless Conversation State Engine]
+    CSE --> CS
+    CSE --> MR[Mission Resolution]
+    U --> CP[Context Profile]
+    CP --> PKG[Immutable Context Package]
+    U -. policy-governed retrieval .-> AKB[AKB / Repository]
+    MR --> M[Mission / MSM intake]
+    PKG -. authorized context only .-> K[AI Kernel]
 ```

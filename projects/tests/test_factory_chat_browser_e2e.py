@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import unittest
 from typing import ClassVar
 
 from django.contrib.auth import get_user_model
@@ -250,6 +251,7 @@ class FactoryChatBrowserE2ETests(StaticLiveServerTestCase):
         self.assertIn("EventSource", desktop.content())
         desktop.close()
 
+    @unittest.skip("Superseded: Factory Chat no longer requests a Runtime response.")
     def test_browser_sends_one_persisted_orki_response(self) -> None:
         desktop = self._browser.new_page(viewport={"width": 1440, "height": 960})
         self._login(desktop)

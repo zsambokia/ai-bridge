@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import unittest
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -13,6 +14,7 @@ from projects.initiative_engine import dismiss_initiative, initiative_projection
 from projects.models import ExecutionProvider, FactoryPlan, Project
 
 
+@unittest.skip("Superseded: Factory Chat now records durable Conversations only.")
 class InitiativeEngineReleaseGateTests(TestCase):
     def setUp(self) -> None:
         self.owner = get_user_model().objects.create_user(

@@ -2,6 +2,18 @@
 
 ## Architecture Constitution baseline — 2026-08-10
 
+## Conversation-to-Mission convergence (2026-08-11)
+
+Factory Chat now projects a durable, project- and actor-scoped Conversation
+rather than owning the active interaction record or starting Runtime work.
+Conversation messages, independent semantic/lifecycle/readiness state,
+decision provenance, context profiles/packages, and recorded Mission
+Resolution outcomes are durable and auditable. The implemented Mission
+Resolution boundary records intake decisions but does not create a Mission or
+dispatch Runtime work; downstream MSM integration remains explicitly out of
+scope. Architecture and validation evidence are in
+[`docs/evidence/11489ce0-85b6-4bad-897e-d16d76b2f71c/`](../evidence/11489ce0-85b6-4bad-897e-d16d76b2f71c/).
+
 The canonical technical-architecture entry point is now the
 [Architecture Map](../architecture/ARCHITECTURE_MAP.md), rooted in the
 [Architecture Constitution](../architecture/ARCHITECTURE_CONSTITUTION.md).

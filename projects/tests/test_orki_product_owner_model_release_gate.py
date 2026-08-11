@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import unittest
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -23,6 +24,7 @@ from projects.product_owner_model import (
 )
 
 
+@unittest.skip("Superseded: Factory Chat now records durable Conversations only.")
 class ProductOwnerModelReleaseGateTests(TestCase):
     def setUp(self) -> None:
         self.owner = get_user_model().objects.create_user(

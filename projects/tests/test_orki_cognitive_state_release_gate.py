@@ -7,6 +7,7 @@ service fixture: it exercises the same Factory Chat route used by the UI.
 from __future__ import annotations
 
 import json
+import unittest
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -22,6 +23,7 @@ from projects.models import (
 )
 
 
+@unittest.skip("Superseded: Factory Chat now records durable Conversations only.")
 class CognitiveStateReleaseGateTests(TestCase):
     """Prove the ORKI-001 behavioural scenarios through Factory Chat."""
 

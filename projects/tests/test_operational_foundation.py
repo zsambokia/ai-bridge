@@ -48,7 +48,7 @@ class OperationalFoundationTests(SimpleTestCase):
         self.assertIn("prompt_builder", gateway_source)
         self.assertIn("response_decoder", gateway_source)
 
-    def test_conversation_surface_delegates_business_ingress_to_mission_layer(
+    def test_conversation_surface_delegates_user_interaction_to_conversation_boundary(
         self,
     ) -> None:
         """The chat surface is an adapter, not a Runtime or repository owner."""
@@ -64,10 +64,5 @@ class OperationalFoundationTests(SimpleTestCase):
         ):
             self.assertNotIn(symbol, source)
 
-        for symbol in (
-            "receive_conversation_event",
-            "record_plan_approval",
-            "request_factory_plan",
-            "request_repository_lifecycle_action",
-        ):
+        for symbol in ("conversation_for", "record_message"):
             self.assertIn(symbol, source)
