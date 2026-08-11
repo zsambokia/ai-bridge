@@ -23,6 +23,11 @@ and the boundary into Mission and MSM.
 The editable canonical visual companion is [Diagram 01 — Conversation
 Layer](diagrams/01-conversation-layer/README.md).
 
+Article V — Architecture Documentation Governance in the
+[Architecture Constitution](ARCHITECTURE_CONSTITUTION.md) makes canonical
+architecture diagrams first-class normative artifacts. Every ADR and
+Architecture Convergence change must record its Diagram Impact Assessment.
+
 The [Architecture Map](ARCHITECTURE_MAP.md) remains the technical-topology
 entry point. It is a historical/transitional map where its terminology or
 topology differs from an approved target Constitution entry.

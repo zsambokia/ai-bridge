@@ -11,7 +11,8 @@ version: 1.0.0
 > **Terminology status (2026-08-10):** Transitional. This document remains a
 > governance source until Constitution Book adoption. The approved target
 > terminology is governed by Article I–II (AKB), Article III (AI Kernel),
-> Article IV (Conversation to Mission), Article VI (Scope Architecture),
+> Article IV (Conversation to Mission), Article V (Architecture Documentation
+> Governance), Article VI (Scope Architecture),
 > Article VII (Localization Architecture),
 > and the Terminology Convergence Matrix; historical names are not
 > implementation rename authority.
@@ -70,6 +71,7 @@ Bridge Constitution
     ├── Article I–II — AKB Knowledge Objects and Lifecycle
     ├── Article III — AI Kernel Architecture
     ├── Article IV — Conversation to Mission Architecture
+    ├── Article V — Architecture Documentation Governance
     ├── Article VI — Scope Architecture
     ├── Article VII — Localization Architecture
     ├── Runtime 2.0 Constitution
@@ -90,6 +92,63 @@ Architecture Constitution](AI_KERNEL_ARCHITECTURE_CONSTITUTION.md),
 [Localization Architecture Constitution](LOCALIZATION_ARCHITECTURE_CONSTITUTION.md).
 Their adoption into one Constitution Book remains controlled by the
 Book-adoption process.
+
+## Article V — Architecture Documentation Governance
+
+Architecture diagrams are not optional documentation; they are normative
+architecture artifacts.
+
+### ADG-101 — Canonical Diagrams
+
+Canonical architecture diagrams SHALL be considered first-class architecture
+artifacts. Architecture diagrams have the same normative authority as their
+corresponding Architecture Constitution chapters. They SHALL describe the
+approved target architecture rather than the current implementation.
+
+### ADG-102 — Diagram Consistency
+
+Every canonical architecture diagram SHALL remain consistent with the
+Architecture Constitution. A conflict between a diagram and the Constitution
+is an architecture defect and SHALL be corrected through the approved
+Architecture Convergence process.
+
+### ADG-103 — Mandatory Diagram Maintenance
+
+An approved architectural change that affects structure, ownership,
+responsibilities, boundaries, lifecycle, or interactions SHALL include
+maintenance of every affected canonical diagram. The change SHALL NOT be
+considered complete until the affected Constitution chapters and canonical
+diagrams are updated, cross-references remain valid, and the documentation has
+passed consistency review.
+
+### ADG-104 — Diagram Impact Assessment
+
+Every Architecture Decision Record (ADR) and every Architecture Convergence
+change SHALL include a Diagram Impact Assessment. The assessment SHALL
+identify affected diagrams, required modifications, newly required diagrams,
+and obsolete diagrams. No architecture change may be closed without completing
+this assessment.
+
+### ADG-105 — Repository Rule
+
+Every diagram SHALL have one canonical source in the repository. Generated
+PNG, SVG, and PDF files are derived artifacts only. The editable `.drawio`
+file is the authoritative source whenever a diagram is maintained in draw.io.
+
+### ADG-106 — Completion Criteria
+
+An Architecture Convergence task SHALL NOT be marked complete unless the
+Constitution and all affected diagrams are updated, the canonical diagram set
+is internally consistent, and the architecture documentation reflects the
+approved design.
+
+### Architecture Convergence working rule
+
+The responsible executor SHALL identify every affected canonical diagram,
+update each impacted `.drawio` source and related `README.md`, and report the
+result. If no diagram source change is necessary, the executor SHALL state that
+conclusion explicitly and preserve its justification in the Diagram Impact
+Assessment.
 
 ## Article VIII — Architecture and Implementation Convergence
 

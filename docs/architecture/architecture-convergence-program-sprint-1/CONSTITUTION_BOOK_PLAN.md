@@ -23,6 +23,7 @@ adopt the Constitution Book.
 | Book part | Starting material | Planned treatment |
 | --- | --- | --- |
 | 0. Charter, language and authority | Bridge Constitution | Retain governance; amend the product-only/multi-tenancy language after ADR-021. English is canonical for normative content. |
+| 0a. Architecture documentation governance | Article V — Architecture Documentation Governance | New: canonical diagrams are normative architecture artifacts; each ADR and Architecture Convergence change records a Diagram Impact Assessment; editable repository sources are authoritative. |
 | 1. Scope, identity and tenancy | Project context, Bridge Constitution, Article VI — Scope Architecture | New: Organization → Workspace → Project scope semantics; Repository and Provider as scope-owned Resources; ownership, authorization, inheritance and correlation requirements. |
 | 2. Runtime intake and Mission | Runtime 2.0 Constitution | Modify: Mission Intake Port is unified; Conversation is only the human interface. |
 | 2a. Conversation to Mission | Article IV - Conversation to Mission Architecture | New: Factory Chat is a UI adapter; Conversation Understanding and the CSE govern human interaction; Mission Resolution is the sole human-Conversation Mission-intake boundary while MSM remains the sole Mission lifecycle owner. |
@@ -53,6 +54,11 @@ ADR-034.
 4. An ADR must be accepted before a chapter introduces a new data/authority
    contract.
 5. Historical evidence is linked, not retroactively rewritten.
+6. Every canonical diagram has one editable repository source; derived PNG,
+   SVG, and PDF artifacts do not become a second source of architectural truth.
+7. Every ADR and Architecture Convergence change records a Diagram Impact
+   Assessment before closure, including an explicit no-impact conclusion where
+   no diagram source change is necessary.
 
 ## Adoption acceptance criteria
 
@@ -69,3 +75,6 @@ ADR-034.
   historical `Runtime` terms have an explicit compatibility status.
 - The Book distinguishes target architecture from implemented capability.
 - Every implementation change maps to an accepted ADR and a migration phase.
+- Canonical diagrams are consistent with their corresponding Constitution
+  chapters, and each adopted architectural change has a completed Diagram
+  Impact Assessment.
