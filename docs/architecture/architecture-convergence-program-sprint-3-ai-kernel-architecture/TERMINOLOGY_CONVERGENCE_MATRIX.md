@@ -11,7 +11,7 @@ language: en
 Article III is the target canonical source for this terminology. This matrix
 does not authorize a code or API rename. “Breaking?” describes a future
 implementation change, not this documentation Sprint. Required retained terms
-are Conversation, Mission, Mission State Machine (MSM), Operational Foundation,
+are Conversation, Conversation State Engine (CSE), Mission, Mission State Machine (MSM), Operational Foundation,
 Context Package, Persona, Capability, Evidence, Execution, Executor, Provider
 and AKB.
 
@@ -45,6 +45,7 @@ and AKB.
 | `ExecutionRequest` (code type) | Execution Request (canonical prose); retain `ExecutionRequest` code alias | Alias megtartása | Code naming follows language convention; “Work Request” is too ambiguous with Mission/business work. | Documentation normalization only. | No. |
 | `ExecutionWorkspace` | ExecutionWorkspace (physical workspace) | Megtartani | Must remain distinct from a tenant logical Workspace. | ADR-028 terminology reservation. | No. |
 | Context Builder | Higher-layer Context/knowledge component | Megtartani / Migrálni | It supplies immutable Context Packages; it is explicitly not a Kernel Manager, Registry or Object. | Boundary clarification. | No now. |
+| Conversation State Engine / CSE | Conversation State Engine (CSE) | Új elem | The CSE is the exclusive Conversation Domain progression owner. It is distinct from MSM and outside the AI Kernel and Operational Foundation. | Article IV governs any future state, event, and evidence mapping. | Potentially. |
 | Operational Foundation | Operational Foundation | Megtartani | Required separate architectural layer, never an Engine, Runtime synonym or Kernel Manager, Registry or Object. | Documentation guards. | No. |
 | Conversation, Mission, MSM, Context Package, Persona, Capability, Evidence, AKB | Same term | Megtartani | Product Owner-required canonical terms. | None beyond consistency checks. | No. |
 

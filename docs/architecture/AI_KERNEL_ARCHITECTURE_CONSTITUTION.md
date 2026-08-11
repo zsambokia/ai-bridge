@@ -26,8 +26,10 @@ persisted.
 The AI Kernel executes; it does not decide. The Mission State Machine (MSM)
 owns business-process state and decides what happens next. Operational
 Foundation is a separate architectural layer: it is neither an Engine nor a
-Kernel Manager, Kernel Registry or Kernel Object. Human interactions start in Conversation; API, MCP, Scheduler,
-Webhook and Automation adapters converge on the same Mission intake model.
+Kernel Manager, Kernel Registry or Kernel Object. Article IV governs human
+interactions through Conversation Understanding, CSE, and Mission Resolution;
+API, MCP, Scheduler, Webhook and Automation adapters converge on the same
+Mission-intake semantics without requiring a Conversation.
 
 ## 3.2 Responsibilities and boundaries
 
@@ -275,12 +277,12 @@ executes is reproducible, observable, attributable and evidence-backed.
 ## 3.19 AI Kernel Architecture Diagram
 
 ```text
-Human: Conversation ─┐
-API / MCP / Scheduler / Webhook / Automation ─┤
-                                              ▼
-                                           Mission
-                                              ▼
-                                            MSM
+Human: Conversation -> Understanding -> CSE -> Mission Resolution ─┐
+API / MCP / Scheduler / Webhook / Automation ──────────────────────┤
+                                                                     ▼
+                                                                  Mission
+                                                                     ▼
+                                                                   MSM
                                               ▼
                                 Operational Foundation
                                               ▼

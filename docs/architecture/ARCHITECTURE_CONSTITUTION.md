@@ -11,7 +11,8 @@ version: 1.0.0
 > **Terminology status (2026-08-10):** Transitional. This document remains a
 > governance source until Constitution Book adoption. The approved target
 > terminology is governed by Article I–II (AKB), Article III (AI Kernel),
-> Article VI (Scope Architecture), Article VII (Localization Architecture),
+> Article IV (Conversation to Mission), Article VI (Scope Architecture),
+> Article VII (Localization Architecture),
 > and the Terminology Convergence Matrix; historical names are not
 > implementation rename authority.
 
@@ -33,8 +34,10 @@ convenience is not an exception.
 1. Every business domain SHALL have one explicit owner. No component may write
    another domain's state or silently assume its authority.
 2. The Mission State Machine (MSM) is the sole Mission lifecycle authority.
-   Runtime coordinates Mission intent, authorization, and projections; it MUST
-   NOT become a Planning, Workflow, Repository, Knowledge, or provider engine.
+   Mission Resolution is the exclusive human-Conversation intake boundary; it
+   may originate a Mission creation decision, but only the MSM validates and
+   records Mission lifecycle state. The AI Kernel MUST NOT become a Planning,
+   Workflow, Repository, Knowledge, or provider engine.
 3. An Engine owns one bounded domain concern and its own state. Engines MUST NOT
    directly call one another, a Provider Integration adapter, a Provider, or
    `ExecutionRun`.
@@ -55,6 +58,9 @@ convenience is not an exception.
 10. Historical terminology and implementations retain their historical meaning;
     migration claims require evidence and MUST NOT be inferred from this target
     constitution.
+11. The Conversation State Engine (CSE) exclusively owns Conversation Domain
+    progression. It is neither an MSM, an Operational Foundation component,
+    nor an AI Kernel component, and it MUST NOT write another domain's state.
 
 ## Hierarchy
 
@@ -63,6 +69,7 @@ Bridge Constitution
 └── Architecture Constitution (this document)
     ├── Article I–II — AKB Knowledge Objects and Lifecycle
     ├── Article III — AI Kernel Architecture
+    ├── Article IV — Conversation to Mission Architecture
     ├── Article VI — Scope Architecture
     ├── Article VII — Localization Architecture
     ├── Runtime 2.0 Constitution
@@ -77,8 +84,9 @@ the relationship between current, transitional, and target material.
 
 The approved target entries are [AKB Knowledge Object & Lifecycle
 Constitution](AKB_KNOWLEDGE_OBJECT_AND_LIFECYCLE_CONSTITUTION.md), [AI Kernel
-Architecture Constitution](AI_KERNEL_ARCHITECTURE_CONSTITUTION.md), [Scope
-Architecture Constitution](SCOPE_ARCHITECTURE_CONSTITUTION.md), and
+Architecture Constitution](AI_KERNEL_ARCHITECTURE_CONSTITUTION.md),
+[Conversation to Mission Architecture Constitution](CONVERSATION_TO_MISSION_ARCHITECTURE_CONSTITUTION.md),
+[Scope Architecture Constitution](SCOPE_ARCHITECTURE_CONSTITUTION.md), and
 [Localization Architecture Constitution](LOCALIZATION_ARCHITECTURE_CONSTITUTION.md).
 Their adoption into one Constitution Book remains controlled by the
 Book-adoption process.

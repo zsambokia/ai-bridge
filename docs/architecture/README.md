@@ -15,6 +15,14 @@ Governance](ARCHITECTURE_IMPLEMENTATION_CONVERGENCE_GOVERNANCE.md) defines who
 may change that target and how implementation feeds evidence back through an
 Architecture Challenge.
 
+For the human interaction boundary, use [Article IV - Conversation to Mission
+Architecture](CONVERSATION_TO_MISSION_ARCHITECTURE_CONSTITUTION.md). It defines
+Conversation Understanding, the Conversation State Engine, Mission Resolution,
+and the boundary into Mission and MSM.
+
+The editable canonical visual companion is [Diagram 01 — Conversation
+Layer](diagrams/01-conversation-layer/README.md).
+
 The [Architecture Map](ARCHITECTURE_MAP.md) remains the technical-topology
 entry point. It is a historical/transitional map where its terminology or
 topology differs from an approved target Constitution entry.

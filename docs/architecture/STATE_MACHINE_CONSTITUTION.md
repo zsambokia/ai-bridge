@@ -10,15 +10,19 @@ version: 1.0.0
 
 > **Terminology status (2026-08-10):** Transitional. MSM remains the business
 > state-machine owner. Article III defines the target AI Kernel technical
-> state machine and Kernel Events; this document does not authorize model or
-> event-stream renames.
+> state machine and Kernel Events. Article IV defines the Conversation State
+> Engine (CSE) as the Conversation Domain owner. This document does not
+> authorize model or event-stream renames.
 
 Every durable lifecycle SHALL have one named state-machine owner and an
 explicit transition contract.
 
-1. MSM exclusively owns Mission lifecycle state. A Domain Engine exclusively
-   owns its own internal lifecycle state. The Operational Foundation owns work
-   delivery mechanics; it does not own Mission or Engine business state.
+1. MSM exclusively owns Mission lifecycle state. CSE exclusively owns
+   Conversation Domain progression and may only request Mission Resolution; it
+   cannot create or transition Mission state. A Domain Engine exclusively owns
+   its own internal lifecycle state. The Operational Foundation owns work
+   delivery mechanics; it does not own Mission, Conversation, or Engine
+   business state.
 2. A state machine MUST NOT write another state machine's state, including
    through a convenience service or shared persistence shortcut.
 3. Cross-domain progression SHALL use durable immutable requests, authorized
@@ -34,3 +38,7 @@ explicit transition contract.
 This constitution does not certify legacy OESM or other existing state
 implementations as compliant. Their status is governed by the evolution
 register and evidence.
+
+The canonical CSE progression, maturity semantics, Mission Resolution boundary,
+and Conversation-specific invariants are defined by [Article IV - Conversation
+to Mission Architecture](CONVERSATION_TO_MISSION_ARCHITECTURE_CONSTITUTION.md).
