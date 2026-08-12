@@ -1,5 +1,0 @@
-{
-  "result": "PASS",
-  "checks": ["project readiness", "canonical execution context", "deterministic resolve_policy", "stored preparation payload", "no implicit issuance or consumption", "idempotent replay", "bounded rendered handoff"],
-  "test": "projects/tests/test_governed_mcp.py::test_preparation_is_idempotent_and_audited"
-}

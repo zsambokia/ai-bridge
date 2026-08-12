@@ -1,6 +1,0 @@
-{
-  "result": "PASS",
-  "persistence": ["McpAuditEvent", "McpIdempotencyRecord", "GovernanceApproval", "ExecutionPreparation", "ExecutionStartRequest"],
-  "checks": ["mutating calls require idempotency key", "same caller/tool/key/request is replayed", "changed request with same key rejected", "success and rejection are audited without credentials"],
-  "test": "projects/tests/test_governed_mcp.py::test_preparation_is_idempotent_and_audited"
-}

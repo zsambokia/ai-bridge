@@ -1,8 +1,0 @@
-{
-  "sprint": "SPRINT_005_EXECUTION_CONTRACT_GENERATOR_BOOTSTRAP",
-  "baseline_commit": "14ce5ff7f1c6e5739d7aa83044529e9d6d55b1e7",
-  "automated_results": {"pytest": "21 passed", "ruff_check": "PASS", "ruff_format_check": "PASS", "mypy": "PASS", "release_gate": "PASS"},
-  "negative_validation": {"repository_mismatch": "REPOSITORY_IDENTITY_MISMATCH", "missing_sprint": "SPRINT_NOT_FOUND", "unapproved_sprint": "SPRINT_NOT_APPROVED", "missing_binding_document": "BINDING_DOCUMENT_MISSING", "missing_baseline": "BASELINE_COMMIT_NOT_FOUND", "project_sprint_mismatch": "PROJECT_SPRINT_MISMATCH", "evidence_collision": "EVIDENCE_PATH_COLLISION"},
-  "mcp_lifecycle": ["EXECUTION_CONTRACT_GENERATED", "EXECUTION_CONTRACT_VALIDATED", "EXECUTION_CONTRACT_ISSUED", "EXECUTION_HANDOFF_RENDERED"],
-  "issued_sprint_004_contract": {"handoff_identifier": "bridge:ai-bridge:sprint_004_basic_akb_mcp_context:a11c338a-34f1-450d-ab88-5f52c3473193", "contract_sha256": "f6d95a65aa2e6d9926e3004150b92ffb652071c005a230ad84fa931106ec04bb", "payload_store": "local Django SQLite projects_executioncontract record", "baseline_commit": "14ce5ff7f1c6e5739d7aa83044529e9d6d55b1e7"}
-}

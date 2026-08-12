@@ -1,6 +1,0 @@
-{
-  "result": "PASS for consumed-contract controls; closure pending external acceptance",
-  "contract": {"id": 7, "handoff_identifier": "bridge:ai-bridge:sprint_007_governed_bridge_mcp_tool_surface:d9ea9d6b-bc78-409d-986a-1207c0c58322", "hash": "f962c3d49a762f02ab2e53b95b4a6420ebedc10c5228c332326ead95497428ab", "lifecycle": "CONSUMED"},
-  "baseline_rule": "DESCENDANT_OF 26b0de7321f9d9904470a373a2c2002a7069e79c",
-  "checks": ["canonical issued artifact validates", "consumption occurred only after the issued artifact commit", "approval is required before public lifecycle mutation", "generation requires a matching persisted preparation", "canonical service remains lifecycle authority"]
-}

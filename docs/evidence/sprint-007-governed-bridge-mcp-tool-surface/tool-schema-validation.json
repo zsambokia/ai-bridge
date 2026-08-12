@@ -1,5 +1,0 @@
-{
-  "result": "PASS",
-  "checks": ["additionalProperties false for every public tool", "bounded strings, arrays and result limits", "enums for levels, task types, risks and document categories", "unknown tools and properties rejected"],
-  "test": "projects/tests/test_governed_mcp.py::test_public_registry_is_versioned_unique_and_schema_bounded and ::test_unknown_properties_and_unknown_tools_are_rejected"
-}

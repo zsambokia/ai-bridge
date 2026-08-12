@@ -1,9 +1,0 @@
-{
-  "local_result": "PASS",
-  "transport": "HTTPS Streamable HTTP MCP / JSON-RPC 2.0",
-  "protocol": "2025-03-26",
-  "local_checks": ["initialize", "notifications/initialized", "tools/list", "tools/call", "JSON-only errors", "Bearer failures", "factory.get_status compatibility"],
-  "staging_url": "https://stage.artificial-software-factory.com/mcp/",
-  "staging_reachability": {"result": "PASS", "without_credentials": "401 JSON Bearer challenge with MCP-Protocol-Version header"},
-  "staging_authenticated_exchange": {"result": "BLOCKED — REQUIRED EXTERNAL INPUT UNAVAILABLE", "required_calls": ["initialize", "tools/list", "tools/call(factory.get_status)"], "reason": "MCP_API_TOKEN unavailable in this process; no secret substituted or logged."}
-}

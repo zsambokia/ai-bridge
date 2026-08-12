@@ -1,9 +1,0 @@
-{
-  "tool_surface": "governance.prepare_codex_handoff",
-  "status": "HANDOFF_READY",
-  "provider": "codex-cli",
-  "provider_status_observed": "FINISHED",
-  "execution_lifecycle_before_closure": "RUNNING",
-  "activity_event_count": 3,
-  "heartbeat_is_derived": true
-}
