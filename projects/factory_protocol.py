@@ -23,6 +23,7 @@ from .models import (
     ContextProfile,
     Conversation,
     EffectiveOperationalScope,
+    EvidenceAssuranceEvaluation,
     FactoryArtifact,
     FactoryArtifactVersion,
     FactoryEvidence,
@@ -33,6 +34,7 @@ from .models import (
     ProvenanceRelation,
     ProvenanceRelationStatus,
     PublishedSemanticService,
+    ResolutionClaim,
     ZoneRule,
 )
 
@@ -200,6 +202,80 @@ def append_provenance_status(
     )
 
 
+def evaluate_evidence_assurance(
+    scope: EffectiveOperationalScope,
+    *,
+    subject_reference: str,
+    evidence: list[FactoryEvidence],
+    policy: Mapping[str, Any],
+) -> EvidenceAssuranceEvaluation:
+    """Record an explicit-policy L2 evaluation without producing a domain effect."""
+    minimum = policy.get("minimum_evidence")
+    if not isinstance(minimum, int) or minimum < 1:
+        raise FactoryProtocolError("ASSURANCE_POLICY_INVALID")
+    if any(item.scope_id != scope.pk for item in evidence):
+        raise FactoryProtocolError("ASSURANCE_EVIDENCE_SCOPE_CONFLICT")
+    if policy.get("indeterminate") is True:
+        result = EvidenceAssuranceEvaluation.Result.INDETERMINATE
+    elif not evidence:
+        result = EvidenceAssuranceEvaluation.Result.INSUFFICIENT
+    elif len(evidence) < minimum:
+        result = EvidenceAssuranceEvaluation.Result.DEGRADED
+    else:
+        result = EvidenceAssuranceEvaluation.Result.SUFFICIENT
+    stable = {
+        "scope": scope.scope_hash,
+        "subject": subject_reference,
+        "policy": dict(policy),
+        "evidence": [item.evidence_key for item in evidence],
+        "result": result,
+    }
+    return EvidenceAssuranceEvaluation.objects.create(
+        scope=scope,
+        evaluation_key=_key("assurance", stable),
+        subject_reference=subject_reference,
+        policy=dict(policy),
+        result=result,
+        evidence_references=[item.evidence_key for item in evidence],
+        integrity_hash=_digest(stable),
+    )
+
+
+def create_resolution_claim(
+    scope: EffectiveOperationalScope,
+    *,
+    subject_reference: str,
+    accountable_domain: str,
+    resolution_context: Mapping[str, Any],
+    evidence: list[FactoryEvidence],
+    provenance: list[ProvenanceRelation],
+) -> ResolutionClaim:
+    """Create one owner-bearing Claim without resolving or publishing anything."""
+    if not accountable_domain.strip() or not resolution_context:
+        raise FactoryProtocolError("RESOLUTION_CLAIM_ACCOUNTABILITY_REQUIRED")
+    if any(item.scope_id != scope.pk for item in evidence) or any(
+        item.scope_id != scope.pk for item in provenance
+    ):
+        raise FactoryProtocolError("RESOLUTION_CLAIM_SCOPE_CONFLICT")
+    stable = {
+        "scope": scope.scope_hash,
+        "subject": subject_reference,
+        "owner": accountable_domain,
+        "context": dict(resolution_context),
+        "evidence": [item.evidence_key for item in evidence],
+        "provenance": [item.relation_key for item in provenance],
+    }
+    return ResolutionClaim.objects.create(
+        scope=scope,
+        claim_key=_key("claim", stable),
+        subject_reference=subject_reference,
+        accountable_domain=accountable_domain,
+        resolution_context=dict(resolution_context),
+        evidence_references=stable["evidence"],
+        provenance_references=stable["provenance"],
+    )
+
+
 @transaction.atomic
 def create_artifact_version(
     scope: EffectiveOperationalScope,
@@ -262,7 +338,12 @@ def resolve_knowledge_candidate(
         or evidence.scope_id != candidate.artifact_version.scope_id
     ):
         raise FactoryProtocolError("KNOWLEDGE_RESOLUTION_INVALID")
-    if outcome == ArtifactKnowledgeResolution.Outcome.PUBLISHED:
+    publish_outcomes = {
+        ArtifactKnowledgeResolution.Outcome.CREATE,
+        ArtifactKnowledgeResolution.Outcome.REVISE,
+        ArtifactKnowledgeResolution.Outcome.CONFIRM,
+    }
+    if outcome in publish_outcomes:
         if (
             knowledge_entry is None
             or not approval_reference
@@ -272,7 +353,7 @@ def resolve_knowledge_candidate(
             raise FactoryProtocolError(
                 "KNOWLEDGE_PUBLICATION_REQUIRES_EXPLICIT_APPROVAL"
             )
-    elif knowledge_entry is not None:
+    elif knowledge_entry is not None or approval_reference:
         raise FactoryProtocolError("KNOWLEDGE_REJECTION_CANNOT_PUBLISH")
     return ArtifactKnowledgeResolution.objects.create(
         candidate=candidate,
@@ -289,23 +370,27 @@ def _conversation_surface(
     sender, _ = FactoryNode.objects.get_or_create(
         project=project,
         node_key=f"factory-chat:{project.project_id}",
-        defaults={"node_type": "FACTORY_CHAT"},
+        defaults={"node_type": "FACTORY_CHAT", "endpoint_reference": "ui:factory-chat"},
     )
     destination, _ = FactoryNode.objects.get_or_create(
         project=project,
         node_key=f"conversation:{project.project_id}",
-        defaults={"node_type": "CONVERSATION"},
+        defaults={
+            "node_type": "CONVERSATION",
+            "endpoint_reference": "domain:conversation",
+        },
     )
     service, _ = PublishedSemanticService.objects.get_or_create(
-        service_key=f"conversation-understanding:{project.project_id}:v1",
+        service_key=f"conversation-context:{project.project_id}:v1",
         defaults={
             "node": destination,
-            "service_name": "conversation.understanding",
+            "service_name": "conversation.context",
             "version": "v1",
             "contract": {
                 "input": "ConversationUnderstandingRequest.v1",
                 "output": "CognitiveProcessingResult.v1",
             },
+            "transport_binding": {"mode": "LOCAL", "endpoint": "domain:conversation"},
         },
     )
     for source, target in ((sender, destination), (destination, sender)):
@@ -329,7 +414,7 @@ def resolve_route(
     destination: FactoryNode,
     service: PublishedSemanticService,
     is_return: bool = False,
-) -> None:
+) -> Mapping[str, Any]:
     """FFS does deterministic node/service/zoning resolution, never data proxying."""
     expected_owner = source if is_return else destination
     if (
@@ -346,6 +431,7 @@ def resolve_route(
         or not rules.filter(effect=ZoneRule.Effect.ALLOW).exists()
     ):
         raise FactoryProtocolError("ZONE_DENIED")
+    return dict(service.transport_binding)
 
 
 @transaction.atomic
@@ -365,7 +451,9 @@ def dispatch_conversation_understanding(
     ):
         raise FactoryProtocolError("CONVERSATION_REQUEST_SCOPE_INVALID")
     sender, destination, service = _conversation_surface(project, scope)
-    resolve_route(scope, source=sender, destination=destination, service=service)
+    request_transport = resolve_route(
+        scope, source=sender, destination=destination, service=service
+    )
     request_evidence = record_evidence(
         scope,
         subject_reference=f"conversation:{conversation.pk}",
@@ -383,7 +471,7 @@ def dispatch_conversation_understanding(
         destination_node=destination,
         service=service,
         envelope={"correlation_id": correlation_id, "conversation_id": conversation.pk},
-        delivery={"mode": "LOCAL", "status": "DELIVERED"},
+        delivery={**request_transport, "status": "DELIVERED"},
         payload={"text": text},
         evidence=request_evidence,
     )
@@ -404,7 +492,7 @@ def dispatch_conversation_understanding(
             service=service,
             related_packet=request,
             envelope={"correlation_id": correlation_id},
-            delivery={"mode": "LOCAL", "status": "PROFILE_UNRESOLVED"},
+            delivery={**service.transport_binding, "status": "PROFILE_UNRESOLVED"},
             payload={"status": "PROFILE_UNRESOLVED"},
             evidence=response_evidence,
         )
@@ -452,7 +540,7 @@ def dispatch_conversation_understanding(
         evaluation=result_payload["evaluation"],
         evidence=result_evidence,
     )
-    resolve_route(
+    response_transport = resolve_route(
         scope,
         source=destination,
         destination=sender,
@@ -468,7 +556,7 @@ def dispatch_conversation_understanding(
         service=service,
         related_packet=request,
         envelope={"correlation_id": correlation_id},
-        delivery={"mode": "LOCAL", "status": "DELIVERED"},
+        delivery={**response_transport, "status": "DELIVERED"},
         payload={"status": "OK", "result_key": result.result_key},
         evidence=result_evidence,
     )

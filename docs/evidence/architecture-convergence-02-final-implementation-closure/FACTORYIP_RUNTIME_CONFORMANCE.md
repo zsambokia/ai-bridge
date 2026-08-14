@@ -1,0 +1,3 @@
+# FactoryIP runtime conformance
+
+The runtime makes a persisted FactoryIP traversal: immutable L0 scope → L1 request evidence → FFS route resolution → Zone authorization → L4 request packet → stateless Cognitive Processing → L1 result evidence → L4 response packet. Packets keep envelope, delivery and payload distinct and reserve L2/L3 references where applicable. Factory Chat is an addressable UI Node with no CRUD or state reach-through. The Conversation Node exposes approved `conversation.context`, not `conversation.understanding`. Cognitive Processing is behind that semantic boundary and is neither a Node nor AI Kernel work.

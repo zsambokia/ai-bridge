@@ -8,14 +8,18 @@ from projects.factory_protocol import (
     append_provenance_status,
     create_artifact_version,
     create_knowledge_candidate,
+    create_resolution_claim,
     dispatch_conversation_understanding,
+    evaluate_evidence_assurance,
     record_evidence,
     resolve_effective_scope,
     resolve_knowledge_candidate,
+    resolve_route,
 )
 from projects.models import (
     ArtifactKnowledgeResolution,
     EffectiveOperationalScope,
+    EvidenceAssuranceEvaluation,
     FactoryPacket,
     KnowledgeEntry,
     Project,
@@ -125,6 +129,55 @@ class FactoryProtocolTests(TestCase):
                 scope=scope,
             )
 
+    def test_ffs_resolves_only_the_published_service_and_requires_each_direction(
+        self,
+    ) -> None:
+        scope = resolve_effective_scope(
+            self.project, resource_bindings={"eligible_knowledge_entry_ids": []}
+        )
+        sender, destination, service = _conversation_surface(self.project, scope)
+        self.assertEqual(service.service_name, "conversation.context")
+        self.assertEqual(
+            resolve_route(
+                scope, source=sender, destination=destination, service=service
+            )["endpoint"],
+            "domain:conversation",
+        )
+        ZoneRule.objects.filter(
+            scope=scope,
+            source_node=destination,
+            destination_node=sender,
+            service=service,
+        ).delete()
+        with self.assertRaisesRegex(FactoryProtocolError, "ZONE_DENIED"):
+            resolve_route(
+                scope,
+                source=destination,
+                destination=sender,
+                service=service,
+                is_return=True,
+            )
+        with self.assertRaisesRegex(FactoryProtocolError, "FFS_ROUTE"):
+            resolve_route(scope, source=sender, destination=sender, service=service)
+
+    def test_l0_rejects_cross_project_knowledge_before_context_retrieval(self) -> None:
+        other_entry = KnowledgeEntry.objects.create(
+            project=self.other_project,
+            entry_key="other-project-entry",
+            scope=KnowledgeEntry.Scope.PROJECT,
+            knowledge_type="TEST",
+            title="Other",
+            content="not eligible",
+            source_type="TEST",
+            source_reference="test",
+            status=KnowledgeEntry.Status.ACTIVE,
+        )
+        with self.assertRaisesRegex(FactoryProtocolError, "RESOURCE_OUTSIDE_PROJECT"):
+            resolve_effective_scope(
+                self.project,
+                resource_bindings={"eligible_knowledge_entry_ids": [other_entry.pk]},
+            )
+
     def test_scope_provenance_and_artifact_candidates_are_append_only(self) -> None:
         scope = resolve_effective_scope(
             self.project, resource_bindings={"eligible_knowledge_entry_ids": []}
@@ -158,20 +211,103 @@ class FactoryProtocolTests(TestCase):
         with self.assertRaisesRegex(FactoryProtocolError, "EXPLICIT_APPROVAL"):
             resolve_knowledge_candidate(
                 candidate,
-                outcome=ArtifactKnowledgeResolution.Outcome.PUBLISHED,
+                outcome=ArtifactKnowledgeResolution.Outcome.CREATE,
                 evidence=evidence,
             )
         resolution = resolve_knowledge_candidate(
             candidate,
-            outcome=ArtifactKnowledgeResolution.Outcome.REJECTED,
+            outcome=ArtifactKnowledgeResolution.Outcome.REJECT,
             evidence=evidence,
         )
 
         self.assertEqual(event.status, ProvenanceRelationStatus.Status.CHALLENGED)
-        self.assertEqual(
-            resolution.outcome, ArtifactKnowledgeResolution.Outcome.REJECTED
-        )
+        self.assertEqual(resolution.outcome, ArtifactKnowledgeResolution.Outcome.REJECT)
         scope.tenant_reference = "cannot-change"
         with self.assertRaises(RuntimeCandidateImmutableError):
             scope.save()
         self.assertEqual(EffectiveOperationalScope.objects.count(), 1)
+
+    def test_r19_assurance_is_immutable_and_explicit_policy_driven(self) -> None:
+        scope = resolve_effective_scope(
+            self.project, resource_bindings={"eligible_knowledge_entry_ids": []}
+        )
+        evidence = record_evidence(
+            scope, subject_reference="r19", source="test", payload={"supported": True}
+        )
+        sufficient = evaluate_evidence_assurance(
+            scope,
+            subject_reference="r19",
+            evidence=[evidence],
+            policy={"minimum_evidence": 1},
+        )
+        degraded = evaluate_evidence_assurance(
+            scope,
+            subject_reference="r19",
+            evidence=[evidence],
+            policy={"minimum_evidence": 2},
+        )
+        insufficient = evaluate_evidence_assurance(
+            scope,
+            subject_reference="r19-empty",
+            evidence=[],
+            policy={"minimum_evidence": 1},
+        )
+        indeterminate = evaluate_evidence_assurance(
+            scope,
+            subject_reference="r19-unknown",
+            evidence=[],
+            policy={"minimum_evidence": 1, "indeterminate": True},
+        )
+        self.assertEqual(
+            sufficient.result, EvidenceAssuranceEvaluation.Result.SUFFICIENT
+        )
+        self.assertEqual(degraded.result, EvidenceAssuranceEvaluation.Result.DEGRADED)
+        self.assertEqual(
+            insufficient.result, EvidenceAssuranceEvaluation.Result.INSUFFICIENT
+        )
+        self.assertEqual(
+            indeterminate.result, EvidenceAssuranceEvaluation.Result.INDETERMINATE
+        )
+        sufficient.result = EvidenceAssuranceEvaluation.Result.DEGRADED
+        with self.assertRaises(RuntimeCandidateImmutableError):
+            sufficient.save()
+
+    def test_r22_claim_has_owner_and_references_without_resolving_domain_state(
+        self,
+    ) -> None:
+        scope = resolve_effective_scope(
+            self.project, resource_bindings={"eligible_knowledge_entry_ids": []}
+        )
+        evidence = record_evidence(
+            scope, subject_reference="claim", source="test", payload={"v": 1}
+        )
+        relation = append_provenance_relation(
+            scope,
+            subject_reference="claim-subject",
+            object_reference="claim-evidence",
+            relation_type="SUPPORTS",
+            assertion={"basis": "test"},
+            evidence=evidence,
+        )
+        claim = create_resolution_claim(
+            scope,
+            subject_reference="claim-subject",
+            accountable_domain="Product Owner",
+            resolution_context={"ambiguity": "requires accountable decision"},
+            evidence=[evidence],
+            provenance=[relation],
+        )
+        self.assertEqual(claim.accountable_domain, "Product Owner")
+        self.assertEqual(claim.evidence_references, [evidence.evidence_key])
+        claim.accountable_domain = "mutated"
+        with self.assertRaises(RuntimeCandidateImmutableError):
+            claim.save()
+        with self.assertRaisesRegex(FactoryProtocolError, "ACCOUNTABILITY_REQUIRED"):
+            create_resolution_claim(
+                scope,
+                subject_reference="bad",
+                accountable_domain="",
+                resolution_context={},
+                evidence=[],
+                provenance=[],
+            )

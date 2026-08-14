@@ -2853,6 +2853,41 @@ class ProvenanceRelationStatus(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("PROVENANCE_STATUS_IMMUTABLE")
+        super().save(*args, **kwargs)
+
+
+class EvidenceAssuranceEvaluation(models.Model):
+    """Immutable L2 sufficiency evaluation, separate from domain consequence."""
+
+    class Result(models.TextChoices):
+        SUFFICIENT = "SUFFICIENT", "Sufficient"
+        DEGRADED = "DEGRADED", "Degraded"
+        INSUFFICIENT = "INSUFFICIENT", "Insufficient"
+        INDETERMINATE = "INDETERMINATE", "Indeterminate"
+
+    scope = models.ForeignKey(
+        EffectiveOperationalScope,
+        on_delete=models.PROTECT,
+        related_name="assurance_evaluations",
+    )
+    evaluation_key = models.CharField(max_length=96, unique=True)
+    subject_reference = models.CharField(max_length=255)
+    policy = models.JSONField(default=dict)
+    result = models.CharField(max_length=16, choices=Result.choices)
+    evidence_references = models.JSONField(default=list)
+    integrity_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError(
+                "EVIDENCE_ASSURANCE_EVALUATION_IMMUTABLE"
+            )
+        super().save(*args, **kwargs)
+
 
 class FactoryArtifact(models.Model):
     project = models.ForeignKey(
@@ -2861,6 +2896,11 @@ class FactoryArtifact(models.Model):
     artifact_key = models.CharField(max_length=160, unique=True)
     contract = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("FACTORY_ARTIFACT_IMMUTABLE")
+        super().save(*args, **kwargs)
 
 
 class FactoryArtifactVersion(models.Model):
@@ -2913,8 +2953,12 @@ class ArtifactKnowledgeCandidate(models.Model):
 
 class ArtifactKnowledgeResolution(models.Model):
     class Outcome(models.TextChoices):
-        PUBLISHED = "PUBLISHED", "Published"
-        REJECTED = "REJECTED", "Rejected"
+        CREATE = "CREATE", "Create"
+        REVISE = "REVISE", "Revise"
+        CONFIRM = "CONFIRM", "Confirm"
+        DUPLICATE = "DUPLICATE", "Duplicate"
+        CONFLICT = "CONFLICT", "Conflict"
+        REJECT = "REJECT", "Reject"
 
     candidate = models.OneToOneField(
         ArtifactKnowledgeCandidate, on_delete=models.PROTECT, related_name="resolution"
@@ -2933,6 +2977,35 @@ class ArtifactKnowledgeResolution(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError(
+                "ARTIFACT_KNOWLEDGE_RESOLUTION_IMMUTABLE"
+            )
+        super().save(*args, **kwargs)
+
+
+class ResolutionClaim(models.Model):
+    """A scoped, owner-bearing Resolution Subject; not a generic uncertainty bucket."""
+
+    scope = models.ForeignKey(
+        EffectiveOperationalScope,
+        on_delete=models.PROTECT,
+        related_name="resolution_claims",
+    )
+    claim_key = models.CharField(max_length=96, unique=True)
+    subject_reference = models.CharField(max_length=255)
+    accountable_domain = models.CharField(max_length=128)
+    resolution_context = models.JSONField(default=dict)
+    evidence_references = models.JSONField(default=list)
+    provenance_references = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("RESOLUTION_CLAIM_IMMUTABLE")
+        super().save(*args, **kwargs)
+
 
 class FactoryNode(models.Model):
     project = models.ForeignKey(
@@ -2940,6 +3013,7 @@ class FactoryNode(models.Model):
     )
     node_key = models.CharField(max_length=160, unique=True)
     node_type = models.CharField(max_length=64)
+    endpoint_reference = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
@@ -2951,6 +3025,7 @@ class PublishedSemanticService(models.Model):
     service_name = models.CharField(max_length=128)
     version = models.CharField(max_length=32)
     contract = models.JSONField(default=dict)
+    transport_binding = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
@@ -3007,6 +3082,8 @@ class FactoryPacket(models.Model):
     envelope = models.JSONField(default=dict)
     delivery = models.JSONField(default=dict)
     payload = models.JSONField(default=dict)
+    provenance_references = models.JSONField(default=list)
+    artifact_references = models.JSONField(default=list)
     evidence = models.ForeignKey(
         FactoryEvidence, on_delete=models.PROTECT, related_name="packets"
     )
