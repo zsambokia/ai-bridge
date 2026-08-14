@@ -321,6 +321,7 @@ def context_package(
     *,
     retrieval_intent: str = "context",
     retrieval_query: str = "",
+    eligible_entry_ids: set[int] | None = None,
 ) -> dict[str, Any]:
     context = _context(project, work_context_id)
     entries = list(
@@ -328,6 +329,8 @@ def context_package(
             status=KnowledgeEntry.Status.ACTIVE, project__in=[None, project]
         ).order_by("entry_key")
     )
+    if eligible_entry_ids is not None:
+        entries = [entry for entry in entries if entry.pk in eligible_entry_ids]
     platform = [
         entry
         for entry in entries
@@ -423,6 +426,7 @@ def build_and_record_context_package(
     *,
     retrieval_intent: str,
     retrieval_query: str = "",
+    eligible_entry_ids: set[int] | None = None,
 ) -> dict[str, Any]:
     """Persist exactly what Orki retrieved; retrying identical input is idempotent."""
     package = context_package(
@@ -431,6 +435,7 @@ def build_and_record_context_package(
         role_context_id,
         retrieval_intent=retrieval_intent,
         retrieval_query=retrieval_query,
+        eligible_entry_ids=eligible_entry_ids,
     )
     record, _ = KnowledgeContextPackage.objects.get_or_create(
         package_hash=package["hash"],

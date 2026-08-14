@@ -2766,3 +2766,286 @@ class CognitiveGuidancePackage(models.Model):
         if not self._state.adding:
             raise RuntimeCandidateImmutableError("COGNITIVE_GUIDANCE_PACKAGE_IMMUTABLE")
         super().save(*args, **kwargs)
+
+
+class EffectiveOperationalScope(models.Model):
+    """Immutable L0 protocol snapshot; it is not a replacement scope domain."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="factory_scopes"
+    )
+    scope_hash = models.CharField(max_length=64, unique=True)
+    tenant_reference = models.CharField(max_length=128, blank=True)
+    workspace_reference = models.CharField(max_length=128, blank=True)
+    resource_bindings = models.JSONField(default=dict)
+    policy_bindings = models.JSONField(default=dict)
+    cognitive_profile = models.ForeignKey(
+        ContextProfile,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="factory_scopes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("FACTORY_SCOPE_IMMUTABLE")
+        super().save(*args, **kwargs)
+
+
+class FactoryEvidence(models.Model):
+    """Immutable L1 attribute proof and integrity record."""
+
+    scope = models.ForeignKey(
+        EffectiveOperationalScope, on_delete=models.PROTECT, related_name="evidence"
+    )
+    evidence_key = models.CharField(max_length=96, unique=True)
+    subject_reference = models.CharField(max_length=255)
+    source = models.CharField(max_length=128)
+    integrity_hash = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("FACTORY_EVIDENCE_IMMUTABLE")
+        super().save(*args, **kwargs)
+
+
+class ProvenanceRelation(models.Model):
+    """Append-only L2 provenance assertion; changes are status events."""
+
+    scope = models.ForeignKey(
+        EffectiveOperationalScope,
+        on_delete=models.PROTECT,
+        related_name="provenance_relations",
+    )
+    relation_key = models.CharField(max_length=96, unique=True)
+    subject_reference = models.CharField(max_length=255)
+    object_reference = models.CharField(max_length=255)
+    relation_type = models.CharField(max_length=96)
+    assertion = models.JSONField(default=dict)
+    evidence = models.ForeignKey(
+        FactoryEvidence, on_delete=models.PROTECT, related_name="relations"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("PROVENANCE_RELATION_IMMUTABLE")
+        super().save(*args, **kwargs)
+
+
+class ProvenanceRelationStatus(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        CHALLENGED = "CHALLENGED", "Challenged"
+        RETRACTED = "RETRACTED", "Retracted"
+
+    relation = models.ForeignKey(
+        ProvenanceRelation, on_delete=models.PROTECT, related_name="status_events"
+    )
+    status = models.CharField(max_length=16, choices=Status.choices)
+    rationale = models.CharField(max_length=1000)
+    evidence = models.ForeignKey(
+        FactoryEvidence, on_delete=models.PROTECT, related_name="relation_status_events"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class FactoryArtifact(models.Model):
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="factory_artifacts"
+    )
+    artifact_key = models.CharField(max_length=160, unique=True)
+    contract = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class FactoryArtifactVersion(models.Model):
+    artifact = models.ForeignKey(
+        FactoryArtifact, on_delete=models.PROTECT, related_name="versions"
+    )
+    version = models.PositiveIntegerField()
+    scope = models.ForeignKey(
+        EffectiveOperationalScope,
+        on_delete=models.PROTECT,
+        related_name="artifact_versions",
+    )
+    payload = models.JSONField(default=dict)
+    integrity_hash = models.CharField(max_length=64)
+    evidence = models.ForeignKey(
+        FactoryEvidence, on_delete=models.PROTECT, related_name="artifact_versions"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["artifact", "version"], name="unique_factory_artifact_version"
+            )
+        ]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("FACTORY_ARTIFACT_VERSION_IMMUTABLE")
+        super().save(*args, **kwargs)
+
+
+class ArtifactKnowledgeCandidate(models.Model):
+    artifact_version = models.ForeignKey(
+        FactoryArtifactVersion,
+        on_delete=models.PROTECT,
+        related_name="knowledge_candidates",
+    )
+    candidate_key = models.CharField(max_length=160, unique=True)
+    semantic_content = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError(
+                "ARTIFACT_KNOWLEDGE_CANDIDATE_IMMUTABLE"
+            )
+        super().save(*args, **kwargs)
+
+
+class ArtifactKnowledgeResolution(models.Model):
+    class Outcome(models.TextChoices):
+        PUBLISHED = "PUBLISHED", "Published"
+        REJECTED = "REJECTED", "Rejected"
+
+    candidate = models.OneToOneField(
+        ArtifactKnowledgeCandidate, on_delete=models.PROTECT, related_name="resolution"
+    )
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    knowledge_entry = models.ForeignKey(
+        KnowledgeEntry,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="artifact_resolutions",
+    )
+    approval_reference = models.CharField(max_length=128, blank=True)
+    evidence = models.ForeignKey(
+        FactoryEvidence, on_delete=models.PROTECT, related_name="knowledge_resolutions"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class FactoryNode(models.Model):
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="factory_nodes"
+    )
+    node_key = models.CharField(max_length=160, unique=True)
+    node_type = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class PublishedSemanticService(models.Model):
+    node = models.ForeignKey(
+        FactoryNode, on_delete=models.PROTECT, related_name="published_services"
+    )
+    service_key = models.CharField(max_length=160, unique=True)
+    service_name = models.CharField(max_length=128)
+    version = models.CharField(max_length=32)
+    contract = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ZoneRule(models.Model):
+    class Effect(models.TextChoices):
+        ALLOW = "ALLOW", "Allow"
+        DENY = "DENY", "Deny"
+
+    scope = models.ForeignKey(
+        EffectiveOperationalScope, on_delete=models.PROTECT, related_name="zone_rules"
+    )
+    source_node = models.ForeignKey(
+        FactoryNode, on_delete=models.PROTECT, related_name="outbound_zone_rules"
+    )
+    destination_node = models.ForeignKey(
+        FactoryNode, on_delete=models.PROTECT, related_name="inbound_zone_rules"
+    )
+    service = models.ForeignKey(
+        PublishedSemanticService, on_delete=models.PROTECT, related_name="zone_rules"
+    )
+    effect = models.CharField(max_length=8, choices=Effect.choices)
+    rationale = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class FactoryPacket(models.Model):
+    """Immutable L4 envelope/delivery/payload packet; transport is not auth."""
+
+    class Kind(models.TextChoices):
+        REQUEST = "REQUEST", "Request"
+        RESPONSE = "RESPONSE", "Response"
+
+    packet_key = models.CharField(max_length=96, unique=True)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    scope = models.ForeignKey(
+        EffectiveOperationalScope, on_delete=models.PROTECT, related_name="packets"
+    )
+    source_node = models.ForeignKey(
+        FactoryNode, on_delete=models.PROTECT, related_name="sent_packets"
+    )
+    destination_node = models.ForeignKey(
+        FactoryNode, on_delete=models.PROTECT, related_name="received_packets"
+    )
+    service = models.ForeignKey(
+        PublishedSemanticService, on_delete=models.PROTECT, related_name="packets"
+    )
+    related_packet = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="responses",
+    )
+    envelope = models.JSONField(default=dict)
+    delivery = models.JSONField(default=dict)
+    payload = models.JSONField(default=dict)
+    evidence = models.ForeignKey(
+        FactoryEvidence, on_delete=models.PROTECT, related_name="packets"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError("FACTORY_PACKET_IMMUTABLE")
+        super().save(*args, **kwargs)
+
+
+class CognitiveProcessingResult(models.Model):
+    """Immutable, stateless Conversation understanding output; never Kernel work."""
+
+    result_key = models.CharField(max_length=96, unique=True)
+    scope = models.ForeignKey(
+        EffectiveOperationalScope,
+        on_delete=models.PROTECT,
+        related_name="cognitive_results",
+    )
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.PROTECT, related_name="cognitive_results"
+    )
+    profile = models.ForeignKey(
+        ContextProfile, on_delete=models.PROTECT, related_name="cognitive_results"
+    )
+    context_package = models.ForeignKey(
+        ContextPackage, on_delete=models.PROTECT, related_name="cognitive_results"
+    )
+    understanding = models.JSONField(default=dict)
+    evaluation = models.JSONField(default=dict)
+    evidence = models.ForeignKey(
+        FactoryEvidence, on_delete=models.PROTECT, related_name="cognitive_results"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise RuntimeCandidateImmutableError(
+                "COGNITIVE_PROCESSING_RESULT_IMMUTABLE"
+            )
+        super().save(*args, **kwargs)

@@ -135,6 +135,7 @@ def assemble_context(
     profile: ContextProfile,
     work_context_id: str,
     query: str = "",
+    eligible_entry_ids: set[int] | None = None,
 ) -> ContextPackage:
     """Apply profile policy adaptively and return one immutable Context Package."""
     if profile.project_id != project.pk:
@@ -148,6 +149,7 @@ def assemble_context(
         profile.persona_or_role,
         retrieval_intent=profile.purpose_or_capability,
         retrieval_query=query,
+        eligible_entry_ids=eligible_entry_ids,
     )
     record = ContextPackage.objects.get(pk=package["package_id"])
     if record.context_profile_id is None:
