@@ -13,7 +13,8 @@ version: 1.1.0
 > terminology is governed by Article I–II (AKB), Article III (AI Kernel),
 > Article IV (Conversation to Mission), Article V (Architecture Documentation
 > Governance), Article VI (Scope Architecture),
-> Article VII (Localization Architecture),
+> Article VII (Localization Architecture), Article VIII (Factory Protocol
+> Architecture),
 > and the Terminology Convergence Matrix; historical names are not
 > implementation rename authority.
 
@@ -78,6 +79,7 @@ Bridge Constitution
     ├── Article V — Architecture Documentation Governance
     ├── Article VI — Scope Architecture
     ├── Article VII — Localization Architecture
+    ├── Article VIII — Factory Protocol Architecture
     ├── Runtime 2.0 Constitution
     ├── Operational Foundation Constitution
     ├── Engine Constitution

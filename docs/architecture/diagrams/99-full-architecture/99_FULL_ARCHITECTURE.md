@@ -1,11 +1,12 @@
 ---
 diagram: 99 Full Architecture
 architecture_status: CANONICAL
+constitution_book_entries: Articles III, IV, VIII
 source: Mermaid
 derived_drawio: Full Architecture.drawio
 constitution: Article V — Architecture Documentation Governance
-last_reviewed: 2026-08-11
-architecture_version: 1.0.0
+last_reviewed: 2026-08-14
+architecture_version: 1.1.0
 related_adrs: ADR-034, ADR-038 (open)
 owner: Architecture
 ---
@@ -21,10 +22,11 @@ flowchart TB
     subgraph CL[Conversation Layer]
         FC --> CONV[Conversation]
         CONV --> CSE[Conversation State Engine]
-        CONV --> CU[Conversation Understanding<br/>intent and goal detection; search; LLM analysis]
-        CU --> CB[Context Builder]
+        CONV --> CA[Context Assembly<br/>stateless]
+        CA --> U[Understanding<br/>stateless; immutable result]
+        U --> E[Evaluation<br/>stateless; immutable result]
+        E --> CSE
         CSE --> MR[Mission Resolution]
-        CB --> MR
     end
 
     subgraph KR[Knowledge and Repository]
@@ -32,13 +34,22 @@ flowchart TB
         AKB[Architecture Knowledge Base]
         SEM[Semantic Layer]
         CP[Context Package<br/>immutable; versioned; reproducible]
-        REP --> CB
-        AKB --> CB
-        SEM --> CB
-        CB --> CP
+        REP --> CA
+        AKB --> CA
+        SEM --> CA
+        CA --> CP
     end
 
-    CP --> MR
+    CP -. immutable processing input .-> U
+
+    subgraph FIP[FactoryIP foundation — semantic boundary communication]
+        L0[L0 Effective Scope / isolation] --> L1[L1 Evidence references]
+        L1 --> L2[L2 Provenance / causality]
+        L2 --> L3[L3 Artifact / Knowledge Candidate]
+        L3 --> L4[L4 Factory Packet transport]
+        FFS[FFS: name/service resolution] -. control plane only .-> L4
+        Z[Zoning: transport permission] -. permits boundary traffic .-> L4
+    end
 
     subgraph RB[Runtime Boundary]
         MISSION[Mission]
@@ -125,7 +136,7 @@ flowchart TB
     classDef canonical fill:#d5f5e3,stroke:#1e8449,color:#000;
     classDef transitional fill:#fcf3cf,stroke:#b7950b,color:#000;
     classDef historical fill:#f2f3f4,stroke:#7f8c8d,color:#000;
-    class PO,FC,CONV,CSE,CU,CB,MR,REP,AKB,SEM,CP,MISSION,MSM,OWI,ADM,CR,CAPREG,ENGREG,SCH,QUEUE,LEASE,RETRY,REC,HEALTH,TEL,CFG,PLAN,WF,KNOW,REPO,REFL,DOC,DEP,LEARN,ER,EXEC,PIN,PRES,PROV,PEXE canonical;
+    class PO,FC,CONV,CSE,CA,U,E,MR,REP,AKB,SEM,CP,L0,L1,L2,L3,L4,FFS,Z,MISSION,MSM,OWI,ADM,CR,CAPREG,ENGREG,SCH,QUEUE,LEASE,RETRY,REC,HEALTH,TEL,CFG,PLAN,WF,KNOW,REPO,REFL,DOC,DEP,LEARN,ER,EXEC,PIN,PRES,PROV,PEXE canonical;
     class ERUN,EJOB,PGW historical;
 ```
 
@@ -133,9 +144,16 @@ flowchart TB
 
 - `Mission` is the common Runtime intake. Conversation is mandatory only for
   human interaction; non-human adapters converge directly on Mission intake.
-- Conversation Understanding and its Context Builder compose the Context
-  Package before Mission Resolution. The Runtime consumes the completed
-  immutable Context Package and does not directly query AKB or the Repository.
+- Factory Chat is a UI/interaction boundary. Conversation remains a durable
+  domain object; stateless Context Assembly, Understanding and Evaluation only
+  produce immutable processing inputs/results. CSE is the Conversation state
+  authority and is the only depicted Conversation route to Mission Resolution.
+- FactoryIP is the L0–L4 semantic communication foundation. L0 eligibility
+  precedes semantic retrieval; FFS is control-plane resolution, zoning is
+  transport permission, and Factory Packet transport is distinct from delivery,
+  interaction and payload semantics.
+- The Runtime consumes completed immutable Context Packages and does not
+  directly query AKB or the Repository.
 - Operational Foundation resolves a required capability through the Capability
   Registry and Engine Definition Registry. Engines are stateless definitions;
   an engine requests Kernel-owned Execution rather than owning it.
