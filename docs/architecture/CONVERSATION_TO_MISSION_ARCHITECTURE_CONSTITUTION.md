@@ -20,6 +20,13 @@ This Article complements, and does not weaken, the Mission State Machine
 (MSM) as the sole owner of Mission lifecycle state, the Operational Foundation
 as the delivery boundary, and the AI Kernel as the technical execution core.
 
+Context Assembly, Understanding and Evaluation are reusable, stateless
+**Cognitive Processing**. They consume an effective scope, profile and policy,
+emit immutable Context Package, Understanding Result and Evaluation Result
+objects, and never own Conversation, Mission, Knowledge, or publication
+consequences. Factory Chat and external adapters are adapter-only participants
+in the Article VIII FactoryIP/domain boundary.
+
 ## 4.1 Purpose and boundary
 
 The Conversation to Mission Architecture separates human understanding from

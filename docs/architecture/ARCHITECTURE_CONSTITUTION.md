@@ -1,9 +1,9 @@
 ---
-status: TRANSITIONAL
+status: CANONICAL
 owner: Architecture
 supersedes: []
-superseded_by: Constitution Book (planned adoption)
-version: 1.0.0
+superseded_by: null
+version: 1.1.0
 ---
 
 # AI Bridge Architecture Constitution
@@ -29,6 +29,10 @@ Constitution.
 Normative terms **SHALL**, **MUST NOT**, **SHOULD**, and **MAY** are binding.
 Conflicts require a durable constitutional amendment or ADR; implementation
 convenience is not an exception.
+
+The Constitution Book entries linked below are adopted target authority. Older
+architecture records and repository behaviour are historical evidence unless
+compatible with this Constitution; they cannot silently countermand it.
 
 ## Architectural laws
 
@@ -90,8 +94,8 @@ Architecture Constitution](AI_KERNEL_ARCHITECTURE_CONSTITUTION.md),
 [Conversation to Mission Architecture Constitution](CONVERSATION_TO_MISSION_ARCHITECTURE_CONSTITUTION.md),
 [Scope Architecture Constitution](SCOPE_ARCHITECTURE_CONSTITUTION.md), and
 [Localization Architecture Constitution](LOCALIZATION_ARCHITECTURE_CONSTITUTION.md).
-Their adoption into one Constitution Book remains controlled by the
-Book-adoption process.
+Together with [Factory Protocol Architecture Constitution](FACTORY_PROTOCOL_ARCHITECTURE_CONSTITUTION.md),
+these entries are adopted Constitution Book authority.
 
 ## Article V — Architecture Documentation Governance
 

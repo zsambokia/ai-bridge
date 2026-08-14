@@ -3,7 +3,7 @@ diagram: 01 Conversation Layer
 architecture_status: CANONICAL
 source: Mermaid
 derived_drawio: Conversation Layer.drawio
-constitution: Article IV; Article V
+constitution: Article IV; Article VIII; Article V
 last_reviewed: 2026-08-11
 architecture_version: 1.1.0
 related_adrs: []
@@ -13,7 +13,7 @@ related_adrs: []
 flowchart LR
     PO[Product Owner] --> UI[Factory Chat] --> C[Conversation]
     UI -->|conversation action| C
-    C --> U[Stateless Conversation Understanding]
+    C --> U[Stateless Cognitive Processing: Understanding]
     C --> CS[Durable Conversation State]
     U --> CSE[Stateless Conversation State Engine]
     CSE --> CS
@@ -21,6 +21,7 @@ flowchart LR
     U --> CP[Context Profile]
     CP --> PKG[Immutable Context Package]
     U -. policy-governed retrieval .-> AKB[AKB / Repository]
+    UI -. adapter, no reach-through .-> C
     MR --> M[Mission / MSM intake]
     PKG -. authorized context only .-> K[AI Kernel]
 ```

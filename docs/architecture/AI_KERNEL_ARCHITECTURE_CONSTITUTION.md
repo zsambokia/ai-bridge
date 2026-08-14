@@ -1,6 +1,6 @@
 ---
 status: APPROVED_TARGET
-version: 1.0.0
+version: 1.1.0
 scope: Architecture Convergence Program – Sprint 3
 language: en
 ---
@@ -14,6 +14,10 @@ Owner-approved architectural direction; it does not assert that the current
 repository implements it. Existing Constitutions and accepted ADRs retain
 their current authority until a controlled Book-adoption Sprint changes that
 status. All normative terms in this entry are English.
+
+Article VIII governs semantic inter-domain communication. The Kernel is not a
+FactoryIP Node merely because it contains technical components; no Kernel LAN,
+Node, service, or endpoint is inferred by this target.
 
 ## 3.1 Purpose of the AI Kernel
 

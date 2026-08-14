@@ -212,3 +212,6 @@ MUST preserve the prior historical record.
    never defines AKB architectural ownership.
 4. The AI Kernel can emit evidence-bearing candidates, but it neither publishes AKB
    knowledge nor owns KLM planning, synchronization or freshness decisions.
+5. Article VIII Artifact qualification is not Knowledge publication. Only the
+   Knowledge Domain Authority may resolve an immutable Knowledge Candidate as
+   `CREATE`, `REVISE`, `CONFIRM`, `DUPLICATE`, `CONFLICT`, or `REJECT`.

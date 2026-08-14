@@ -40,6 +40,7 @@ architecture contract.
 | [10 Knowledge & AKB](10-knowledge-akb/10_KNOWLEDGE_AKB.md) | Knowledge Objects and Context Packages | CANONICAL |
 | [11 Repository Lifecycle](11-repository-lifecycle/11_REPOSITORY_LIFECYCLE.md) | Scoped repository resource and knowledge changes | CANONICAL |
 | [12 Reflection & Learning](12-reflection-learning/12_REFLECTION_LEARNING.md) | Evidence-led learning and publication | CANONICAL |
+| [13 Factory Protocol](13-factory-protocol/13_FACTORY_PROTOCOL.md) | FactoryIP L0-L4 and logical boundary control plane | CANONICAL |
 | [99 Full Architecture](99-full-architecture/99_FULL_ARCHITECTURE.md) | Cross-layer target architecture | CANONICAL |
 
 ## Change policy

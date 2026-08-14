@@ -46,6 +46,7 @@ Digital COO behavioural result.
 | [ADR-019](ADR-019-state-machine-ownership.md) | State-machine ownership | Accepted target governance |
 | [ADR-035](ADR-035-scope-resource-and-ownership.md) | Scope, Resource and Direct Ownership | Accepted target architecture; implementation inheritance/shared-resource details remain open |
 | [ADR-037](ADR-037-localization-and-canonical-language.md) | Localization and Canonical Language | Accepted target architecture; representation mechanics remain open |
+| [ADR-038](ADR-038-factory-protocol-and-artifact-boundary.md) | Factory Protocol and Artifact Boundary | Accepted target architecture; runtime topology and schema remain open |
 
 For technical Epic closure evidence, see the
 [Product Owner review package](../../evidence/orki-cognitive-operating-system-closure-20260802/PRODUCT_OWNER_REVIEW_PACKAGE.md).

@@ -3,7 +3,7 @@ diagram: 10 Knowledge and AKB
 architecture_status: CANONICAL
 source: Mermaid
 derived_drawio: Knowledge and AKB.drawio
-constitution: AKB Knowledge Object and Lifecycle Constitution; Article V
+constitution: AKB Knowledge Object and Lifecycle Constitution; Article VIII; Article V
 last_reviewed: 2026-08-11
 architecture_version: 1.0.0
 related_adrs: []
@@ -13,6 +13,8 @@ related_adrs: []
 flowchart LR
     S[Authoritative Sources] --> KLM[Knowledge Lifecycle Management]
     KLM --> AKB[AKB<br/>published immutable Knowledge Object versions]
+    ART[Qualified Artifact] --> KC[Immutable Knowledge Candidate] --> PR[Publication Resolution]
+    PR --> AKB
     AKB --> KR[Knowledge References] --> CP[Context Package<br/>immutable and reproducible]
     O[Operational Data] -. excluded .-> AKB
 ```

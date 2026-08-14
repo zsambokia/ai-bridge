@@ -21,6 +21,10 @@ entry.
 
 ## VI.1 Scope Architecture
 
+Article VIII L0 resolves an immutable Effective Operational Scope for a
+boundary operation. It records resource, policy, profile, and authorization
+bindings without creating a Scope or changing direct ownership.
+
 Every persistent domain object SHALL be owned by exactly one Scope. There are
 no floating persistent domain objects. A Scope is an ownership and authorization boundary;
 it is not a repository, a provider, a physical working directory or a generic

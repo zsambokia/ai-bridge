@@ -3,7 +3,7 @@ diagram: 07 AI Kernel
 architecture_status: CANONICAL
 source: Mermaid
 derived_drawio: AI Kernel.drawio
-constitution: Article III; Article V
+constitution: Article III; Article VIII; Article V
 last_reviewed: 2026-08-11
 architecture_version: 1.0.0
 related_adrs: ADR-034, ADR-038 (open)
@@ -15,4 +15,5 @@ flowchart LR
     CP[Immutable Context Package] --> EX
     EX --> CR[Capability Resolution] --> PI[Provider Integration]
     EX --> KE[Kernel Events and Evidence]
+    CP2[Cognitive Processing] -. separate pre-admission capability .-> W
 ```
